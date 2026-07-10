@@ -1,0 +1,34 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "orange-pm",
+  "description": "Orange PM — PM 기획 문서 자동화 마켓플레이스",
+  "owner": {
+    "name": "Orange PM Team"
+  },
+  "plugins": [
+    {
+      "name": "orange-pm",
+      "description": "PM 기획팀을 위한 Claude Code 플러그인. Discovery → Graph → Fanout → Draft → Integrate → Confirm 6단계 워크플로우를 36개 skill과 6개 agent로 자동화합니다. 외부 시스템(위키·이슈트래커·디자인툴·메신저) 연동은 사용자가 연결한 MCP 서버/커넥터를 자동 탐지해 사용합니다. 반드시 Planning-Agent-Hub 디렉토리를 작업 디렉토리로 설정한 상태에서 실행해야 합니다.",
+      "version": "2.0.0",
+      "author": {
+        "name": "Orange PM Team"
+      },
+      "source": "./",
+      "readme": "./README.md",
+      "category": "productivity",
+      "homepage": "https://github.com/weg-9000/orange-pm",
+      "requirements": {
+        "workingDirectory": "Planning-Agent-Hub 디렉토리에서 Claude Code를 실행해야 합니다. 자세한 내용은 README.md를 참조하세요.",
+        "initSkill": "/init-hub"
+      },
+      "tags": [
+        "pm",
+        "planning",
+        "workflow",
+        "product-management",
+        "documentation"
+      ]
+    }
+  ],
+  "version": "2.0.0"
+}

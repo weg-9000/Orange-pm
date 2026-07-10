@@ -1,0 +1,17 @@
+{
+  "name": "orange-pm",
+  "version": "2.0.0",
+  "description": "PM 기획 문서 자동화 플러그인 — Discovery부터 확정·배포까지 정책서/화면설계서 작성 워크플로우를 자동화합니다.",
+  "author": {
+    "name": "Orange PM Team"
+  },
+  "repository": "https://github.com/weg-9000/orange-pm",
+  "homepage": "https://github.com/weg-9000/orange-pm",
+  "license": "MIT",
+  "keywords": [
+    "pm",
+    "planning",
+    "workflow",
+    "orange"
+  ]
+}

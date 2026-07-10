@@ -1,0 +1,4 @@
+* text=auto eol=lf
+*.md text eol=lf encoding=utf-8
+*.json text eol=lf encoding=utf-8
+*.py text eol=lf encoding=utf-8
