@@ -16,7 +16,7 @@
       "source": "./",
       "readme": "./README.md",
       "category": "productivity",
-      "homepage": "https://github.com/weg-9000/orange-pm",
+      "homepage": "https://github.com/weg-9000/Orange-pm",
       "requirements": {
         "workingDirectory": "Planning-Agent-Hub 디렉토리에서 Claude Code를 실행해야 합니다. 자세한 내용은 README.md를 참조하세요.",
         "initSkill": "/init-hub"

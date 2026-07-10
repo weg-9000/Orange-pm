@@ -79,7 +79,7 @@ Claude Code를 재시작하면 새 버전이 적용됩니다.
 가장 간단한 방법 — GitHub 마켓플레이스로 설치:
 
 ```
-/plugin marketplace add weg-9000/orange-pm
+/plugin marketplace add weg-9000/Orange-pm
 /plugin install orange-pm@orange-pm
 ```
 
