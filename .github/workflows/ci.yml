@@ -1,0 +1,44 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install deps
+        run: pip install pytest pyyaml
+
+      - name: 버전 필드 3곳 일치 검증
+        run: python scripts/bump_version.py --check
+
+      - name: SKILL.md/agents frontmatter YAML 검증
+        run: |
+          python - <<'EOF'
+          import glob, io, sys, yaml
+          bad = []
+          files = glob.glob("skills/*/SKILL.md") + glob.glob("agents/*.md")
+          for f in files:
+              t = io.open(f, encoding="utf-8").read()
+              if t.startswith("---"):
+                  try:
+                      yaml.safe_load(t.split("---", 2)[1])
+                  except Exception as e:
+                      bad.append(f"{f}: {e}")
+          for b in bad:
+              print("BROKEN", b)
+          print(f"{len(files)} files checked, {len(bad)} broken")
+          sys.exit(1 if bad else 0)
+          EOF
+
+      - name: pytest
+        run: python -m pytest scripts/ -q
