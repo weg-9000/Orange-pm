@@ -1,9 +1,18 @@
+<div align="center">
+
 # orange-pm — Claude Code Plugin
 
-A Claude Code plugin for product-management planning automation. It automates the six-phase planning workflow — **Discovery → Graph → Fanout → Draft → Integrate → Confirm** — with 36 skills and 6 specialized agents.
+A Claude Code plugin for product-management planning automation.
 
-No vendor lock-in: external integrations (wiki, chat, design, repo, tasks) are auto-detected from whatever MCP servers/connectors *you* have attached. With no connectors at all, the entire workflow still runs on local files.
+No vendor lock-in: external integrations (wiki, chat, design, repo, tasks) are auto-detected from whatever MCP servers/connectors *you* have attached. 
+With no connectors at all, the entire workflow still runs on local files.
 
+![Claude Code Plugin](https://img.shields.io/badge/Claude_Code-Plugin-5A3FD6)
+![Python](https://img.shields.io/badge/Python-3.8%2B-3776AB)
+![Platform](https://img.shields.io/badge/Platform-Windows_%7C_macOS_%7C_Linux-444)
+![License](https://img.shields.io/badge/License-MIT-green)
+
+</div>
 ---
 
 ## Installation
