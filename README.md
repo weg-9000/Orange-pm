@@ -1,6 +1,6 @@
 <div align="center">
 
-# orange-pm — Claude Code Plugin
+# Orange-pm
 
 A Claude Code plugin for product-management planning automation.
 
