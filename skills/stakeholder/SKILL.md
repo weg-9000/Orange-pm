@@ -91,7 +91,7 @@ Tag uncertain extractions with `[inferred]` and ask the PM to confirm.
 ### Step 2C — Team messenger (if selected)
 
 Check for a chat connector (an MCP tool the user has connected — e.g. Slack, Mattermost) via the
-CONNECTORS.md detection protocol, and search the last 90 days of messages in the following channels:
+docs/CONNECTORS.md detection protocol, and search the last 90 days of messages in the following channels:
 - Project-dedicated channel
 - Planning/PM channel
 - Related team announcement channel
@@ -105,7 +105,7 @@ If the connector is absent or the connection fails, record `[chat skipped]` and 
 ### Step 2D — Wiki document (if selected)
 
 Check for a wiki connector (an MCP tool the user has connected — e.g. Confluence, Notion) via the
-CONNECTORS.md detection protocol, and load project-related requirements documents.
+docs/CONNECTORS.md detection protocol, and load project-related requirements documents.
 Prefer Approved documents. Extract FR / NFR / constraint items from the documents found.
 If the connector is absent or the connection fails, record `[wiki skipped]` and continue.
 

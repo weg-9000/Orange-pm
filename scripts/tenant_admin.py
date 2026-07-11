@@ -112,7 +112,7 @@ def create_tenant(hub_root: Path, tenant_id: str, *, label: str = "",
         f"    root: tenants/{tenant_id}\n"
         f"    gate_preset: {gate_preset}\n"
         f"    # External integrations are declared via the tenant's CONTEXT/connectors.md capability mapping.\n"
-        f"    # (wiki / chat / design / repo / tasks — convention: plugin CONNECTORS.md)\n"
+        f"    # (wiki / chat / design / repo / tasks — convention: plugin docs/CONNECTORS.md)\n"
     )
     reg_path = _registry_path(hub_root)
     if not reg_path.exists():

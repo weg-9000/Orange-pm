@@ -70,7 +70,7 @@ Focus areas: {areas selected by the PM}
 Research depth: {selected value}
 Product context: {product} / PREFIX: {PREFIX}
 
-Information collection source priority (connectors confirmed via the CONNECTORS.md
+Information collection source priority (connectors confirmed via the docs/CONNECTORS.md
 detection protocol; if absent, record `[{capability} skipped]` for that source and
 skip it):
   1. wiki connector — internal competitor material (e.g. Confluence·Notion)

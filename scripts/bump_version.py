@@ -15,9 +15,11 @@ Usage:
   python scripts/bump_version.py --check        # only verify all 3 locations match (for CI)
 
 Procedure to follow after bumping:
-  1. Move the [Unreleased] entries in CHANGELOG.md to the new version's section
-  2. git add -A && git commit -m "release: vX.Y.Z"
-  3. git tag vX.Y.Z && git push && git push --tags
+  1. git add -A && git commit -m "release: vX.Y.Z"
+  2. git tag vX.Y.Z && git push && git push --tags
+  3. Publish notes on GitHub Releases (version history lives there, not in-repo):
+       gh release create vX.Y.Z --generate-notes
+     (or draft it in the GitHub web UI)
 
 exit code: 0 success / 1 verification failed / 2 argument error
 """
@@ -106,9 +108,9 @@ def bump(kind: str | None, explicit: str | None) -> int:
 
     print(f"v{cur} -> v{new}  (plugin.json + marketplace.json both synced)")
     print("\nNext steps:")
-    print(f"  1. Move CHANGELOG.md [Unreleased] -> [{new}] section")
-    print(f'  2. git add -A && git commit -m "release: v{new}"')
-    print(f"  3. git tag v{new} && git push && git push --tags")
+    print(f'  1. git add -A && git commit -m "release: v{new}"')
+    print(f"  2. git tag v{new} && git push && git push --tags")
+    print(f"  3. gh release create v{new} --generate-notes   (publish notes on GitHub Releases)")
     return 0
 
 

@@ -1,6 +1,6 @@
 ---
 name: product-audit
-description: Analyzes the state of your own product via the wiki·design·repo connectors the user has connected (CONNECTORS.md), and structures the existing feature list, pain points, and improvement opportunities. Completes the product-audit stream of the 3 Discovery streams.
+description: Analyzes the state of your own product via the wiki·design·repo connectors the user has connected (docs/CONNECTORS.md), and structures the existing feature list, pain points, and improvement opportunities. Completes the product-audit stream of the 3 Discovery streams.
 triggers:
   - "product-audit"
   - "audit product"
@@ -39,7 +39,7 @@ Reading the source files directly is only permitted when essential to this skill
 
 ### Step 1 — Query documents (`wiki` connector)
 
-Use the `wiki` connector (e.g. Confluence, Notion — CONNECTORS.md detection protocol) to query
+Use the `wiki` connector (e.g. Confluence, Notion — docs/CONNECTORS.md detection protocol) to query
 the following items:
 
 **Query targets:**
@@ -59,7 +59,7 @@ If the connector is absent or the connection fails, record
 
 ### Step 2 — Query design (`design` connector)
 
-Use the `design` connector (e.g. Figma — CONNECTORS.md detection protocol) to query the
+Use the `design` connector (e.g. Figma — docs/CONNECTORS.md detection protocol) to query the
 current product design files.
 
 **Items to collect:**
@@ -74,7 +74,7 @@ If the connector is absent or the connection fails, record
 
 ### Step 3 — Query repository (`repo` connector)
 
-Use the `repo` connector (e.g. GitLab, GitHub — CONNECTORS.md detection protocol) to query
+Use the `repo` connector (e.g. GitLab, GitHub — docs/CONNECTORS.md detection protocol) to query
 the following items:
 
 **Query targets:**

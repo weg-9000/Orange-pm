@@ -91,7 +91,7 @@ Decompose each FR item into screen units using the following criteria:
 
 ### Step 2 — Map design screens (optional)
 
-If a `design` connector (e.g. Figma — see CONNECTORS.md detection protocol) is available:
+If a `design` connector (e.g. Figma — see docs/CONNECTORS.md detection protocol) is available:
 look up existing screen frames in the design project file and
 map a design link to each item in screen-list.md.
 

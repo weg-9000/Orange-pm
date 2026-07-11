@@ -43,7 +43,7 @@ Explore the following sources in order and collect the list of discovered docume
 
 **Source priority:**
 
-| Source | Search target | Connector (CONNECTORS.md capability) |
+| Source | Search target | Connector (docs/CONNECTORS.md capability) |
 |---|---|---|
 | Local inputs/ | all existing input files | — (read files directly) |
 | Document wiki | requirements·planning·policy documents | `wiki` (e.g. Confluence, Notion) |

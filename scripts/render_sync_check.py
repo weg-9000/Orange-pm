@@ -18,7 +18,7 @@ Status classification:
 Remote drift detection pattern (wiki connector integration):
     This script never calls a remote API directly (per the auth/tool
     separation principle — all external I/O goes exclusively through the
-    model's wiki-connector tool calls; see CONNECTORS.md). Instead, the model
+    model's wiki-connector tool calls; see docs/CONNECTORS.md). Instead, the model
     (on `/render --check-sync` or entering `/lc`) looks at the page_id list in
     the sync-queue, looks up each page via a wiki connector (e.g. Confluence
     or another MCP tool), and saves the result to

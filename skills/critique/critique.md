@@ -42,7 +42,7 @@ outputs the result in the format of a planning review meeting log.
 
 1. If the target is a wiki page URL, detect the wiki connector (an MCP
    tool the user has connected — e.g. Confluence, Notion) using the
-   CONNECTORS.md detection protocol, and fetch the document as Markdown
+   docs/CONNECTORS.md detection protocol, and fetch the document as Markdown
    using the get operation.
    - If the wiki connector is absent: instruct the user to connect an MCP
      connector and stop (suggest a local file as an alternative input).

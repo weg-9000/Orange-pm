@@ -96,7 +96,7 @@ The wiki connector is not called in this step.
 ### Step 4 — Search the chat connector
 
 Detect the chat connector (an MCP tool the user has connected — e.g.
-Slack, Mattermost) using the CONNECTORS.md detection protocol, and search
+Slack, Mattermost) using the docs/CONNECTORS.md detection protocol, and search
 for the `{query}` keyword in project-related channels.
 Search scope: messages from the last 90 days.
 If the connector is absent or the connection fails, skip and record
@@ -110,7 +110,7 @@ it as P2 in `open-issues.md`.
 ### Step 5 — Search the design connector (only when intent type is screen/UX)
 
 Detect the design connector (an MCP tool the user has connected — e.g.
-Figma, Zeplin) using the CONNECTORS.md detection protocol, and search
+Figma, Zeplin) using the docs/CONNECTORS.md detection protocol, and search
 project design files for frames related to `{query}`.
 If the connector is absent or the connection fails, skip and record
 `[design skipped]`.
@@ -122,7 +122,7 @@ as the source.
 ### Step 6 — Search the tasks connector (only when intent type is schedule/owner)
 
 Detect the tasks connector (a schedule/work management tool — e.g. Jira,
-a groupware) using the CONNECTORS.md detection protocol, and search for
+a groupware) using the docs/CONNECTORS.md detection protocol, and search for
 related project tasks and owners.
 If the connector is absent or the connection fails, skip and record
 `[tasks skipped]`.

@@ -69,7 +69,7 @@ If `{product}` is unspecified, confirm with the PM which `PROJECTS/{product}` to
 
 Authentication and external calls are performed by the model via tools (scripts do analysis
 only — the same separation as from-url). Per-source connectors are verified using the
-CONNECTORS.md detection protocol (prefer the `CONTEXT/connectors.md` mapping; auto-detect if absent).
+docs/CONNECTORS.md detection protocol (prefer the `CONTEXT/connectors.md` mapping; auto-detect if absent).
 
 - **Confluence-family wiki**: fetch the page_id `{ID}` page via the wiki connector's query (get)
   operation, save it as snapshot JSON including id/title/version/body (storage XML) to

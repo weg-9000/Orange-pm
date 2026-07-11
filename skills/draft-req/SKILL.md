@@ -86,7 +86,7 @@ If there is 1 or more P0 item, print the list and stop.
 
 Read the `{PREFIX}-B` document link (wiki) from `CONTEXT/layer-config.md`.
 If the link is missing, or the wiki connector (an MCP tool the user has
-connected — e.g. Confluence, Notion, checked via the CONNECTORS.md
+connected — e.g. Confluence, Notion, checked via the docs/CONNECTORS.md
 detection protocol) is absent or fails to connect, register a P2 item in
 open-issues.md and proceed with synthesis without {PREFIX}-B.
 (In this case, items in requirements.md that duplicate {PREFIX}-B are

@@ -198,7 +198,7 @@ python ${CLAUDE_PLUGIN_ROOT}/scripts/md_to_storage.py \
 ```
 
 The conversion result is pushed by calling the page-update operation of the wiki connector
-(a user-connected MCP tool — e.g. Confluence — confirmed via the CONNECTORS.md detection
+(a user-connected MCP tool — e.g. Confluence — confirmed via the docs/CONNECTORS.md detection
 protocol) per its schema.
 Domain info to pass: page_id `{CONFLUENCE_PAGE_ID}`, title `[Requirements Definition]
 {PRODUCT_NAME}`, body = the converted Storage Format XML.
@@ -281,7 +281,7 @@ snapshot, which the script then reads.
 **Prerequisite — check wiki connector availability**
 
 Confirm the wiki connector (a user-connected MCP tool — e.g. Confluence·Notion) via the
-CONNECTORS.md detection protocol. Prefer the `CONTEXT/connectors.md` mapping; otherwise
+docs/CONNECTORS.md detection protocol. Prefer the `CONTEXT/connectors.md` mapping; otherwise
 auto-detect.
 Verify via schema whether the discovered tool supports a query (get) that includes page
 version info·body (storage).

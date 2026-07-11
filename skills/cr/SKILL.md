@@ -7,7 +7,7 @@ description: |
   through the publication conversion), so this skill focuses on the page
   hierarchy, labels, index page, and session-log recording.
   Remote calls detect the wiki connector (an MCP tool the user has
-  connected — e.g. Confluence, Notion) using the CONNECTORS.md detection
+  connected — e.g. Confluence, Notion) using the docs/CONNECTORS.md detection
   protocol.
   When the --local-only flag is used, only local Markdown storage is
   performed, without a wiki connector.
@@ -69,10 +69,10 @@ for this skill's core work.
    If set, run only step 4 without a wiki connector, then finish.
 
 4. Detect the wiki connector (an MCP tool the user has connected — e.g.
-   Confluence, Notion) using the CONNECTORS.md detection protocol. Prefer
+   Confluence, Notion) using the docs/CONNECTORS.md detection protocol. Prefer
    the `CONTEXT/connectors.md` mapping; otherwise auto-detect. If the
    connector is absent or the connection fails, print the guidance from
-   CONNECTORS.md and ask the PM whether to switch to `--local-only` mode.
+   docs/CONNECTORS.md and ask the PM whether to switch to `--local-only` mode.
 
 
 ## Execution Steps

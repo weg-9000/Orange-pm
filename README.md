@@ -73,7 +73,7 @@ The plugin bundles **no** MCP servers and hardcodes **no** vendors. At runtime, 
 
 Attach connectors the normal Claude Code way (`claude mcp add <name> ...` or *Settings → Connectors*). Authentication lives in each MCP server's own config — the plugin never asks for tokens or environment variables.
 
-If several tools serve the same capability, declare your preference in the Hub's `CONTEXT/connectors.md`. Full protocol (detection order, graceful degradation): [CONNECTORS.md](CONNECTORS.md).
+If several tools serve the same capability, declare your preference in the Hub's `CONTEXT/connectors.md`. Full protocol (detection order, graceful degradation): [CONNECTORS.md](docs/CONNECTORS.md).
 
 **No connectors? No problem.** Every phase from Discovery through Integrate runs entirely on local files; publish/notify steps simply offer `--local-only` or are skipped with a marker.
 
@@ -168,7 +168,7 @@ breaks. `/lc` reports embedding staleness so you know when to re-run `embed_pipe
 
 - The SessionStart hook checks for new commits (24 h TTL) and prints a one-line notice when an update is available.
 - Update with `/orange-pm:update` or `/plugin marketplace update orange-pm`.
-- Releases follow [SemVer](https://semver.org); see [CHANGELOG.md](CHANGELOG.md). Maintainers bump versions with `python scripts/bump_version.py patch|minor|major`.
+- Releases follow [SemVer](https://semver.org); per-version notes live on [GitHub Releases](https://github.com/weg-9000/Orange-pm/releases). Maintainers bump versions with `python scripts/bump_version.py patch|minor|major`.
 
 ---
 

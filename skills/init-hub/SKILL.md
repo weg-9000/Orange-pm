@@ -136,7 +136,7 @@ PREFIX: (needs configuration)
 
 ## External integration
 # Declare mappings for external integrations (wiki, messenger, design tools, etc.) in CONTEXT/connectors.md.
-# (The entire workflow still runs locally even without any integration — see the CONNECTORS.md contract)
+# (The entire workflow still runs locally even without any integration — see the docs/CONNECTORS.md contract)
 
 ## {PREFIX}-A: Common definitions
 | doc_id | Document title | Status |
@@ -275,7 +275,7 @@ connected to Claude Code. If multiple tools share the same capability, or you wa
 specific tool, declare it in the table below.
 Leave it blank for auto-detection; if no tool is present, that step is skipped and the workflow
 proceeds locally.
-(Contract details: the plugin's CONNECTORS.md)
+(Contract details: the plugin's docs/CONNECTORS.md)
 
 | capability | tool/server name | notes |
 |---|---|---|
@@ -536,7 +536,7 @@ If PREFIX in `CONTEXT/layer-config.md` is `(needs configuration)`, ask the PM fo
 ## Step 5 — Report external integration (connector) status
 
 Check the MCP tools available in the current session per capability and print the result
-(detection basis: the plugin's CONNECTORS.md contract):
+(detection basis: the plugin's docs/CONNECTORS.md contract):
 
 ```
 External integration status (optional — the entire workflow still runs locally without them)

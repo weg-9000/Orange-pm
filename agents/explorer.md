@@ -7,7 +7,7 @@ description: |
   Checks the WO's type value (policy | screen) to switch source priority and
   exploration strategy.
   Before starting exploration, checks the available MCP connectors (by
-  CONNECTORS.md capability) and selects tools matching the WO's intent.
+  docs/CONNECTORS.md capability) and selects tools matching the WO's intent.
   Does not save exploration results directly — returns them as a structured report.
 model: sonnet
 effort: medium
@@ -66,7 +66,7 @@ Exploration goals:
 
 Step 2 — Run Parallel MCP Exploration
 
-First, check the available MCP connectors (by CONNECTORS.md capability).
+First, check the available MCP connectors (by docs/CONNECTORS.md capability).
 Select tools from the capability matching the query intent, preferring
 specialized tools over general-purpose ones.
 Call connector tools in parallel, matching the complexity determined in Step 0.

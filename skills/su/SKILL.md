@@ -33,8 +33,8 @@ Reading the source files directly is allowed only when essential to this skill's
    If not, report that the team roster file is missing and stop.
 
 2. Check for a chat connector (an MCP tool the user has connected — e.g. Slack, Mattermost)
-   using the CONNECTORS.md detection protocol. This skill has a **hard dependency** on the chat connector.
-   If absent, print the required-dependency notice from CONNECTORS.md and stop:
+   using the docs/CONNECTORS.md detection protocol. This skill has a **hard dependency** on the chat connector.
+   If absent, print the required-dependency notice from docs/CONNECTORS.md and stop:
    ```
    This step requires a chat connector.
    Connect an MCP server to Claude Code and it will be used automatically:
@@ -70,7 +70,7 @@ If no channel info is found, ask the PM to enter the channel name directly.
 ### Step 2 — Fetch messages
 
 Fetch messages from each channel using the chat connector confirmed in the precondition checks.
-Adapt to vendor-specific parameter differences by reading the tool schema (see CONNECTORS.md).
+Adapt to vendor-specific parameter differences by reading the tool schema (see docs/CONNECTORS.md).
 
 Fetch conditions:
 - Period: {lookup start point} ~ now

@@ -140,7 +140,7 @@ On failure, log the error to `reports/cr-error.log` and do not skip step 5
 ### Step 5 — Create repo MR/PR
 
 Detect the repo connector (an MCP tool the user has connected — e.g. GitLab,
-GitHub) using the CONNECTORS.md detection protocol, and create an MR/PR.
+GitHub) using the docs/CONNECTORS.md detection protocol, and create an MR/PR.
 If absent, record `[no repo connector — MR/PR creation skipped]` and proceed
 to the next step.
 MR/PR title: `[{PREFIX}-C] {product} Policy Document v1.0-frozen`
@@ -158,7 +158,7 @@ process.
 ### Step 6 — chat completion notification
 
 Detect the chat connector (an MCP tool the user has connected — e.g. Slack,
-Mattermost) using the CONNECTORS.md detection protocol, and send a
+Mattermost) using the docs/CONNECTORS.md detection protocol, and send a
 notification to the project channel.
 If absent, record `[no chat connector — notification skipped]` and proceed
 to the next step.

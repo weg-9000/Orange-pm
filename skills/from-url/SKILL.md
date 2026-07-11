@@ -81,13 +81,13 @@ If extraction fails, give the PM a one-line prompt to enter the page_id directly
 ## 3. Prerequisite checks
 
 1. **Wiki connector availability**: verify the wiki connector (an MCP tool the user has
-   connected — e.g. Confluence) using the CONNECTORS.md detection protocol. Prefer the
+   connected — e.g. Confluence) using the docs/CONNECTORS.md detection protocol. Prefer the
    `CONTEXT/connectors.md` mapping; auto-detect if absent. The discovered tool must support a
    query (get) that includes the page body (storage XML) and version, in order to build the
    snapshot JSON shape.
 
    If the connector is absent or unsupported, this skill does not operate (the snapshot JSON
-   shape is required). Print the guidance from CONNECTORS.md and note that "manual export →
+   shape is required). Print the guidance from docs/CONNECTORS.md and note that "manual export →
    the `--xml-file` option can be used as a workaround."
 
 2. **PM Confluence permissions**: whether the page is readable. If the `get` attempt fails with
@@ -119,7 +119,7 @@ If extraction fails, give the PM a one-line prompt to enter the page_id directly
 ### 4-A. Snapshot collection (model's responsibility)
 
 External calls are performed only through wiki-connector tool calls — scripts are for local
-file processing only (the auth/tool separation principle, CONNECTORS.md — same pattern as
+file processing only (the auth/tool separation principle, docs/CONNECTORS.md — same pattern as
 `/render`):
 
 ```bash
