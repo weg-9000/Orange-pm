@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Phase 3 회귀 테스트 — archive_to_context / context_fetch / context_search /
-embed_pipeline 메타 헬퍼. 데이터 비종속·graceful degrade 검증(인프라 불필요)."""
+"""Phase 3 regression tests — archive_to_context / context_fetch / context_search /
+embed_pipeline meta helpers. Data-independent, graceful-degrade verification (no infra required)."""
 from __future__ import annotations
 
 import json
@@ -15,7 +15,7 @@ import archive_to_context as arch
 import context_fetch as cf
 import context_search as cs
 
-# embed_pipeline 은 모듈 임포트 시 chonkie 를 요구한다 → 스텁 주입 후 임포트.
+# embed_pipeline requires chonkie at module import time -> inject a stub before importing.
 if "chonkie" not in sys.modules:
     _m = types.ModuleType("chonkie")
     _m.__version__ = "stub"
@@ -32,11 +32,11 @@ def _hub_with_product(tmp_path: Path, *, rendered=True) -> Path:
     if rendered:
         d = hub / "PROJECTS" / "dbaas" / "reports" / "render"
         d.mkdir(parents=True)
-        (d / "WO-001.complete.md").write_text("# 정책 완전판\n본문\n", encoding="utf-8")
+        (d / "WO-001.complete.md").write_text("# Policy Complete\nBody text\n", encoding="utf-8")
     else:
         d = hub / "PROJECTS" / "dbaas" / "drafts"
         d.mkdir(parents=True)
-        (d / "WO-001.draft.md").write_text("# 초안\n", encoding="utf-8")
+        (d / "WO-001.draft.md").write_text("# Draft\n", encoding="utf-8")
     return hub
 
 
@@ -82,21 +82,21 @@ def _hub_with_b_index(tmp_path: Path, prefix="G2") -> Path:
     (hub / "CONTEXT" / "layer-config.md").write_text(f"ACTIVE_PREFIX: {prefix}\n", encoding="utf-8")
     src = hub / "CONTEXT" / "reference-docs" / prefix / "B" / "doc.md"
     src.parent.mkdir(parents=True)
-    src.write_text("# 문서\n\n## 1. 개요\n개요 본문.\n\n## 2. 한도\n한도 본문.\n", encoding="utf-8")
+    src.write_text("# Document\n\n## 1. Overview\nOverview body.\n\n## 2. Limit\nLimit body.\n", encoding="utf-8")
     cache = hub / "CONTEXT" / ".template-cache"
     cache.mkdir(parents=True)
     idx = {"_meta": {"prefix": prefix}, "documents": {
         f"{prefix}-B-001": {
-            "doc_id": f"{prefix}-B-001", "title": "문서",
+            "doc_id": f"{prefix}-B-001", "title": "Document",
             "path": f"CONTEXT/reference-docs/{prefix}/B/doc.md",
             "sections": [
-                {"id": "1", "title": "개요", "line_start": 3, "line_end": 5},
-                {"id": "2", "title": "한도", "line_start": 6, "line_end": 7},
+                {"id": "1", "title": "Overview", "line_start": 3, "line_end": 5},
+                {"id": "2", "title": "Limit", "line_start": 6, "line_end": 7},
             ]}}}
     (cache / f"{prefix}-b-headings-index.json").write_text(
         json.dumps(idx, ensure_ascii=False), encoding="utf-8")
     (cache / f"{prefix}-a-terms-index.json").write_text(
-        json.dumps({"terms": {"인스턴스": {"def": "VM 단위", "file": "x", "line": 1}}},
+        json.dumps({"terms": {"Instance": {"def": "VM unit", "file": "x", "line": 1}}},
                    ensure_ascii=False), encoding="utf-8")
     return hub
 
@@ -104,23 +104,23 @@ def _hub_with_b_index(tmp_path: Path, prefix="G2") -> Path:
 def test_fetch_section_by_id(tmp_path):
     hub = _hub_with_b_index(tmp_path)
     text, label = cf.fetch_section(hub, "G2", "G2-B-001", "2")
-    assert "한도 본문" in text and "§2" in label
+    assert "Limit body" in text and "§2" in label
 
 
 def test_fetch_section_by_title(tmp_path):
     hub = _hub_with_b_index(tmp_path)
-    text, label = cf.fetch_section(hub, "G2", "G2-B-001", "개요")
-    assert "개요 본문" in text
+    text, label = cf.fetch_section(hub, "G2", "G2-B-001", "Overview")
+    assert "Overview body" in text
 
 
 def test_fetch_section_by_ordinal_id_via_map(tmp_path):
     hub = _hub_with_b_index(tmp_path)
-    # 인덱스 키는 stem(G2-B-001). 핀 ID(G2-B-003)는 master-id-map 으로 해소.
+    # Index key is stem(G2-B-001). Pinned ID(G2-B-003) is resolved via master-id-map.
     mp = hub / "CONTEXT" / "reference-docs" / "master-id-map.yml"
     mp.parent.mkdir(parents=True, exist_ok=True)
     mp.write_text("G2-B-003: G2-B-001\n", encoding="utf-8")
     text, label = cf.fetch_section(hub, "G2", "G2-B-003", "2")
-    assert "한도 본문" in text
+    assert "Limit body" in text
 
 
 def test_fetch_section_unresolved(tmp_path):
@@ -131,13 +131,13 @@ def test_fetch_section_unresolved(tmp_path):
 
 def test_fetch_term(tmp_path):
     hub = _hub_with_b_index(tmp_path)
-    r = cf.fetch_term(hub, "G2", "인스턴스")
-    assert r and r["def"] == "VM 단위"
+    r = cf.fetch_term(hub, "G2", "Instance")
+    assert r and r["def"] == "VM unit"
 
 
 def test_search_keyword(tmp_path):
     hub = _hub_with_b_index(tmp_path)
-    hits = cf.search_keyword(hub, "G2", "한도", 5)
+    hits = cf.search_keyword(hub, "G2", "Limit", 5)
     assert any(h.get("section") == "2" for h in hits)
 
 
@@ -150,17 +150,17 @@ def test_neo4j_unavailable_without_password(monkeypatch):
 
 def test_keyword_fallback(tmp_path):
     hub = _hub_with_b_index(tmp_path)
-    rows = cs.keyword_fallback(hub, "한도", ["G2"], None, 5)
+    rows = cs.keyword_fallback(hub, "Limit", ["G2"], None, 5)
     assert rows and rows[0]["prefix"] == "G2"
 
 
 def test_keyword_fallback_excludes_prefix(tmp_path):
     hub = _hub_with_b_index(tmp_path)
-    rows = cs.keyword_fallback(hub, "한도", ["G2"], ["G2"], 5)
+    rows = cs.keyword_fallback(hub, "Limit", ["G2"], ["G2"], 5)
     assert rows == []
 
 
-# ── embed_pipeline 메타 헬퍼 ────────────────────────────────────────────────────
+# ── embed_pipeline meta helpers ─────────────────────────────────────────────────
 
 def test_derive_prefix_nested(tmp_path):
     assert ep._derive_prefix(Path("CONTEXT/reference-docs/PG2/B/x.md"), "G2") == "PG2"
@@ -178,20 +178,20 @@ def test_derive_doc_type():
 
 
 def test_needs_reembed():
-    p = Path(__file__)  # 실제 존재 파일
+    p = Path(__file__)  # an actually-existing file
     mtime = p.stat().st_mtime
-    assert ep._needs_reembed(p, {}) is True                      # 미처리
-    assert ep._needs_reembed(p, {str(p): mtime}) is False        # 동일 mtime
-    assert ep._needs_reembed(p, {str(p): mtime - 100}) is True   # 원본이 더 최신
+    assert ep._needs_reembed(p, {}) is True                      # not yet processed
+    assert ep._needs_reembed(p, {str(p): mtime}) is False        # same mtime
+    assert ep._needs_reembed(p, {str(p): mtime - 100}) is True   # source is newer
 
 
-# ── 수정/삭제 동기화 (Neo4j 재조정) ─────────────────────────────────────────────
+# ── Update/delete sync (Neo4j reconciliation) ──────────────────────────────────
 
 def test_compute_removed():
     known = {"a.md", "b.md", "c.md"}
     current = {"a.md", "c.md"}
-    assert ep.compute_removed(known, current) == ["b.md"]       # b 삭제됨
-    assert ep.compute_removed(current, current) == []           # 변화 없음
+    assert ep.compute_removed(known, current) == ["b.md"]       # b removed
+    assert ep.compute_removed(current, current) == []           # no change
 
 
 class _FakeResult:
@@ -204,13 +204,13 @@ class _FakeSession:
     def __init__(self): self.queries = []
     def run(self, q, **kw):
         self.queries.append((q, kw))
-        return _FakeResult(len(kw.get("files", [])) * 2)  # 파일당 2청크 삭제 가정
+        return _FakeResult(len(kw.get("files", [])) * 2)  # assume 2 chunks deleted per file
 
 
 def test_delete_chunks_for_files_runs_detach_delete():
     s = _FakeSession()
     n = ep.delete_chunks_for_files(s, ["a.md", "b.md"])
-    assert n == 4                                               # 2파일 × 2
+    assert n == 4                                               # 2 files × 2
     q, kw = s.queries[0]
     assert "DETACH DELETE" in q and kw["files"] == ["a.md", "b.md"]
 
@@ -218,7 +218,7 @@ def test_delete_chunks_for_files_runs_detach_delete():
 def test_delete_chunks_for_files_empty_noop():
     s = _FakeSession()
     assert ep.delete_chunks_for_files(s, []) == 0
-    assert s.queries == []                                      # 호출 없음
+    assert s.queries == []                                      # no calls made
 
 
 if __name__ == "__main__":

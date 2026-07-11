@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""session_emit — RESUME/decisions/open-issues/session-log → 정규화 session 계약 (§5)."""
+"""session_emit — RESUME/decisions/open-issues/session-log → normalized session contract (§5)."""
 from __future__ import annotations
 
 import json
@@ -14,7 +14,7 @@ _ROW = re.compile(r"^\|(.+)\|\s*$")
 
 
 def _rows(text: str) -> list[list[str]]:
-    """마크다운 표의 데이터 행(헤더·구분선 제외) → 셀 리스트."""
+    """Data rows of a markdown table (header/separator excluded) → cell lists."""
     out = []
     for line in text.splitlines():
         m = _ROW.match(line.strip())
@@ -22,18 +22,18 @@ def _rows(text: str) -> list[list[str]]:
             continue
         cells = [c.strip() for c in m.group(1).split("|")]
         if not cells or all(set(c) <= {"-", ":", " "} for c in cells):
-            continue  # 구분선
-        if cells[0] in ("DEC ID", "ID", "#", "버전"):
-            continue  # 헤더
+            continue  # separator
+        if cells[0] in ("DEC ID", "ID", "#", "Version"):
+            continue  # header
         out.append(cells)
     return out
 
 
-_HEADER_FIRST = {"ID", "DEC ID", "DEC", "결정 ID", "#", "번호"}
+_HEADER_FIRST = {"ID", "DEC ID", "DEC", "Decision ID", "#", "No."}
 
 
 def _col(header: list[str], *names: str) -> int:
-    """헤더에서 names 중 하나를 포함하는 첫 컬럼 인덱스(없으면 -1)."""
+    """First column index in the header containing one of names (-1 if none)."""
     for i, h in enumerate(header):
         for n in names:
             if n in h:
@@ -42,79 +42,97 @@ def _col(header: list[str], *names: str) -> int:
 
 
 def _decision_col(header: list[str]) -> int:
-    """결정 내용 컬럼 인덱스. 구체 명칭 우선, 폴백은 'ID'/'결정자' 가 아닌 '결정' 컬럼.
-    ('결정' 이 'DEC ID'/'결정 ID' 등 ID 컬럼에 잘못 매칭되는 것 방지)"""
+    """Index of the decision-content column. Specific names first; fallback is a
+    'Decision' column that is neither an 'ID' nor a 'Decider' column.
+    (Prevents 'Decision' from mis-matching ID columns like 'DEC ID'/'Decision ID'.)"""
     for i, h in enumerate(header):
-        if any(k in h for k in ("결정 요지", "결정요지", "핵심 결정", "결정 내용", "결정 요약")):
+        if any(k in h for k in ("Decision Summary", "Key Decision",
+                                "Decision Detail", "Decision Content")):
             return i
     for i, h in enumerate(header):
-        if "결정" in h and "ID" not in h.upper() and "결정자" not in h:
+        if "Decision" in h and "ID" not in h.upper() and "Decider" not in h:
             return i
     return -1
 
 
 def _approval_state(cell: str, has_col: bool = True) -> str:
-    """승인 셀 → approved/pending/hold/rejected.
-    승인 컬럼 자체가 없는 표(레거시)면 approved(기존 동작 유지)."""
+    """Approval cell → approved/pending/hold/rejected.
+    Tables without an approval column at all (legacy) → approved (keeps prior behavior)."""
     if not has_col:
         return "approved"
+    low = cell.lower()
     if "✅" in cell:
         return "approved"
-    if "❌" in cell or "반려" in cell:
+    if "❌" in cell or "rejected" in low:
         return "rejected"
-    if "🟡" in cell or "보류" in cell:
+    if "🟡" in cell or "hold" in low:
         return "hold"
-    if "⬜" in cell or "미승인" in cell:
+    if "⬜" in cell or "pending" in low:
         return "pending"
     return "approved" if cell.strip() else "pending"
 
 
+# status-cell words that are not approver identifiers ("✅ approved" has no approver)
+_STATUS_WORDS = {"approved", "rejected", "pending", "hold", "on-hold", "on"}
+
+
 def _approver(cell: str) -> str:
-    """'✅ jeongdh' → 'jeongdh' (이모지/기호 뒤 식별자)."""
-    m = re.search(r"[A-Za-z][\w.\-]+", cell)
-    return m.group(0) if m else ""
+    """'✅ jeongdh' → 'jeongdh' (identifier after emoji/symbol; status words skipped)."""
+    for m in re.finditer(r"[A-Za-z][\w.\-]+", cell):
+        if m.group(0).lower() not in _STATUS_WORDS:
+            return m.group(0)
+    return ""
 
 
 def parse_decisions(text: str) -> list[dict]:
-    """결정표 행 → {id,date,regType,title,detail,approval,approver,status}.
-    표 단위로 처리한다: 헤더에 결정 컬럼(핵심 결정/결정 내용/결정 요지 등)이 있는 '결정표'만
-    파싱하고 부속표(이슈/항목/사유 등)는 건너뛴다. 한 파일에 결정표가 여럿이어도 각자 헤더를 쓴다.
-    컬럼은 헤더명으로 탐색(프로젝트별 레이아웃 상이 대응)."""
+    """Decision table rows → {id,date,regType,title,detail,approval,approver,status}.
+    Processed per table: only 'decision tables' whose header has a decision column
+    (Key Decision / Decision Detail / Decision Summary etc.) are parsed; addendum
+    tables (issue/item/reason etc.) are skipped. Multiple decision tables per file
+    each use their own header. Columns are located by header name (handles
+    per-project layout differences)."""
     res: list[dict] = []
-    cols: dict | None = None      # 현재 결정표 컬럼. 표 밖/heading 뒤면 None
-    last: dict | None = None      # 최근 결정표 레이아웃(헤더 없는 연속 DEC 행 폴백)
-    suppressed = False            # 현재 표가 명시적 비결정표(이슈/항목/사유 …)면 True
+    cols: dict | None = None      # columns of the current decision table. None outside a table / after a heading
+    last: dict | None = None      # most recent decision-table layout (fallback for header-less trailing DEC rows)
+    suppressed = False            # True inside an explicitly non-decision table (issue/item/reason …)
     for line in text.splitlines():
         s = line.strip()
-        if s.startswith("#"):              # 섹션(heading) 경계 → 표 컨텍스트만 리셋
+        if s.startswith("#"):              # section (heading) boundary → reset table context only
             cols = None
             suppressed = False
             continue
-        if not s.startswith("|"):          # 표 밖 prose/공백 → 컨텍스트 유지
+        if not s.startswith("|"):          # prose/blank outside a table → keep context
             continue
         cells = [c.strip() for c in s.strip("|").split("|")]
         is_sep = all(set(c) <= {"-", ":", " "} for c in cells)
-        if cells and cells[0] in _HEADER_FIRST and not is_sep:   # 헤더 행
+        if cells and cells[0] in _HEADER_FIRST and not is_sep:   # header row
             i_dec = _decision_col(cells)
             if i_dec >= 0:
+                i_reg = _col(cells, "Status")
+                i_appr = _col(cells, "Approval")
+                if i_appr < 0:
+                    # canonical minimal header carries the approval tokens
+                    # (✅ approved / ❌ rejected …) in the Status column
+                    i_appr = i_reg
                 cols = {
-                    "date": _col(cells, "등재일", "확정일", "발효일", "일자"),
+                    "date": _col(cells, "Date", "Registered", "Effective", "Confirmed"),
                     "dec": i_dec,
-                    "reg": _col(cells, "상태"),
-                    "appr": _col(cells, "승인"),
-                    "by": _col(cells, "결정자"),
-                    "det": _col(cells, "영향", "사유", "근거"),
+                    "reg": i_reg,
+                    "appr": i_appr,
+                    "by": _col(cells, "Decider"),
+                    "det": _col(cells, "Impact", "Reason", "Evidence", "Rationale"),
                 }
                 last = cols
                 suppressed = False
-            else:                          # 비결정표(이슈/항목/사유) → 억제
+            else:                          # non-decision table (issue/item/reason) → suppress
                 cols = None
                 suppressed = True
             continue
         if is_sep:
             continue
-        # 헤더 있으면 cols, 없는 연속 DEC 행이면 직전 결정표(last) 폴백.
-        # 단 명시적 비결정표 안에서는 폴백 금지.
+        # With a header use cols; header-less trailing DEC rows fall back to the
+        # previous decision table (last). No fallback inside an explicitly
+        # non-decision table.
         active = cols if cols is not None else (None if suppressed else last)
         if active is None or "DEC" not in cells[0]:
             continue
@@ -122,7 +140,7 @@ def parse_decisions(text: str) -> list[dict]:
         def get(i: int) -> str:
             return cells[i] if 0 <= i < len(cells) else ""
 
-        cols = active  # (아래 블록 호환)
+        cols = active  # (compat with block below)
         appr_cell = get(cols["appr"])
         title = re.sub(r"~~", "", get(cols["dec"])).replace("**", "").strip()
         appr = _approval_state(appr_cell, cols["appr"] >= 0)
@@ -134,38 +152,41 @@ def parse_decisions(text: str) -> list[dict]:
             "detail": get(cols["det"]),
             "approval": appr,
             "approver": _approver(appr_cell) or (get(cols["by"]) if cols["by"] >= 0 else ""),
-            "status": appr,  # 하위호환(기존 소비처)
+            "status": appr,  # back-compat (existing consumers)
         })
     return res
 
 
-# open-issues 체크박스 항목: "- [ ] 본문" (들여쓴 하위 항목·* 불릿 허용)
+# open-issues checkbox item: "- [ ] body" (indented sub-items and * bullets allowed)
 _CHECKBOX = re.compile(r"^\s*[-*]\s+\[(.)\]\s+(\S.*)$")
-# 항목 선두 [ID] 토큰 — 굵게/취소선 래핑 허용 (**[ID]**, ~~**[ID]** …)
+# leading [ID] token — bold/strikethrough wrapping allowed (**[ID]**, ~~**[ID]** …)
 _ISSUE_ID = re.compile(r"^[\s*~_]*\[([^\[\]]{1,80})\]\s*")
-# 본문 인라인 우선순위 표기: "(P1)" / "(P1 / …)" / "— P2 (…)"
+# inline priority markers: "(P1)" / "(P1 / …)" / "— P2 (…)"
 _P_INLINE = re.compile(r"\(\s*P([0-2])\b|[—–-]\s*P([0-2])\s*[\(（—–-]")
-# 우선순위 헤딩: "## P0 — …" / "### P1 …"
+# priority headings: "## P0 — …" / "### P1 …"
 _P_HEAD = re.compile(r"^#{2,3}\s*P([0-2])\b")
-# 이슈 표 헤더로 인정하는 첫 컬럼명 (그 외 헤더의 표는 본문 참조용으로 간주)
-_ISSUE_TABLE_HEAD = ("ID", "DEC ID", "#", "번호")
+# first-column names accepted as issue-table headers (other tables are treated as reference-only)
+_ISSUE_TABLE_HEAD = ("ID", "DEC ID", "#", "No.")
 
 
 def _md_plain(s: str) -> str:
-    """굵게·취소선·코드 마크업 제거 + 공백 단일화."""
+    """Strip bold/strikethrough/code markup + collapse whitespace."""
     return re.sub(r"\s+", " ", re.sub(r"\*\*|~~|`", "", s)).strip()
 
 
 def parse_open_issues(text: str) -> list[dict]:
-    """open-issues.md → 미해결 항목 [{id,p,title}]. 형식 다양성 수용:
+    """open-issues.md → unresolved items [{id,p,title}]. Accepts varied formats:
 
-    - 체크박스: `- [ ] **[ID]** …`(미결)·`- [~] …`(보류=미결 포함).
-      `- [x]`(해소)·`- [i]`(정보성)는 제외. 들여쓴 하위 체크박스도 개별 항목.
-    - 표: 헤더 첫 칸이 ID 계열(`ID`/`DEC ID`/`#`/`번호`)인 표의 데이터 행만.
-      본문에 포함된 참조용 표(예: cloud-calculator 종속 모델 표)는 무시.
+    - Checkboxes: `- [ ] **[ID]** …` (open) · `- [~] …` (on hold = counted as open).
+      `- [x]` (resolved) and `- [i]` (informational) are excluded. Indented
+      sub-checkboxes are individual items.
+    - Tables: only data rows of tables whose first header cell is ID-like
+      (`ID`/`DEC ID`/`#`/`No.`). Reference tables embedded in item bodies
+      (e.g. the cloud-calculator dependency model table) are ignored.
 
-    우선순위: `## P0/P1/P2` 헤딩 추적 — 비-P `##` 헤딩은 기본 P1 리셋,
-    `###` 는 상위 섹션 유지. 본문 인라인 `(P1)`/`— P2 (…)` 표기가 있으면 우선.
+    Priority: tracks `## P0/P1/P2` headings — a non-P `##` heading resets to the
+    default P1, `###` keeps the parent section. Inline `(P1)`/`— P2 (…)` markers
+    in the body take precedence.
     """
     res: list[dict] = []
     cur_p = 1
@@ -177,8 +198,8 @@ def parse_open_issues(text: str) -> list[dict]:
             cur_p = int(mh.group(1))
             in_issue_table = False
             continue
-        if s.startswith("#"):                      # 비-P 헤딩
-            if not s.startswith("###"):            # ## 섹션 경계 → 기본 P1
+        if s.startswith("#"):                      # non-P heading
+            if not s.startswith("###"):            # ## section boundary → default P1
                 cur_p = 1
             in_issue_table = False
             continue
@@ -186,7 +207,7 @@ def parse_open_issues(text: str) -> list[dict]:
         if mc:
             in_issue_table = False
             mark, body = mc.group(1), mc.group(2)
-            if mark in "xX✓i":                     # 해소·정보성 제외
+            if mark in "xX✓i":                     # exclude resolved/informational
                 continue
             iid = ""
             mid = _ISSUE_ID.match(body)
@@ -203,23 +224,23 @@ def parse_open_issues(text: str) -> list[dict]:
             continue
         m = _ROW.match(s)
         if not m:
-            in_issue_table = False                 # 표 종료(공백/prose)
+            in_issue_table = False                 # table ended (blank/prose)
             continue
         cells = [c.strip() for c in m.group(1).split("|")]
         if not cells or all(set(c) <= {"-", ":", " "} for c in cells):
-            continue                               # 구분선(표 상태 유지)
+            continue                               # separator (table state kept)
         if cells[0] in _ISSUE_TABLE_HEAD:
-            in_issue_table = True                  # 이슈 표 시작
+            in_issue_table = True                  # issue table starts
             continue
         if not in_issue_table:
-            continue                               # 참조용 표 행 무시
+            continue                               # ignore rows of reference tables
         res.append({"id": cells[0], "p": cur_p,
                     "title": cells[1] if len(cells) > 1 else ""})
     return res
 
 
 def parse_resume(text: str) -> dict | None:
-    """RESUME.md 에서 lastSkill/lastWo/savedAt 추출(키:값 또는 표)."""
+    """Extract lastSkill/lastWo/savedAt from RESUME.md (key:value or table)."""
     fm = C.read_frontmatter(text)
     if fm.get("last_skill") or fm.get("lastSkill"):
         return {"lastSkill": fm.get("last_skill") or fm.get("lastSkill"),
@@ -228,18 +249,18 @@ def parse_resume(text: str) -> dict | None:
     return None
 
 
-# hook event → timeline 라벨 매핑 (.claude/ui-events.jsonl, M3 hook 채널)
+# hook event → timeline label mapping (.claude/ui-events.jsonl, M3 hook channel)
 _HOOK_LABEL = {
-    "SessionStart": ("skill", "세션 시작"),
-    "Stop": ("skill", "세션 종료"),
-    "SubagentStop": ("subagent", "subagent 완료"),
-    "PostToolUse": ("edit", "편집"),
-    "UserPromptSubmit": ("skill", "프롬프트"),
+    "SessionStart": ("skill", "session start"),
+    "Stop": ("skill", "session end"),
+    "SubagentStop": ("subagent", "subagent done"),
+    "PostToolUse": ("edit", "edit"),
+    "UserPromptSubmit": ("skill", "prompt"),
 }
 
 
 def parse_ui_events(text: str, limit: int = 50) -> list[dict]:
-    """.claude/ui-events.jsonl (1줄 1 JSON) → timeline 이벤트 목록(최신 우선)."""
+    """.claude/ui-events.jsonl (1 JSON per line) → timeline event list (newest first)."""
     out: list[dict] = []
     for line in text.splitlines():
         line = line.strip()
@@ -263,7 +284,7 @@ def transform_session(texts: dict[str, str], product: str = "",
         "resume": parse_resume(texts.get("RESUME.md", "")),
         "openIssues": parse_open_issues(texts.get("open-issues.md", "")),
         "decisions": parse_decisions(texts.get("decisions.md", "")),
-        "timeline": parse_ui_events(ui_events),  # hook 채널 보강
+        "timeline": parse_ui_events(ui_events),  # hook channel enrichment
     }
 
 
@@ -272,13 +293,13 @@ def main(argv: list[str]) -> int:
     if args.from_fixture:
         return C.emit(C.load_fixture(args.from_fixture))
     if not (args.hub_root and args.product):
-        sys.stderr.write("--hub-root, --product 필요\n")
+        sys.stderr.write("--hub-root and --product are required\n")
         return 2
     pdir = C.product_dir(args.hub_root, args.product)
     names = ["RESUME.md", "open-issues.md", "decisions.md", "session-log.md"]
     texts = {n: (pdir / n).read_text(encoding="utf-8")
              for n in names if (pdir / n).exists()}
-    # hook 채널: <hub-root>/.claude/ui-events.jsonl
+    # hook channel: <hub-root>/.claude/ui-events.jsonl
     ui_path = Path(args.hub_root) / ".claude" / "ui-events.jsonl"
     ui_events = ui_path.read_text(encoding="utf-8") if ui_path.exists() else ""
     code = 0 if (texts or ui_events) else 1

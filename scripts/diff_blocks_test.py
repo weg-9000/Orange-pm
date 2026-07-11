@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""diff_blocks.py 단위 테스트 (stdlib unittest).
+"""Unit tests for diff_blocks.py (stdlib unittest).
 
-실행:
+Run:
     python diff_blocks_test.py
 """
 from __future__ import annotations
@@ -19,7 +19,7 @@ if str(_THIS_DIR) not in sys.path:
 import diff_blocks as db  # noqa: E402
 
 
-# ── 픽스처 ───────────────────────────────────────────────────────────────────
+# ── Fixtures ─────────────────────────────────────────────────────────────────
 
 
 MD_V1_BASE = """---
@@ -27,27 +27,27 @@ title: "test"
 version: 1
 ---
 
-::: {.panel section="§3 정책"}
-## §3 정책
+::: {.panel section="§3 Policy"}
+## §3 Policy
 
-### §3.1 표준요금
+### §3.1 Standard Pricing
 
-| 항목 | 가격 |
+| Item | Price |
 |---|---|
-| 기본 | 1000원 |
-| 추가 | 100원 |
+| Default | $1000 |
+| Add-on | $100 |
 
-표준 요금제 설명 단락.
+Standard pricing plan description paragraph.
 
-추가 단락 본문.
+Additional paragraph body.
 :::
 
-::: {.panel section="§4 운영"}
-## §4 운영
+::: {.panel section="§4 Operations"}
+## §4 Operations
 
-- 항목 A
-- 항목 B
-- 항목 C
+- Item A
+- Item B
+- Item C
 :::
 """
 
@@ -56,11 +56,11 @@ def _by_path(blocks):
     return {b.path: b for b in blocks}
 
 
-# ── T1: 변경 없음 ────────────────────────────────────────────────────────────
+# ── T1: No change ─────────────────────────────────────────────────────────────
 
 
 class TestNoChange(unittest.TestCase):
-    """T1: old == new — 모두 unchanged. green/blue 모두 ∅."""
+    """T1: old == new — everything unchanged. green/blue both ∅."""
 
     def test_no_change(self):
         old = db.parse_blocks(MD_V1_BASE)
@@ -76,15 +76,16 @@ class TestNoChange(unittest.TestCase):
         self.assertEqual(len(regions.blue), 0)
 
 
-# ── T2: 첫 작성 — 모두 added ────────────────────────────────────────────────
+# ── T2: First write — everything added ─────────────────────────────────────
 
 
 class TestFirstWrite(unittest.TestCase):
-    """T2: old 가 빈 MD — 모두 added.
+    """T2: old is empty MD — everything added.
 
-    사양: G_1 = ∅ (모두 검정). caller 가 첫 발행 시 결과를 폐기해야 하나,
-    여기서는 added 개수가 0 보다 큼만 확인하고, '실제 첫 발행 정책' 은 caller
-    의 책임이라는 docstring 일치를 검증.
+    Spec: G_1 = ∅ (all black). The caller must discard the result on the
+    first publish; here we only check that the added count is greater than
+    0, verifying consistency with the docstring's statement that the
+    "actual first-publish policy" is the caller's responsibility.
     """
 
     def test_first_write_all_added(self):
@@ -96,24 +97,24 @@ class TestFirstWrite(unittest.TestCase):
         self.assertEqual(len(diff.modified), 0)
         self.assertGreater(len(diff.added), 0)
 
-        # compute_color_regions 자체는 added 를 green 으로 산출 — caller 가
-        # 첫 발행임을 인지하고 결과를 폐기/무시해야 함.
+        # compute_color_regions itself computes added as green — the caller
+        # must recognize this is the first publish and discard/ignore the result.
         regions = db.compute_color_regions(old, new, None)
         self.assertEqual(len(regions.green), len(diff.added))
         self.assertEqual(len(regions.blue), 0)
 
 
-# ── T3: 단순 paragraph 수정 ─────────────────────────────────────────────────
+# ── T3: Simple paragraph edit ────────────────────────────────────────────────
 
 
 class TestParagraphModify(unittest.TestCase):
-    """T3: paragraph 본문 1군데 수정 → green 1, 나머지는 unchanged."""
+    """T3: paragraph body edited in one place → green 1, rest unchanged."""
 
     def test_paragraph_modify(self):
         v1 = MD_V1_BASE
         v2 = MD_V1_BASE.replace(
-            "표준 요금제 설명 단락.",
-            "표준 요금제 변경된 설명 단락.",
+            "Standard pricing plan description paragraph.",
+            "Standard pricing plan changed description paragraph.",
         )
         old = db.parse_blocks(v1)
         new = db.parse_blocks(v2)
@@ -125,7 +126,7 @@ class TestParagraphModify(unittest.TestCase):
         old_b, new_b = diff.modified[0]
         self.assertEqual(old_b.path, new_b.path)
         self.assertNotEqual(old_b.block_hash, new_b.block_hash)
-        self.assertIn("§3 정책", new_b.path)
+        self.assertIn("§3 Policy", new_b.path)
         self.assertEqual(new_b.kind, db.KIND_PANEL_INNER_PARA)
 
         regions = db.compute_color_regions(old, new, None)
@@ -134,57 +135,57 @@ class TestParagraphModify(unittest.TestCase):
         self.assertEqual(regions.green[0].path, new_b.path)
 
 
-# ── T4: 표 셀 1개 수정 ──────────────────────────────────────────────────────
+# ── T4: One table cell edited ────────────────────────────────────────────────
 
 
 class TestTableCellModify(unittest.TestCase):
-    """T4: 표의 단일 셀만 수정 → 셀 단위 modified 1건 (행 단위 아님)."""
+    """T4: only a single table cell is edited → 1 cell-level modified entry (not row-level)."""
 
     def test_table_cell_modify(self):
         v1 = MD_V1_BASE
-        v2 = MD_V1_BASE.replace("| 기본 | 1000원 |", "| 기본 | 1500원 |")
+        v2 = MD_V1_BASE.replace("| Default | $1000 |", "| Default | $1500 |")
         old = db.parse_blocks(v1)
         new = db.parse_blocks(v2)
         diff = db.diff_blocks(old, new)
 
         self.assertEqual(len(diff.added), 0)
         self.assertEqual(len(diff.removed), 0)
-        # 단 1개 셀만 변경되어야 함
+        # Only 1 cell should have changed
         self.assertEqual(
             len(diff.modified), 1,
             f"expected 1 modified cell, got {[(o.path, n.path) for o, n in diff.modified]}",
         )
         old_b, new_b = diff.modified[0]
         self.assertEqual(new_b.kind, db.KIND_TABLE_CELL)
-        # 셀 경로에 <td 가 포함
+        # Cell path includes <td
         self.assertIn("<td[", new_b.path)
-        # "기본" 셀은 그대로 unchanged 여야 함
+        # The "Default" cell should remain unchanged
         all_paths = [b.path for b in diff.unchanged]
-        self.assertTrue(any("기본" in old.path for old in diff.unchanged) or True)
-        # 기본 셀이 unchanged 에 있어야
+        self.assertTrue(any("Default" in old.path for old in diff.unchanged) or True)
+        # The "Default" cell should be present in unchanged
         unchanged_contents = {b.content for b in diff.unchanged}
-        self.assertIn("기본", unchanged_contents)
+        self.assertIn("Default", unchanged_contents)
 
         regions = db.compute_color_regions(old, new, None)
         self.assertEqual(len(regions.green), 1)
         self.assertEqual(regions.green[0].kind, db.KIND_TABLE_CELL)
 
 
-# ── T5: 새 panel 추가 ───────────────────────────────────────────────────────
+# ── T5: New panel added ──────────────────────────────────────────────────────
 
 
 class TestNewPanelAdded(unittest.TestCase):
-    """T5: 새 panel 추가 → 내부 모든 block 이 green."""
+    """T5: new panel added → every inner block is green."""
 
     def test_new_panel(self):
         v1 = MD_V1_BASE
         v2 = MD_V1_BASE + (
-            "\n::: {.panel section=\"§5 신규\"}\n"
-            "## §5 신규\n"
+            "\n::: {.panel section=\"§5 New\"}\n"
+            "## §5 New\n"
             "\n"
-            "신규 정책 단락 1.\n"
+            "New policy paragraph 1.\n"
             "\n"
-            "신규 정책 단락 2.\n"
+            "New policy paragraph 2.\n"
             ":::\n"
         )
         old = db.parse_blocks(v1)
@@ -192,12 +193,12 @@ class TestNewPanelAdded(unittest.TestCase):
         diff = db.diff_blocks(old, new)
         self.assertEqual(len(diff.removed), 0)
         self.assertEqual(len(diff.modified), 0)
-        # 새 panel 안에는 heading 1 + para 2 = 3 block
+        # New panel contains heading 1 + para 2 = 3 blocks
         self.assertEqual(len(diff.added), 3)
-        # 모두 §5 신규 prefix
+        # All have the §5 New prefix
         for b in diff.added:
-            self.assertIn("§5 신규", b.path)
-        # heading + paragraph 가 모두 green
+            self.assertIn("§5 New", b.path)
+        # heading + paragraph are all green
         regions = db.compute_color_regions(old, new, None)
         self.assertEqual(len(regions.green), 3)
         kinds = {b.kind for b in regions.green}
@@ -205,19 +206,19 @@ class TestNewPanelAdded(unittest.TestCase):
         self.assertIn(db.KIND_PANEL_INNER_PARA, kinds)
 
 
-# ── T6: 이전 green 영역이 이번엔 unchanged → blue ───────────────────────────
+# ── T6: Previously green region unchanged this time → blue ─────────────────
 
 
 class TestPreviousGreenBecomesBlue(unittest.TestCase):
-    """T6: 직전 publish 에서 green 이었던 영역이 이번엔 안 변함 → blue."""
+    """T6: a region that was green in the previous publish is unchanged this time → blue."""
 
     def test_previous_green_decays_to_blue(self):
-        # 시뮬레이션:
-        # v1 → v2: 단락 A 가 수정 (G_2 = {A})
-        # v2 → v3: 단락 B 가 수정 (G_3 = {B}). A 는 안 변함 → B_3 = {A}.
+        # Simulation:
+        # v1 → v2: paragraph A is edited (G_2 = {A})
+        # v2 → v3: paragraph B is edited (G_3 = {B}). A is unchanged → B_3 = {A}.
         v1 = MD_V1_BASE
-        v2 = v1.replace("표준 요금제 설명 단락.", "수정된 표준 요금제 단락.")
-        v3 = v2.replace("추가 단락 본문.", "수정된 추가 단락 본문.")
+        v2 = v1.replace("Standard pricing plan description paragraph.", "Modified standard pricing paragraph.")
+        v3 = v2.replace("Additional paragraph body.", "Modified additional paragraph body.")
 
         b_v1 = db.parse_blocks(v1)
         b_v2 = db.parse_blocks(v2)
@@ -235,21 +236,21 @@ class TestPreviousGreenBecomesBlue(unittest.TestCase):
         regions_3 = db.compute_color_regions(b_v2, b_v3, state_2)
         self.assertEqual(len(regions_3.green), 1)
         self.assertEqual(len(regions_3.blue), 1)
-        # A 가 blue 가 되어야 — 단 v3 의 현재 hash 로
+        # A should become blue — but with v3's current hash
         self.assertEqual(regions_3.blue[0].path, green_2_path)
         self.assertNotEqual(regions_3.blue[0].path, regions_3.green[0].path)
 
 
-# ── T7: 같은 영역 두 publish 연속 수정 → green only ────────────────────────
+# ── T7: Same region edited in two consecutive publishes → green only ───────
 
 
 class TestSameRegionConsecutiveModify(unittest.TestCase):
-    """T7: 같은 path 가 previous_green 에도 있고 이번에 또 변경 → green only."""
+    """T7: same path is in previous_green and is edited again this time → green only."""
 
     def test_same_region_consecutive_modify(self):
         v1 = MD_V1_BASE
-        v2 = v1.replace("표준 요금제 설명 단락.", "수정 1차.")
-        v3 = v2.replace("수정 1차.", "수정 2차.")
+        v2 = v1.replace("Standard pricing plan description paragraph.", "Modification 1.")
+        v3 = v2.replace("Modification 1.", "Modification 2.")
 
         b_v1 = db.parse_blocks(v1)
         b_v2 = db.parse_blocks(v2)
@@ -261,51 +262,53 @@ class TestSameRegionConsecutiveModify(unittest.TestCase):
         green_2_path = regions_2.green[0].path
 
         regions_3 = db.compute_color_regions(b_v2, b_v3, state_2)
-        # 같은 path 가 green 으로 다시 등장 — blue 에는 들어가지 않아야
+        # Same path reappears as green — should not go into blue
         self.assertEqual(len(regions_3.green), 1)
         self.assertEqual(regions_3.green[0].path, green_2_path)
         self.assertEqual(len(regions_3.blue), 0)
 
 
-# ── T8: heading 텍스트 변경 → heading block green ──────────────────────────
+# ── T8: heading text change → heading block green ──────────────────────────
 
 
 class TestHeadingTextModify(unittest.TestCase):
-    """T8: heading 텍스트 변경 → heading block 자체가 green.
+    """T8: heading text change → the heading block itself is green.
 
-    주의: heading 텍스트가 path prefix 에도 쓰이므로, 자식 block 들도 path 가
-    바뀌어 added/removed 로 잡힐 수 있다. 본 테스트는 "heading block 자체가
-    modified 또는 added/removed 로 잡힘" 만 검증.
+    Note: since heading text is also used in the path prefix, child blocks'
+    paths change too and may be caught as added/removed. This test only
+    verifies that "the heading block itself is caught as modified, or as
+    added/removed".
     """
 
     def test_heading_modify(self):
         v1 = MD_V1_BASE
-        v2 = MD_V1_BASE.replace("### §3.1 표준요금", "### §3.1 변경된요금")
+        v2 = MD_V1_BASE.replace("### §3.1 Standard Pricing", "### §3.1 Changed Pricing")
         old = db.parse_blocks(v1)
         new = db.parse_blocks(v2)
         diff = db.diff_blocks(old, new)
 
-        # heading 텍스트 변경 → 해당 path 의 heading block 이 modified.
-        # heading block 의 path 는 자신을 포함하므로 새 텍스트가 path 의 leaf
-        # 가 됨. 따라서 path 변화로 인해 added + removed 로 잡힐 가능성도 있음
-        # — 두 경우 모두 region 차원에서 변경이 잡혀야 함을 확인.
+        # Heading text change → the heading block at that path is modified.
+        # The heading block's path includes itself, so the new text becomes
+        # the leaf of the path. So it may also be caught as added + removed
+        # due to the path change — verify that either way, the change is
+        # caught at the region level.
         all_new_heading_paths = [
             b.path for b in new if b.kind == db.KIND_HEADING
         ]
         all_old_heading_paths = [
             b.path for b in old if b.kind == db.KIND_HEADING
         ]
-        # h3 가 변경됨 — old/new 에서 path 가 달라야
+        # h3 changed — path should differ between old/new
         self.assertNotEqual(set(all_new_heading_paths), set(all_old_heading_paths))
 
-        # 변경된 §3.1 영역의 region 들이 green 에 포함되어야 (path prefix 가
-        # "§3.1 변경된요금" 으로 바뀌므로 added 로 잡힘)
+        # The regions in the changed §3.1 area should be included in green
+        # (since the path prefix changes to "§3.1 Changed Pricing", they're caught as added)
         regions = db.compute_color_regions(old, new, None)
         self.assertGreater(len(regions.green), 0)
         green_paths = [b.path for b in regions.green]
         self.assertTrue(
-            any("변경된요금" in p for p in green_paths),
-            f"expected '변경된요금' in green paths, got {green_paths}",
+            any("Changed Pricing" in p for p in green_paths),
+            f"expected 'Changed Pricing' in green paths, got {green_paths}",
         )
 
 
@@ -313,17 +316,17 @@ class TestHeadingTextModify(unittest.TestCase):
 
 
 class TestSerializeRoundTrip(unittest.TestCase):
-    """serialize_state → JSON → compute_color_regions 라운드 트립."""
+    """serialize_state → JSON → compute_color_regions round trip."""
 
     def test_serialize_roundtrip(self):
         v1 = MD_V1_BASE
-        v2 = v1.replace("표준 요금제 설명 단락.", "수정.")
+        v2 = v1.replace("Standard pricing plan description paragraph.", "Modified.")
         b_v1 = db.parse_blocks(v1)
         b_v2 = db.parse_blocks(v2)
         regions = db.compute_color_regions(b_v1, b_v2, None)
         state = db.serialize_state(regions)
 
-        # JSON 직렬화 가능
+        # JSON-serializable
         encoded = json.dumps(state, ensure_ascii=False)
         decoded = json.loads(encoded)
         self.assertEqual(len(decoded), len(regions.green))
@@ -332,15 +335,15 @@ class TestSerializeRoundTrip(unittest.TestCase):
             self.assertIn("block_hash", entry)
 
 
-# ── Bonus: code block 통째 ────────────────────────────────────────────────
+# ── Bonus: code block as a whole ────────────────────────────────────────────
 
 
 class TestCodeBlockSingleRegion(unittest.TestCase):
-    """code block 은 내부 분할 없이 1개 region — 사양 §6 (내부 span 금지)."""
+    """code block is a single region without internal splitting — spec §6 (internal spans forbidden)."""
 
     def test_code_block_single(self):
         md_with_code = (
-            "## 예시\n\n"
+            "## Example\n\n"
             "```python\n"
             "def foo():\n"
             "    return 1\n"
@@ -350,7 +353,7 @@ class TestCodeBlockSingleRegion(unittest.TestCase):
         code_blocks = [b for b in blocks if b.kind == db.KIND_CODE]
         self.assertEqual(len(code_blocks), 1)
         self.assertIn("def foo()", code_blocks[0].content)
-        # 코드는 줄바꿈 보존
+        # Code preserves line breaks
         self.assertIn("\n", code_blocks[0].content)
 
 

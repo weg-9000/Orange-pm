@@ -1,25 +1,25 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""플러그인 버전 bump — SSoT(plugin.json) 기준 3곳 원자 동기화.
+"""Plugin version bump — atomically syncs 3 locations against the SSoT (plugin.json).
 
-버전 필드 위치 (항상 동일 값 유지):
-  1. .claude-plugin/plugin.json          .version          ← SSoT
+Version field locations (must always hold the same value):
+  1. .claude-plugin/plugin.json          .version          <- SSoT
   2. .claude-plugin/marketplace.json     .plugins[0].version
-  3. .claude-plugin/marketplace.json     .version (최상위)
+  3. .claude-plugin/marketplace.json     .version (top level)
 
-사용법:
-  python scripts/bump_version.py patch          # 2.0.0 → 2.0.1
-  python scripts/bump_version.py minor          # 2.0.0 → 2.1.0
-  python scripts/bump_version.py major          # 2.0.0 → 3.0.0
-  python scripts/bump_version.py --set 2.5.0    # 명시 지정
-  python scripts/bump_version.py --check        # 3곳 일치 검증만 (CI용)
+Usage:
+  python scripts/bump_version.py patch          # 2.0.0 -> 2.0.1
+  python scripts/bump_version.py minor          # 2.0.0 -> 2.1.0
+  python scripts/bump_version.py major          # 2.0.0 -> 3.0.0
+  python scripts/bump_version.py --set 2.5.0    # explicit version
+  python scripts/bump_version.py --check        # only verify all 3 locations match (for CI)
 
-bump 후 안내되는 절차:
-  1. CHANGELOG.md 의 [Unreleased] 항목을 새 버전 섹션으로 이동
+Procedure to follow after bumping:
+  1. Move the [Unreleased] entries in CHANGELOG.md to the new version's section
   2. git add -A && git commit -m "release: vX.Y.Z"
   3. git tag vX.Y.Z && git push && git push --tags
 
-exit code: 0 성공 / 1 검증 실패 / 2 인자 오류
+exit code: 0 success / 1 verification failed / 2 argument error
 """
 from __future__ import annotations
 
@@ -62,13 +62,13 @@ def check() -> int:
     for k, v in vers.items():
         print(f"  {v:>10}  {k}")
     if len(vals) != 1:
-        print("FAIL: 버전 필드 불일치 — bump_version.py 로 동기화하세요.")
+        print("FAIL: version fields do not match — sync them with bump_version.py.")
         return 1
     v = vals.pop()
     if not SEMVER.match(v):
-        print(f"FAIL: '{v}' 는 SemVer(X.Y.Z) 형식이 아닙니다.")
+        print(f"FAIL: '{v}' is not in SemVer (X.Y.Z) format.")
         return 1
-    print(f"OK: v{v} (3곳 일치)")
+    print(f"OK: v{v} (all 3 locations match)")
     return 0
 
 
@@ -76,13 +76,13 @@ def bump(kind: str | None, explicit: str | None) -> int:
     cur = _load(PLUGIN_JSON).get("version", "0.0.0")
     m = SEMVER.match(cur)
     if not m:
-        print(f"FAIL: 현재 버전 '{cur}' 파싱 불가")
+        print(f"FAIL: could not parse current version '{cur}'")
         return 1
     major, minor, patch = map(int, m.groups())
 
     if explicit:
         if not SEMVER.match(explicit):
-            print(f"FAIL: '{explicit}' 는 SemVer(X.Y.Z) 형식이 아닙니다.")
+            print(f"FAIL: '{explicit}' is not in SemVer (X.Y.Z) format.")
             return 2
         new = explicit
     elif kind == "major":
@@ -92,7 +92,7 @@ def bump(kind: str | None, explicit: str | None) -> int:
     elif kind == "patch":
         new = f"{major}.{minor}.{patch + 1}"
     else:
-        print("FAIL: patch|minor|major 또는 --set X.Y.Z 필요")
+        print("FAIL: need patch|minor|major or --set X.Y.Z")
         return 2
 
     plugin = _load(PLUGIN_JSON)
@@ -104,19 +104,19 @@ def bump(kind: str | None, explicit: str | None) -> int:
     market["version"] = new
     _save(MARKETPLACE_JSON, market)
 
-    print(f"v{cur} → v{new}  (plugin.json + marketplace.json 2곳 동기화 완료)")
-    print("\n다음 절차:")
-    print(f"  1. CHANGELOG.md [Unreleased] → [{new}] 섹션으로 이동")
+    print(f"v{cur} -> v{new}  (plugin.json + marketplace.json both synced)")
+    print("\nNext steps:")
+    print(f"  1. Move CHANGELOG.md [Unreleased] -> [{new}] section")
     print(f'  2. git add -A && git commit -m "release: v{new}"')
     print(f"  3. git tag v{new} && git push && git push --tags")
     return 0
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description="플러그인 버전 bump (3곳 동기화)")
+    ap = argparse.ArgumentParser(description="Bump plugin version (syncs 3 locations)")
     ap.add_argument("kind", nargs="?", choices=["patch", "minor", "major"])
     ap.add_argument("--set", dest="explicit", metavar="X.Y.Z")
-    ap.add_argument("--check", action="store_true", help="일치 검증만 수행")
+    ap.add_argument("--check", action="store_true", help="only verify all locations match")
     args = ap.parse_args()
 
     if args.check:

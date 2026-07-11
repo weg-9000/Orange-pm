@@ -1,15 +1,16 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""policy_emit — 테넌트 정책 거버넌스 상태 → 정규화 JSON (viz, Phase 6).
+"""policy_emit — tenant policy governance state → normalized JSON (viz, Phase 6).
 
-테넌트 hub 의 정책 컨텍스트 상태를 viz 가 소비할 계약으로 변환한다. 읽기 전용.
-  - prefixes: reference-docs/{PREFIX} 별 A/B/C 문서 수
-  - installedPacks: CONTEXT/installed-packs.json (설치 이력)
-  - availablePacks: packs/registry.json (마켓플레이스, 발견 시)
-  - gatePreset: CONTEXT/gates/_active-preset.txt (없으면 'standard')
+Converts the tenant hub's policy context state into a contract consumable by
+viz. Read-only.
+  - prefixes: A/B/C document counts per reference-docs/{PREFIX}
+  - installedPacks: CONTEXT/installed-packs.json (install history)
+  - availablePacks: packs/registry.json (marketplace, if found)
+  - gatePreset: CONTEXT/gates/_active-preset.txt (defaults to 'standard')
 
     python policy_emit.py --hub-root <tenant> --emit-json
-출력: {kind:"policy", gatePreset, prefixes:[{id,a,b,c}], installedPacks, availablePacks, version}
+Output: {kind:"policy", gatePreset, prefixes:[{id,a,b,c}], installedPacks, availablePacks, version}
 """
 from __future__ import annotations
 
@@ -53,7 +54,7 @@ def _installed_packs(hub_root: Path) -> list[dict]:
 
 
 def _available_packs(hub_root: Path) -> list[dict]:
-    # packs/registry.json 탐색: 테넌트 루트 상위(플랫폼/리포)에서 찾는다.
+    # Search for packs/registry.json in ancestors of the tenant root (platform/repo).
     for base in (hub_root, hub_root.parent, hub_root.parent.parent):
         reg = base / "packs" / "registry.json"
         if reg.exists():
@@ -87,7 +88,7 @@ def main() -> int:
     if args.from_fixture:
         return C.emit(C.load_fixture(args.from_fixture))
     if not args.hub_root:
-        sys.stderr.write("--hub-root 필요\n")
+        sys.stderr.write("--hub-root required\n")
         return 2
     return C.emit(transform(args.hub_root))
 

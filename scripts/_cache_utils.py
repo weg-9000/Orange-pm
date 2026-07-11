@@ -2,14 +2,16 @@
 # -*- coding: utf-8 -*-
 """Shared helpers for cache build scripts (build_b_cache / build_b_index / build_bootstrap).
 
-본 모듈은 3개 캐시 빌드 스크립트가 중복으로 들고 있던 로직을 한 곳에 모은다.
-스크립트별 고유 로직(요약 추출·헤딩 인덱싱·소스 명단 등)은 각 스크립트에 그대로 둔다.
+This module centralizes the logic that used to be duplicated across the three
+cache build scripts. Script-specific logic (summary extraction, heading
+indexing, source listing, etc.) stays in each individual script.
 
-설계 원칙:
-    - 각 헬퍼는 의존성이 작고 부수효과가 명확해야 한다.
-    - sys.exit() 는 스크립트 main() 에서만 호출한다. 헬퍼는 예외 또는 명시적 반환값을
-      통해 실패를 보고한다(현재 read_prefix 만 호환성 유지를 위해 sys.exit 유지).
-    - 본 모듈에 화면 표시(print)는 두지 않는다.
+Design principles:
+    - Each helper should have few dependencies and clear side effects.
+    - sys.exit() is only called from a script's main(). Helpers report
+      failures via exceptions or explicit return values (currently only
+      read_prefix keeps sys.exit, for backward compatibility).
+    - This module never prints to the screen.
 """
 from __future__ import annotations
 
@@ -18,9 +20,10 @@ import re
 import sys
 from pathlib import Path
 
-# 공용 정규식 (build_b_cache / build_b_index 가 동일 패턴 사용).
-# 주의: ``^PREFIX:`` 는 줄 시작이 정확히 ``PREFIX:`` 인 레거시 단일 선언만 매칭한다.
-# ``ACTIVE_PREFIX:`` 와 ``PREFIXES:`` 는 줄 시작 토큰이 달라 매칭되지 않는다(의도된 격리).
+# Shared regexes (used identically by build_b_cache / build_b_index).
+# Note: ``^PREFIX:`` only matches the legacy single declaration where the line
+# starts with exactly ``PREFIX:``. ``ACTIVE_PREFIX:`` and ``PREFIXES:`` have a
+# different leading token so they don't match (intentional isolation).
 PREFIX_PATTERN = re.compile(r"^PREFIX:\s*([A-Za-z0-9_-]+)\s*$", re.MULTILINE)
 ACTIVE_PREFIX_PATTERN = re.compile(r"^ACTIVE_PREFIX:\s*([A-Za-z0-9_-]+)\s*$", re.MULTILINE)
 PREFIXES_ITEM_PATTERN = re.compile(r"^\s*-\s*id:\s*([A-Za-z0-9_-]+)\s*$", re.MULTILINE)
@@ -28,7 +31,7 @@ HEADING_PATTERN = re.compile(r"^(#{1,6})\s+(.+?)\s*$")
 
 
 def _read_layer_config(hub_root: Path) -> str:
-    """CONTEXT/layer-config.md 본문을 읽는다. 없으면 ``sys.exit(1)``."""
+    """Read the body of CONTEXT/layer-config.md. Calls ``sys.exit(1)`` if missing."""
     config = hub_root / "CONTEXT" / "layer-config.md"
     if not config.exists():
         sys.stderr.write(f"layer-config.md not found: {config}\n")
@@ -37,13 +40,14 @@ def _read_layer_config(hub_root: Path) -> str:
 
 
 def read_active_prefix(hub_root: Path) -> str:
-    """현재 세션 작업 대상 PREFIX 를 반환한다.
+    """Return the PREFIX the current session is working on.
 
-    우선순위:
-      1) ``ACTIVE_PREFIX: <value>``  (멀티-PREFIX 형식, Phase 1+)
-      2) ``PREFIX: <value>``         (레거시 단일 선언)
+    Priority:
+      1) ``ACTIVE_PREFIX: <value>``  (multi-PREFIX format, Phase 1+)
+      2) ``PREFIX: <value>``         (legacy single declaration)
 
-    둘 다 없으면 stderr 후 ``sys.exit(1)`` (기존 read_prefix 와 동일 종료 시그널).
+    If neither is present, writes to stderr then ``sys.exit(1)`` (same exit
+    signal as the original read_prefix).
     """
     text = _read_layer_config(hub_root)
     m = ACTIVE_PREFIX_PATTERN.search(text)
@@ -60,10 +64,11 @@ def read_active_prefix(hub_root: Path) -> str:
 
 
 def read_prefixes(hub_root: Path) -> list[str]:
-    """선언된 전체 PREFIX 목록을 반환한다 (멀티-PREFIX, Phase 1+).
+    """Return the full list of declared PREFIXes (multi-PREFIX, Phase 1+).
 
-    ``PREFIXES:`` 블록의 ``- id: <value>`` 항목을 순서대로 수집한다.
-    블록이 없으면 단일 PREFIX([read_active_prefix()]) 로 폴백한다(하위호환).
+    Collects the ``- id: <value>`` entries of the ``PREFIXES:`` block in order.
+    If the block is absent, falls back to the single PREFIX
+    ([read_active_prefix()]) for backward compatibility.
     """
     text = _read_layer_config(hub_root)
     ids = PREFIXES_ITEM_PATTERN.findall(text)
@@ -73,24 +78,27 @@ def read_prefixes(hub_root: Path) -> list[str]:
 
 
 def read_prefix(hub_root: Path) -> str:
-    """[하위호환 래퍼] 현재 활성 PREFIX 를 반환한다.
+    """[Backward-compat wrapper] Return the current active PREFIX.
 
-    기존 스크립트(build_b_cache / build_b_index 등)가 호출하던 시그니처를 보존한다.
-    내부적으로 ``read_active_prefix`` 에 위임하므로 ACTIVE_PREFIX 전환을 자동 반영한다.
+    Preserves the signature that existing scripts (build_b_cache /
+    build_b_index, etc.) call. Delegates internally to ``read_active_prefix``,
+    so it automatically reflects the ACTIVE_PREFIX migration.
     """
     return read_active_prefix(hub_root)
 
 
 def discover_layer_sources(hub_root: Path, prefix: str, layer: str) -> list[Path]:
-    """``reference-docs`` 에서 특정 (prefix, layer) 의 마크다운 소스를 수집한다.
+    """Collect the markdown sources for a given (prefix, layer) under ``reference-docs``.
 
-    듀얼 경로 탐색(점진 마이그레이션 안전망):
-      1) 신규 중첩: ``CONTEXT/reference-docs/{prefix}/{layer}/*.md``
-      2) 레거시 평면: ``CONTEXT/reference-docs/{layer}/*.md``
-    신규 경로가 디렉토리로 존재하면 그것을, 아니면 레거시 경로를 사용한다.
+    Dual-path lookup (safety net for gradual migration):
+      1) New nested layout: ``CONTEXT/reference-docs/{prefix}/{layer}/*.md``
+      2) Legacy flat layout: ``CONTEXT/reference-docs/{layer}/*.md``
+    If the new path exists as a directory, use it; otherwise fall back to the
+    legacy path.
 
-    README.md 는 제외하며 정렬된 목록을 반환한다. 디렉토리가 없으면 빈 목록
-    (호출자가 누락 정책을 결정하도록 종료하지 않는다).
+    Excludes README.md and returns a sorted list. Returns an empty list if the
+    directory doesn't exist (does not exit — lets the caller decide the
+    missing-source policy).
     """
     base = hub_root / "CONTEXT" / "reference-docs"
     nested = base / prefix / layer
@@ -102,10 +110,11 @@ def discover_layer_sources(hub_root: Path, prefix: str, layer: str) -> list[Path
 
 
 def discover_b_sources(hub_root: Path) -> list[Path]:
-    """[하위호환 래퍼] 활성 PREFIX 의 B 계층 소스를 반환한다.
+    """[Backward-compat wrapper] Return the B-layer sources for the active PREFIX.
 
-    디렉토리가 존재하지 않거나 대상 문서가 0개면 stderr 메시지 후 ``sys.exit(1)``
-    (기존 동작 1:1 보존).
+    If the directory doesn't exist or there are zero target documents, writes
+    an stderr message then ``sys.exit(1)`` (preserves the original behavior
+    1:1).
     """
     prefix = read_active_prefix(hub_root)
     sources = discover_layer_sources(hub_root, prefix, "B")
@@ -118,7 +127,7 @@ def discover_b_sources(hub_root: Path) -> list[Path]:
 
 
 def ensure_cache_dir(hub_root: Path) -> Path:
-    """``CONTEXT/.template-cache/`` 를 보장 생성하고 그 경로를 반환한다."""
+    """Ensure ``CONTEXT/.template-cache/`` exists and return its path."""
     cache_dir = hub_root / "CONTEXT" / ".template-cache"
     cache_dir.mkdir(parents=True, exist_ok=True)
     return cache_dir
@@ -130,13 +139,15 @@ def cache_is_fresh(
     *,
     allow_missing_sources: bool = False,
 ) -> bool:
-    """캐시가 모든 소스보다 새로우면 True.
+    """True if the cache is newer than all sources.
 
-    - cache_path 가 없으면 False.
-    - ``allow_missing_sources=False`` (기본): 소스가 존재하지 않으면 False(=재생성 필요)
-      는 의미가 모호하므로 ``stat()`` 호출이 그대로 예외를 던지게 둔다.
-    - ``allow_missing_sources=True`` (bootstrap 케이스): 소스 파일 누락은 캐시 신선도에
-      영향을 주지 않는 것으로 본다(누락된 자리표시자는 그대로 유지된다).
+    - False if cache_path doesn't exist.
+    - ``allow_missing_sources=False`` (default): a missing source meaning
+      False (= needs rebuild) would be ambiguous, so the ``stat()`` call is
+      left to raise its own exception.
+    - ``allow_missing_sources=True`` (bootstrap case): a missing source file
+      is treated as not affecting cache freshness (the missing placeholder is
+      simply left as-is).
     """
     if not cache_path.exists():
         return False
@@ -147,7 +158,7 @@ def cache_is_fresh(
 
 
 def make_hub_root_parser(description: str) -> argparse.ArgumentParser:
-    """``--hub-root`` 인자만 가진 표준 ArgumentParser 를 생성한다."""
+    """Create a standard ArgumentParser with only a ``--hub-root`` argument."""
     parser = argparse.ArgumentParser(description=description)
     parser.add_argument(
         "--hub-root",
@@ -159,9 +170,10 @@ def make_hub_root_parser(description: str) -> argparse.ArgumentParser:
 
 
 def validate_hub_root(hub_root: Path) -> int:
-    """hub-root 가 디렉토리가 아니면 stderr 출력 + 2 반환, 정상이면 0.
+    """Print to stderr and return 2 if hub-root isn't a directory; 0 otherwise.
 
-    스크립트 main() 에서 ``rc = validate_hub_root(...)`` 후 0 이 아니면 즉시 ``return rc``.
+    In a script's main(), after ``rc = validate_hub_root(...)``, immediately
+    ``return rc`` if it's nonzero.
     """
     if not hub_root.is_dir():
         sys.stderr.write(f"hub-root not found: {hub_root}\n")

@@ -1,11 +1,12 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-"""SKILL.md frontmatter를 파싱해서 mermaid 아키텍처 다이어그램을 즉석 생성.
+"""Parse SKILL.md frontmatter and generate a mermaid architecture diagram on the fly.
 
-저장 파일 없음. 실행할 때마다 현재 frontmatter 기준으로 최신 그래프 출력.
+No file is saved. Every run prints the latest graph based on the current
+frontmatter.
 
-사용:
-  python render_architecture.py            # 레이어 1 + 2 모두 출력
+Usage:
+  python render_architecture.py            # print both layer 1 + 2
   python render_architecture.py --layer 1  # phase swimlane
   python render_architecture.py --layer 2  # agent/model tier
 """
@@ -19,24 +20,24 @@ from pathlib import Path
 import re
 
 
-# ── 상수 ─────────────────────────────────────────────────────────────────────
+# ── Constants ────────────────────────────────────────────────────────────────
 
 SKILLS_DIR = Path(__file__).resolve().parent.parent / "skills"
 
 PHASE_ORDER = ["init", "-1", "0", "1", "2", "3", "4", "any"]
 
 PHASE_LABELS = {
-    "init": "Init · Hub 초기화",
+    "init": "Init · Hub initialization",
     "-1":   "Phase -1 · Discovery",
     "0":    "Phase 0 · Ingest & Graph",
     "1":    "Phase 1 · Fanout",
     "2":    "Phase 2 · Draft",
     "3":    "Phase 3 · Integrate",
     "4":    "Phase 4 · Confirm & Publish",
-    "any":  "Utilities · 언제든 호출 가능",
+    "any":  "Utilities · callable anytime",
 }
 
-# Phase 경계에 삽입할 게이트 (앞 phase → 다음 phase 사이)
+# Gates to insert at phase boundaries (between the preceding phase and the next)
 GATES_BETWEEN = {
     ("-1", "0"):  "discovery-exit-gate",
     ("0",  "1"):  "policy-entry-gate / graph-exit-gate",
@@ -54,7 +55,7 @@ MODEL_TIER = {
 }
 
 
-# ── 파서 ─────────────────────────────────────────────────────────────────────
+# ── Parser ───────────────────────────────────────────────────────────────────
 
 def _parse_fm_field(fm: str, field: str) -> str | None:
     m = re.search(rf"^{field}:\s*(.+)$", fm, re.MULTILINE)
@@ -93,7 +94,7 @@ def effort_suffix(effort: str) -> str:
     return {"high": " ↑↑", "medium": " ↑", "low": ""}.get(effort, "")
 
 
-# ── 레이어 1: phase swimlane ──────────────────────────────────────────────────
+# ── Layer 1: phase swimlane ────────────────────────────────────────────────────
 
 def render_layer1(skills: list[dict]) -> str:
     by_phase: dict[str, list[dict]] = {p: [] for p in PHASE_ORDER}
@@ -106,7 +107,7 @@ def render_layer1(skills: list[dict]) -> str:
     lines = [
         "```mermaid",
         "flowchart TD",
-        "  %% 레이어 1: Phase Swimlane",
+        "  %% Layer 1: Phase Swimlane",
         "  classDef gate fill:#111,color:#fff,stroke:#111",
         "  classDef util fill:#e7d8ff,stroke:#6a3d9a",
         "  classDef opus fill:#ffb3b3,stroke:#7a0000",
@@ -147,7 +148,7 @@ def render_layer1(skills: list[dict]) -> str:
         lines.append("  end")
         lines.append("")
 
-        # 게이트 삽입
+        # insert a gate
         if prev_phase_key is not None:
             gate_key = (prev_phase_key, phase)
             if gate_key in GATES_BETWEEN:
@@ -170,16 +171,16 @@ def render_layer1(skills: list[dict]) -> str:
     return "\n".join(lines)
 
 
-# ── 레이어 2: agent/model tier ────────────────────────────────────────────────
+# ── Layer 2: agent/model tier ──────────────────────────────────────────────────
 
 def render_layer2(skills: list[dict]) -> str:
-    # tier 분류
+    # classify tiers
     tiers: dict[str, list[dict]] = {"OPUS": [], "SONNET": [], "OTHER": []}
     for s in skills:
         tier = MODEL_TIER.get(s.get("model", ""), "OTHER")
         tiers[tier].append(s)
 
-    # agent → skills 매핑
+    # agent -> skills mapping
     agent_map: dict[str, list[str]] = {}
     for s in skills:
         agent = s.get("agent")
@@ -189,7 +190,7 @@ def render_layer2(skills: list[dict]) -> str:
     lines = [
         "```mermaid",
         "flowchart LR",
-        "  %% 레이어 2: Agent/Model Tier",
+        "  %% Layer 2: Agent/Model Tier",
         "  classDef opus   fill:#ffb3b3,stroke:#7a0000",
         "  classDef sonnet fill:#b3d9ff,stroke:#003d7a",
         "  classDef other  fill:#e2e3e5,stroke:#383d41",
@@ -198,7 +199,7 @@ def render_layer2(skills: list[dict]) -> str:
     ]
 
     if tiers["OPUS"]:
-        lines.append("  subgraph OPUS_TIER [\"opus tier · 비용 ↑↑\"]")
+        lines.append("  subgraph OPUS_TIER [\"opus tier · cost ↑↑\"]")
         for s in tiers["OPUS"]:
             nid = node_id(s["name"])
             lines.append(f"    {nid}[/{s['name']}/]:::opus")
@@ -214,14 +215,14 @@ def render_layer2(skills: list[dict]) -> str:
         lines.append("")
 
     if tiers["OTHER"]:
-        lines.append("  subgraph OTHER_TIER [\"기타 tier\"]")
+        lines.append("  subgraph OTHER_TIER [\"other tier\"]")
         for s in tiers["OTHER"]:
             nid = node_id(s["name"])
             lines.append(f"    {nid}[/{s['name']}/]:::other")
         lines.append("  end")
         lines.append("")
 
-    # agent 노드 + 연결
+    # agent nodes + connections
     for agent_name, skill_names in sorted(agent_map.items()):
         aid = node_id(agent_name)
         lines.append(f"  {aid}[(\"{agent_name}\")]:::agent")
@@ -233,7 +234,7 @@ def render_layer2(skills: list[dict]) -> str:
     return "\n".join(lines)
 
 
-# ── 통계 요약 ─────────────────────────────────────────────────────────────────
+# ── Statistics summary ──────────────────────────────────────────────────────
 
 def render_summary(skills: list[dict]) -> str:
     phase_counts = {}
@@ -253,59 +254,59 @@ def render_summary(skills: list[dict]) -> str:
             agent_counts[a] = agent_counts.get(a, 0) + 1
 
     lines = [
-        "## 통계 요약",
-        f"- 총 SKILL: {len(skills)}개",
+        "## Statistics summary",
+        f"- Total SKILLs: {len(skills)}",
         "",
-        "### Phase 분포",
+        "### Phase distribution",
     ]
     for p in PHASE_ORDER:
         if p in phase_counts:
-            lines.append(f"  - {PHASE_LABELS[p]}: {phase_counts[p]}개")
+            lines.append(f"  - {PHASE_LABELS[p]}: {phase_counts[p]}")
 
-    lines += ["", "### Model 분포"]
+    lines += ["", "### Model distribution"]
     for m, c in sorted(model_counts.items()):
-        lines.append(f"  - {m}: {c}개")
+        lines.append(f"  - {m}: {c}")
 
-    lines += ["", "### Agent 재사용"]
+    lines += ["", "### Agent reuse"]
     for a, c in sorted(agent_counts.items()):
         skill_names = [s["name"] for s in skills if s.get("agent") == a]
-        lines.append(f"  - {a}: {c}개 skill ({', '.join(skill_names)})")
+        lines.append(f"  - {a}: {c} skill(s) ({', '.join(skill_names)})")
 
     return "\n".join(lines)
 
 
-# ── 진입점 ────────────────────────────────────────────────────────────────────
+# ── Entry point ──────────────────────────────────────────────────────────────
 
 def main() -> None:
-    # Windows CP949 stdout이 유니코드 문자를 거부하므로 UTF-8 강제
+    # Force UTF-8 since Windows CP949 stdout rejects unicode characters
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8")
 
-    parser = argparse.ArgumentParser(description="orange-pm 아키텍처 mermaid 생성기")
+    parser = argparse.ArgumentParser(description="orange-pm architecture mermaid generator")
     parser.add_argument(
         "--layer",
         choices=["1", "2", "all"],
         default="all",
-        help="출력 레이어 (1=phase swimlane, 2=agent tier, all=모두)",
+        help="Layer to print (1=phase swimlane, 2=agent tier, all=both)",
     )
     parser.add_argument(
         "--summary",
         action="store_true",
-        help="통계 요약 출력",
+        help="Print the statistics summary",
     )
     args = parser.parse_args()
 
     skills = load_skills()
     if not skills:
-        sys.exit(f"SKILL.md 파일을 찾을 수 없음: {SKILLS_DIR}")
+        sys.exit(f"No SKILL.md files found: {SKILLS_DIR}")
 
     if args.layer in ("1", "all"):
-        print("## 레이어 1 — Phase Swimlane\n")
+        print("## Layer 1 — Phase Swimlane\n")
         print(render_layer1(skills))
         print()
 
     if args.layer in ("2", "all"):
-        print("## 레이어 2 — Agent / Model Tier\n")
+        print("## Layer 2 — Agent / Model Tier\n")
         print(render_layer2(skills))
         print()
 

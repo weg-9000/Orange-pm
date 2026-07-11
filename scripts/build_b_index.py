@@ -1,38 +1,41 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""{PREFIX}-B 헤딩 인덱스 생성 (개선안 B — CONTEXT_OPTIMIZATION.md).
+"""Build the {PREFIX}-B heading index (Improvement Plan B — CONTEXT_OPTIMIZATION.md).
 
-목적:
-    /write, /flow 가 graph.json 의 inherits_from / includes 에 명시된 섹션만
-    선택적으로 발췌 로드할 수 있도록 헤딩 위치 인덱스를 생성한다.
+Purpose:
+    Build a heading-location index so that /write and /flow can selectively
+    excerpt-load only the sections listed in graph.json's inherits_from /
+    includes.
 
-    출력: CONTEXT/.template-cache/B-headings-index.json
+    Output: CONTEXT/.template-cache/B-headings-index.json
 
-    스키마:
+    Schema:
       {
         "G2-B-001": {
           "title": "...",
           "path": "CONTEXT/reference-docs/B/G2-B_xxx.md",
           "sections": [
-            {"id": "1",   "title": "개요",        "line_start": 5,   "line_end": 38},
-            {"id": "3.2", "title": "리소스 한도", "line_start": 142, "line_end": 197}
+            {"id": "1",   "title": "Overview",        "line_start": 5,   "line_end": 38},
+            {"id": "3.2", "title": "Resource limits", "line_start": 142, "line_end": 197}
           ]
         }
       }
 
-    section.id 는 본문에서 "## 1. 개요" / "## 3.2 리소스 한도 계산" 식으로 표기된
-    선두 번호를 추출한다. 번호 없는 헤딩은 슬러그(공백 → -)로 대체한다.
+    section.id is extracted from a leading number in the heading text, e.g.
+    "## 1. Overview" / "## 3.2 Resource limit calculation". Headings without a
+    number get a slug instead (spaces -> -).
 
-    line 번호는 1-based, line_end 는 다음 같은 깊이 또는 더 얕은 헤딩 직전 라인.
-    파일 끝까지 이어지면 마지막 라인 번호.
+    line numbers are 1-based; line_end is the line just before the next
+    heading of the same or a shallower depth. If it runs to the end of the
+    file, it's the last line number.
 
-사용법:
-    python build_b_index.py --hub-root <Planning-Agent-Hub 경로>
+Usage:
+    python build_b_index.py --hub-root <path to Planning-Agent-Hub>
 
 exit code:
-    0 = 성공
-    1 = PREFIX 추출 실패 또는 reference-docs/B 없음
-    2 = 인자 오류
+    0 = success
+    1 = failed to extract PREFIX, or reference-docs/B missing
+    2 = argument error
 """
 from __future__ import annotations
 
@@ -52,10 +55,10 @@ from _cache_utils import (
 )
 
 LEADING_NUMBER_PATTERN = re.compile(r"^(?:§\s*)?(\d+(?:\.\d+)*)[\s.\)]\s*(.*)$")
-# doc_id 우선순위:
-#   1) frontmatter 또는 본문 상단의 명시적 식별자 (예: "doc_id: G2-B-001")
-#   2) 파일명 stem 이 G2-B-001 형식이면 그대로 사용
-#   3) fallback: 파일 stem 그대로 (PREFIX 중복 추가 안 함)
+# doc_id priority:
+#   1) an explicit identifier in frontmatter or the top of the body (e.g. "doc_id: G2-B-001")
+#   2) if the filename stem matches the G2-B-001 pattern, use it as-is
+#   3) fallback: the file stem as-is (don't add PREFIX again)
 EXPLICIT_DOC_ID_PATTERN = re.compile(r"(?:^|\n)\s*doc_id\s*[:：]\s*([A-Za-z0-9_-]+)\s*(?:\n|$)")
 CANONICAL_DOC_ID_PATTERN = re.compile(r"^([A-Za-z0-9]+)-B-(\d{3,})$")
 
@@ -74,10 +77,11 @@ def split_section_id(heading_text: str, fallback_idx: int) -> tuple[str, str]:
 
 
 def derive_doc_id(prefix: str, file_path: Path, body_text: str) -> str:
-    """파일에서 doc_id 추출. 식별자가 없는 경우 파일 stem 을 그대로 사용한다.
+    """Extract doc_id from the file. Falls back to the file stem if there's no identifier.
 
-    인덱스 키는 단순 식별자다. graph.json 의 inherits_from(예: G2-B-001) 과의
-    매핑은 별도로 layer-config.md 또는 reference-docs/B/README.md 가 담당한다.
+    The index key is a plain identifier. Its mapping to graph.json's
+    inherits_from (e.g. G2-B-001) is handled separately by layer-config.md or
+    reference-docs/B/README.md.
     """
     explicit = EXPLICIT_DOC_ID_PATTERN.search(body_text[:1024])
     if explicit:
@@ -97,7 +101,7 @@ def index_one(file_path: Path, prefix: str) -> dict:
             continue
         depth = len(match.group(1))
         if depth < 2:
-            continue  # H1 (문서 제목)은 스킵, 섹션 단위는 ## 이상
+            continue  # skip H1 (document title); sections start at ## or deeper
         headings.append((idx, depth, match.group(2)))
 
     sections: list[dict] = []
@@ -142,7 +146,7 @@ def build(hub_root: Path) -> int:
     prefix = read_prefix(hub_root)
     sources = discover_b_sources(hub_root)
     cache_dir = ensure_cache_dir(hub_root)
-    # PREFIX 네임스페이스(주) + 레거시 무네임스페이스(부, 활성 PREFIX 한정).
+    # PREFIX-namespaced (primary) + legacy non-namespaced (secondary, active PREFIX only).
     out_path = cache_dir / f"{prefix}-b-headings-index.json"
     legacy_path = cache_dir / "B-headings-index.json"
 
@@ -151,7 +155,7 @@ def build(hub_root: Path) -> int:
     for src in sources:
         rel_src = src.relative_to(hub_root)
         entry = index_one(src, prefix)
-        # path 를 hub-root 상대 경로로 정규화
+        # normalize path to be relative to hub-root
         entry["path"] = str(rel_src.as_posix())
         index[entry["doc_id"]] = entry
         source_dir = str(rel_src.parent.as_posix())
@@ -167,7 +171,7 @@ def build(hub_root: Path) -> int:
     }
     serialized = json.dumps(payload, ensure_ascii=False, indent=2)
     out_path.write_text(serialized, encoding="utf-8")
-    # 레거시 호환: 활성 PREFIX 인덱스를 무네임스페이스 파일로도 미러링(render_assemble 등).
+    # Legacy compat: also mirror the active PREFIX index to a non-namespaced file (for render_assemble, etc.).
     legacy_path.write_text(serialized, encoding="utf-8")
     print(f"[build_b_index] wrote {out_path} (+legacy {legacy_path.name}, docs={len(index)})")
     return 0

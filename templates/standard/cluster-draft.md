@@ -1,237 +1,237 @@
 ---
-# Cluster Draft 표준 양식 — Track A (Full Product) 작업 단위
+# Cluster Draft Standard Template — Track A (Full Product) Work Unit
 #
-# 사용:
-#   1. PM 또는 /fanout 가 graph-gen 결과를 바탕으로 cluster 단위로 복제
-#   2. 한 cluster 당 1 파일: drafts/cluster_{capability}_{cluster_id}.draft.md
-#   3. PM 작성 (또는 /write 스킬 호출) → /integrate R1~R3 → /render --push 시 transpose
+# Usage:
+#   1. The PM or /fanout duplicates this per cluster, based on graph-gen output
+#   2. One file per cluster: drafts/cluster_{capability}_{cluster_id}.draft.md
+#   3. PM authors it (or invokes the /write skill) → /integrate R1-R3 → transposed on /render --push
 #
-# 사양 SSoT:
-#   - publication-syntax.md §6 (색상 cycling)
-#   - publication-map.md (cluster ↔ deliverable 매핑 규약)
+# Spec SSoT:
+#   - publication-syntax.md §6 (color cycling)
+#   - publication-map.md (cluster ↔ deliverable mapping convention)
 
-# ───── Cluster 식별 메타 ─────
+# ───── Cluster Identification Metadata ─────
 title: "Cluster {{CAPABILITY_NAME}} / {{CLUSTER_ID}} — {{CLUSTER_NAME}}"
-wo_id: G2-K-{{CAP}}-{{CL}}        # 예: G2-K-PR-01 (Provisioning / Cluster 1)
+wo_id: PX-K-{{CAP}}-{{CL}}        # e.g. PX-K-PR-01 (Provisioning / Cluster 1)
 type: cluster_draft
-layer: C                           # B(공통)/C(제품)/DIRECT(Track B/C 단일)
+layer: C                           # B (common) / C (product) / DIRECT (Track B/C single)
 version: 1.0
-status: empty                      # 안 A 라이프사이클: empty→ai-draft(/write)→human-reviewed(/review)→frozen(/confirm)
+status: empty                      # Option A lifecycle: empty→ai-draft(/write)→human-reviewed(/review)→frozen(/confirm)
 last_updated: {{DATE}}
 
-# ───── Cluster 분류 (graph-gen 산출) ─────
+# ───── Cluster Classification (graph-gen output) ─────
 cluster:
-  capability: "{{CAPABILITY_NAME}}"  # 예: "Provisioning" / "Pricing" / "Operations"
-  cluster_id: "{{CLUSTER_ID}}"       # 예: "PR-01" (capability prefix + 순번)
-  cluster_name: "{{CLUSTER_NAME}}"   # 예: "InstanceCatalog" / "ResourceLimit"
+  capability: "{{CAPABILITY_NAME}}"  # e.g. "Provisioning" / "Pricing" / "Operations"
+  cluster_id: "{{CLUSTER_ID}}"       # e.g. "PR-01" (capability prefix + sequence number)
+  cluster_name: "{{CLUSTER_NAME}}"   # e.g. "InstanceCatalog" / "ResourceLimit"
 
-  # 4축 군집 점수 (graph-gen capability/cluster 식별 단계 산출)
+  # 4-axis clustering score (produced by the graph-gen capability/cluster identification step)
   scores:
-    decision_domain: 0.30    # 결정 도메인 공유 (정책 축 일치도)
-    domain_object:   0.20    # 데이터 객체 공유 (Instance/Billing/Role 등)
-    screen_surface:  0.20    # 화면 표면 공유 (같은 primary_screen)
-    dependency_cone: 0.15    # 의존성 cone 50%+ 중복
-    publication_fit: 0.15    # D2/D3 챕터 정합성 (한 챕터로 자연스러운가)
-  score_total: 0.85  # >= 0.55 면 cluster 결합 (사양 §4축 가중)
+    decision_domain: 0.30    # shared decision domain (policy-axis alignment)
+    domain_object:   0.20    # shared data object (Instance/Billing/Role, etc.)
+    screen_surface:  0.20    # shared screen surface (same primary_screen)
+    dependency_cone: 0.15    # 50%+ overlap in the dependency cone
+    publication_fit: 0.15    # D2/D3 chapter fit (does it read naturally as one chapter)
+  score_total: 0.85  # >= 0.55 merges the cluster (spec §4-axis weighting)
 
-# ───── FR / 의존성 / 참조 ─────
-fr_refs:                # D1 요구사항정의서에서 인용 (작성 X, link only)
+# ───── FR / Dependencies / References ─────
+fr_refs:                # cited from D1 Requirements Definition (do not author here, link only)
   - "FR-101"
   - "FR-103"
   - "FR-108"
 domain_objects: ["Instance", "InstanceSpec"]
-policy_axes:    ["가격 축", "자원 한도 축"]
-primary_screen: "SCR-001"  # 주된 노출 화면 (D3 어셈블 시 사용)
+policy_axes:    ["pricing axis", "resource-limit axis"]
+primary_screen: "SCR-001"  # primary screen exposed (used when assembling D3)
 
-inherits_from:           # 상위 의존 (Phase -1 산출 / 다른 cluster)
-  - "{PREFIX}-B-001"     # 공통 정책
-  - "G2-K-PR-00"          # 같은 capability 의 상위 cluster
+inherits_from:           # upstream dependency (Phase -1 output / another cluster)
+  - "{PREFIX}-B-001"     # common policy
+  - "PX-K-PR-00"          # a parent cluster within the same capability
 
-related_screens:         # 영향 화면 (D3 transpose 보조)
+related_screens:         # affected screens (aids the D3 transpose)
   - "SCR-001"
   - "SCR-002"
 
-research_refs:           # D5 타사조사에서 인용 (작성 X, link only)
+research_refs:           # cited from D5 Competitor Research (do not author here, link only)
   - "research.md#aws-rds-instance-types"
   - "research.md#gcp-cloudsql-pricing"
 
-# ───── Phase 4 transpose 출력 대상 ─────
+# ───── Phase 4 Transpose Output Targets ─────
 deliverable_targets:
-  - D2          # 정책정의서 (cluster §1 transpose)
-  - D3          # 화면설계서 (cluster §2 transpose)
-  # - Da_api      # §α-API panel 이 있을 때만 (render_transpose --deliverable Da_api)
-  # - Da_db       # §α-DB panel 이 있을 때만
-  # - Da_migration# §α-MIG panel 이 있을 때만
+  - D2          # Policy Definition (cluster §1 transpose)
+  - D3          # Screen Design (cluster §2 transpose)
+  # - Da_api      # only when a §α-API panel exists (render_transpose --deliverable Da_api)
+  # - Da_db       # only when a §α-DB panel exists
+  # - Da_migration# only when a §α-MIG panel exists
 
-# 공통 셸 여부 (split-deliverable 발행 전용 — fix-plan-dossier-publish-split).
-# true 면 D3 화면설계서의 일반 챕터에서 제외하고 §부록 A 공통 셸로 어셈블된다.
-# /fanout cluster-mode 가 cluster_id(COMMON*) / capability(Common) 기준 자동 방출.
-# dossier-page 발행 모드는 본 필드를 무시한다(기본 false, additive).
+# Common-shell flag (split-deliverable publish mode only — fix-plan-dossier-publish-split).
+# When true, this is excluded from D3 Screen Design's regular chapters and assembled instead into §Appendix A common shell.
+# /fanout cluster-mode auto-emits this based on cluster_id(COMMON*) / capability(Common).
+# dossier-page publish mode ignores this field (defaults to false, additive).
 is_common_shell: false
 
-# ───── Phase 3 색상 cycling 상태 ─────
-# 자동 산출 — 수동 설정 금지. apply_color_cycling.py 가 publish 시 갱신.
+# ───── Phase 3 Color-Cycling State ─────
+# Auto-generated — do not set manually. Updated by apply_color_cycling.py at publish time.
 color_state: null
 ---
 
-::: {.panel section="§1 정책 결정 (D2 → 정책정의서로 transpose)"}
-## §1 정책 결정
+::: {.panel section="§1 Policy Decisions (D2 → transposed into Policy Definition)"}
+## §1 Policy Decisions
 
-> 본 cluster 의 정책 결정. publish 시 D2 정책정의서의 cluster 챕터로 어셈블.
+> This cluster's policy decisions. Assembled at publish time into D2 Policy Definition's cluster chapter.
 
-### §1-1 정책 범위 / 적용 조건
+### §1-1 Policy Scope / Applicability Conditions
 
-본 cluster 의 정책이 적용되는 조건·경계 설명.
+Describes the conditions and boundaries under which this cluster's policy applies.
 
-| 항목 | 내용 |
+| Item | Content |
 |---|---|
-| **적용 대상** | {{대상 — 예: 인스턴스 생성 시점부터 종료까지}} |
-| **예외** | {{예외 사례}} |
-| **우선순위** | {{상충 시 결정 원칙}} |
+| **Applies To** | {{scope — e.g. from instance creation through termination}} |
+| **Exceptions** | {{exception cases}} |
+| **Priority** | {{decision principle in case of conflict}} |
 
-### §1-2 핵심 규칙
+### §1-2 Core Rules
 
 <!-- col-widths: 20%, 30%, 50% -->
-| 규칙 ID | 조건 | 정책 |
+| Rule ID | Condition | Policy |
 |---|---|---|
-| POL-{{N}} | {{조건}} | {{규칙 본문}} |
-| POL-{{N+1}} | {{조건}} | {{규칙 본문}} |
+| POL-{{N}} | {{condition}} | {{rule body}} |
+| POL-{{N+1}} | {{condition}} | {{rule body}} |
 
-### §1-3 상태 / 라이프사이클
+### §1-3 Status / Lifecycle
 
-본 cluster 가 다루는 상태 정의:
+Status definitions handled by this cluster:
 
-| 상태 | 정의 | 진입 조건 | 다음 상태 |
+| Status | Definition | Entry Condition | Next Status |
 |---|---|---|---|
-| {{상태명}} | {{정의}} | {{조건}} | {{전이}} |
+| {{status name}} | {{definition}} | {{condition}} | {{transition}} |
 
-### §1-4 오류 / 예외 처리
+### §1-4 Error / Exception Handling
 
-| 오류 코드 | 발생 조건 | 처리 |
+| Error Code | Trigger Condition | Handling |
 |---|---|---|
-| ERR-{{N}} | {{조건}} | {{처리 정책}} |
+| ERR-{{N}} | {{condition}} | {{handling policy}} |
 
 :::
 
-::: {.panel section="§2 화면 설계 (D3 → 화면설계서로 transpose)"}
-## §2 화면 설계
+::: {.panel section="§2 Screen Design (D3 → transposed into Screen Design)"}
+## §2 Screen Design
 
-> 본 cluster 의 UI 표면. publish 시 D3 화면설계서의 cluster 챕터로 어셈블.
-> 이전 별도 screen WO 트랙을 폐기하고 본 섹션이 화면설계서 산출을 책임진다.
+> This cluster's UI surface. Assembled at publish time into D3 Screen Design's cluster chapter.
+> The previous separate screen-WO track has been retired; this section is now responsible for producing the screen design.
 
-### §2-1 주요 화면 / 화면 ID
+### §2-1 Key Screens / Screen IDs
 
-| Screen ID | 화면명 | 진입 동선 | 비고 |
+| Screen ID | Screen Name | Entry Path | Notes |
 |---|---|---|---|
-| SCR-{{NNN}} | {{화면명}} | {{어디서 진입}} | {{}} |
+| SCR-{{NNN}} | {{screen name}} | {{where the user enters from}} | {{}} |
 
-### §2-2 화면 구성 / 컴포넌트
+### §2-2 Screen Composition / Components
 
-각 화면의 핵심 컴포넌트·필드·동작:
+Core components, fields, and behaviors for each screen:
 
 ```
 SCR-{{NNN}}
-├─ 헤더: {{타이틀 / 액션 버튼}}
-├─ 본문: {{입력 폼 / 목록 / 상세}}
-└─ 푸터: {{보조 액션}}
+├─ Header: {{title / action buttons}}
+├─ Body: {{input form / list / detail}}
+└─ Footer: {{secondary actions}}
 ```
 
-### §2-3 인터랙션 / 정책 연결
+### §2-3 Interaction / Policy Linkage
 
-§1 정책 규칙이 화면에서 어떻게 노출되는가:
+How the §1 policy rules are exposed on the screen:
 
-| 화면 영역 | 정책 참조 | 노출 방식 |
+| Screen Area | Policy Reference | Exposure Method |
 |---|---|---|
-| {{영역}} | POL-{{N}} | {{메시지/필드 상태/버튼 enable}} |
+| {{area}} | POL-{{N}} | {{message / field state / button enable}} |
 
-### §2-4 빈 상태 / 오류 화면
+### §2-4 Empty States / Error Screens
 
-| 상태 | 표시 | 액션 |
+| State | Display | Action |
 |---|---|---|
-| 빈 목록 | {{문구}} | {{유도 액션}} |
-| 권한 없음 | {{문구}} | {{대안}} |
+| Empty list | {{copy}} | {{prompted action}} |
+| No permission | {{copy}} | {{alternative}} |
 
-### §2-5 디자인 토큰 (공통 셸 참조)
+### §2-5 Design Tokens (reference the common shell)
 
-> 색상/타이포/간격은 공통 셸 cluster (G2-COMMON-NavShell) 의 토큰 참조.
-> 본 cluster 에서는 토큰 재정의 금지 — SSoT 경계 보호.
+> Colors/typography/spacing reference the tokens of the common-shell cluster (PX-COMMON-NavShell).
+> Redefining tokens in this cluster is prohibited — protects the SSoT boundary.
 
 :::
 
-<!-- ═══ §α 기술 산출물 (선택 — 해당 cluster 에 기술 deliverable 이 있을 때만) ═══ -->
-<!-- render_transpose 는 section 이 "§α" 로 시작하고 type 키워드(API/DB/마이그레이션)를 -->
-<!-- 포함하는 panel 을 추출해 Dα 카테고리별 별도 페이지로 어셈블한다. 없으면 transpose -->
-<!-- 시 exit 2(해당 cluster 0건) 로 안전 skip. frontmatter deliverable_targets 에 -->
-<!-- 대응 Da_api / Da_db / Da_migration 를 함께 등재해야 발행 대상이 된다. -->
-<!-- §3(데이터/의존성)은 내부 작업메타(publish 제외)이고, §α 는 발행 정본이다 — 중복 작성 금지. -->
+<!-- ═══ §α Technical Deliverables (optional — only when this cluster has a technical deliverable) ═══ -->
+<!-- render_transpose extracts panels whose section starts with "§α" and contains a type -->
+<!-- keyword (API/DB/migration), assembling them into a separate page per Dα category. -->
+<!-- If none exist, transpose safely skips with exit 2 (0 items for this cluster). The -->
+<!-- corresponding Da_api / Da_db / Da_migration must also be registered in frontmatter deliverable_targets to become a publish target. -->
+<!-- §3 (data/dependencies) is internal authoring metadata (excluded from publish), while §α is the canonical published content — do not duplicate. -->
 
-::: {.panel section="§α-API API 스펙 (Dα → API 스펙으로 transpose · 선택)"}
-## §α-API API 스펙
+::: {.panel section="§α-API API Spec (Dα → transposed into API Spec · optional)"}
+## §α-API API Spec
 
-> 본 cluster 가 API 를 노출할 때만 작성. publish 시 Dα API 스펙(`Dα_api.md` 양식) 페이지로
-> 어셈블된다. 미해당 cluster 는 본 panel 을 통째로 삭제한다(빈 placeholder 잔존 금지).
+> Author this only when this cluster exposes an API. Assembled at publish time into a Dα API Spec
+> page (using the `Dα_api.md` template). Clusters that don't apply must delete this entire panel (no empty placeholders left behind).
 
-### §α-API-1 인증 / 공통 헤더
-| 항목 | 값 |
+### §α-API-1 Authentication / Common Headers
+| Item | Value |
 |---|---|
-| 인증 방식 | {{Bearer / API Key / OAuth}} |
+| Auth method | {{Bearer / API Key / OAuth}} |
 | base URL | {{/api/v1/...}} |
 
-### §α-API-2 엔드포인트
+### §α-API-2 Endpoints
 <!-- col-widths: 12%, 28%, 30%, 30% -->
-| 메서드 | 경로 | 요청 | 응답 |
+| Method | Path | Request | Response |
 |---|---|---|---|
-| {{GET}} | {{/resources}} | {{쿼리/바디}} | {{200 스키마}} |
+| {{GET}} | {{/resources}} | {{query/body}} | {{200 schema}} |
 
-### §α-API-3 에러 코드
-| 코드 | 조건 | 처리 |
+### §α-API-3 Error Codes
+| Code | Condition | Handling |
 |---|---|---|
-| {{ERR-NN}} | {{조건}} | {{메시지/HTTP status}} |
+| {{ERR-NN}} | {{condition}} | {{message/HTTP status}} |
 
 :::
 
-::: {.panel section="§α-DB DB 스키마 (Dα → DB 스키마로 transpose · 선택)"}
-## §α-DB DB 스키마
+::: {.panel section="§α-DB DB Schema (Dα → transposed into DB Schema · optional)"}
+## §α-DB DB Schema
 
-> 본 cluster 가 신규 테이블·스키마를 정의할 때만 작성. publish 시 Dα DB 스키마
-> (`Dα_db.md` 양식) 페이지로 어셈블. 스키마 정본은 본 panel 이며, §3 데이터 모델은
-> 내부 의존성 스케치다(정본 중복 금지 — §3 에서는 본 panel 참조).
+> Author this only when this cluster defines new tables/schema. Assembled at publish time into a Dα DB Schema
+> page (using the `Dα_db.md` template). This panel is the canonical schema; §3 Data Model is
+> an internal dependency sketch (no duplication of canonical content — §3 should reference this panel).
 
-### §α-DB-1 테이블 — {{TABLE}}
+### §α-DB-1 Table — {{TABLE}}
 <!-- col-widths: 22%, 18%, 12%, 48% -->
-| 컬럼 | 타입 | 제약 | 설명 |
+| Column | Type | Constraint | Description |
 |---|---|---|---|
 | {{id}} | {{bigint}} | {{PK}} | {{}} |
 
-### §α-DB-2 인덱스 / FK
-| 종류 | 대상 | 비고 |
+### §α-DB-2 Index / FK
+| Kind | Target | Notes |
 |---|---|---|
-| {{INDEX / FK}} | {{컬럼·참조}} | {{}} |
+| {{INDEX / FK}} | {{column · reference}} | {{}} |
 
 :::
 
-::: {.panel section="§α-MIG 마이그레이션 (Dα → 마이그레이션 플랜으로 transpose · 선택)" style="warning"}
-## §α-MIG 마이그레이션
+::: {.panel section="§α-MIG Migration (Dα → transposed into the Migration Plan · optional)" style="warning"}
+## §α-MIG Migration
 
-> 데이터 이행·스키마 변경이 필요할 때만 작성. publish 시 Dα 마이그레이션 플랜
-> (`Dα_migration.md` 양식) 페이지로 어셈블. 롤백 절차 필수.
+> Author this only when data migration or schema changes are required. Assembled at publish time into a Dα Migration Plan
+> page (using the `Dα_migration.md` template). A rollback procedure is required.
 
-### §α-MIG-1 단계 (Step-by-step)
-| 단계 | 작업 | 검증 | 롤백 |
+### §α-MIG-1 Steps (Step-by-step)
+| Step | Task | Verification | Rollback |
 |---|---|---|---|
 | {{S-01}} | {{}} | {{}} | {{R-01}} |
 
-### §α-MIG-2 사전 조건 / 영향
-- {{대상 테이블·다운타임·영향 범위}}
+### §α-MIG-2 Preconditions / Impact
+- {{target tables · downtime · impact scope}}
 
 :::
 
-::: {.panel section="§3 데이터 / 의존성 (내부용, publish 제외)"}
-## §3 데이터 / 의존성
+::: {.panel section="§3 Data / Dependencies (internal use, excluded from publish)"}
+## §3 Data / Dependencies
 
-> 본 섹션은 cluster 작성 메타. publication_prefilter 가 제거하므로 D2/D3 에 포함되지 않는다.
+> This section is cluster-authoring metadata. It is removed by publication_prefilter, so it is not included in D2/D3.
 
-### §3-1 데이터 모델
+### §3-1 Data Model
 
 ```mermaid
 classDiagram
@@ -245,112 +245,112 @@ classDiagram
   {{DomainObject1}} --> {{DomainObject2}}
 ```
 
-### §3-2 외부 의존성
+### §3-2 External Dependencies
 
-- 다른 cluster: {{cluster_id}} (§정책 / §화면 의존)
-- 외부 API: {{api_endpoint}}
-- 인프라: {{DB / cache / queue}}
+- Other cluster: {{cluster_id}} (§policy / §screen dependency)
+- External API: {{api_endpoint}}
+- Infrastructure: {{DB / cache / queue}}
 
-### §3-3 성능 / 부하 고려사항
+### §3-3 Performance / Load Considerations
 
-본 cluster 가 시스템 부하에 미치는 영향:
+This cluster's impact on system load:
 
-| 항목 | 예상 | 임계 | 비고 |
+| Item | Expected | Threshold | Notes |
 |---|---|---|---|
 | QPS | {{}} | {{}} | {{}} |
-| 응답 시간 | {{ms}} | {{ms}} | {{}} |
+| Response time | {{ms}} | {{ms}} | {{}} |
 
 :::
 
-::: {.panel section="§4 Open Questions / Upstream Feedback (내부용, publish 제외)" style="tbd"}
+::: {.panel section="§4 Open Questions / Upstream Feedback (internal use, excluded from publish)" style="tbd"}
 ## §4 Open Questions / Upstream Feedback
 
-> 본 섹션은 cluster 작성 중 발견한 의문 / 상위 산출물(D1/D5) 에 대한 환류 요청.
-> publication_prefilter 가 제거하므로 D2/D3 에 포함되지 않는다.
+> This section covers questions found while authoring the cluster, and reflow requests to upstream deliverables (D1/D5).
+> It is removed by publication_prefilter, so it is not included in D2/D3.
 >
-> 환류 흐름: /integrate 가 UPSTREAM_GAP BLOCK 으로 분류 → /draft-req --upstream-feedback
->            으로 D1/D5 v++ 리비전.
+> Reflow flow: /integrate classifies it as an UPSTREAM_GAP BLOCK → /draft-req --upstream-feedback
+>            revises D1/D5 to v++.
 
-### §4-1 Open Questions (자체 해결 가능)
+### §4-1 Open Questions (self-resolvable)
 
-| OQ ID | 질문 | 담당 | 목표일 | 비고 |
+| OQ ID | Question | Owner | Target Date | Notes |
 |---|---|---|---|---|
-| OQ-{{N}} | {{질문 한 줄}} | {{담당}} | {{날짜}} | {{}} |
+| OQ-{{N}} | {{one-line question}} | {{owner}} | {{date}} | {{}} |
 
-### §4-2 Upstream Feedback (D1/D5 리비전 후보)
+### §4-2 Upstream Feedback (D1/D5 revision candidates)
 
-다음 BLOCK 카테고리로 분류 — `/integrate` 가 자동 인식:
+Classified into the following BLOCK categories — auto-recognized by `/integrate`:
 
-#### REQ_MISSING — 누락 FR (D1 추가 후보)
-- [ ] {{cluster 작성 중 발견한 누락 요구사항}}
+#### REQ_MISSING — Missing FR (D1 addition candidate)
+- [ ] {{missing requirement found while authoring the cluster}}
 
-#### POLICY_CONFLICT — 정책 충돌 (decisions.md DEC 신규 후보)
-- [ ] {{다른 cluster 또는 공통 정책과의 상충}}
+#### POLICY_CONFLICT — Policy Conflict (new decisions.md DEC candidate)
+- [ ] {{conflict with another cluster or common policy}}
 
-#### RESEARCH_GAP — 타사조사 부족 (D5 보강 후보)
-- [ ] {{타사 비교 데이터 부족 — research-auto 재실행 고려}}
+#### RESEARCH_GAP — Competitor Research Gap (D5 enhancement candidate)
+- [ ] {{insufficient competitor comparison data — consider rerunning research-auto}}
 
-#### TERM_AMBIGUOUS — 용어 모호 (spec-catalog / terms 후보)
-- [ ] {{용어 정의 충돌 또는 누락}}
+#### TERM_AMBIGUOUS — Ambiguous Term (spec-catalog / terms candidate)
+- [ ] {{conflicting or missing term definition}}
 
-### §4-3 결정 trail (DEC 등재 대상)
+### §4-3 Decision Trail (DEC registration candidates)
 
-본 cluster 작성 중 PM 결정 사항:
+PM decisions made while authoring this cluster:
 
-| 결정 | 결정자 | 일자 | 영향 cluster | DEC ID (등재 후) |
+| Decision | Decider | Date | Affected Cluster | DEC ID (after registration) |
 |---|---|---|---|---|
-| {{결정 한 줄}} | {{PM}} | {{날짜}} | {{}} | DEC-{{}} |
+| {{one-line decision}} | {{PM}} | {{date}} | {{}} | DEC-{{}} |
 
 :::
 
 <!-- ────────────────────────────────────────────────────── -->
-<!-- 이 아래는 cluster 작성 가이드 (publication_prefilter 가 제거) -->
+<!-- Below this is the cluster-authoring guide (removed by publication_prefilter) -->
 <!-- ────────────────────────────────────────────────────── -->
 
 <!--
-## 작성 가이드 (publication_prefilter 가 본문에서 제거)
+## Authoring Guide (removed from the body by publication_prefilter)
 
-### 채우기 순서
-1. **frontmatter cluster 메타** — graph-gen 산출 그대로 (수동 수정 금지)
-2. **§1 정책 결정** — 핵심 작업, 가장 시간 들여 작성
-3. **§2 화면 설계** — §1 정책이 어떻게 노출되는지 (정책 ↔ UI 결합 PM 사고)
-4. **§α 기술 산출물** — API/DB/마이그레이션이 있는 cluster 만 (없으면 panel 삭제)
-5. **§3 데이터/의존성** — 다른 cluster 와의 경계 확인 (내부 메타)
-6. **§4 Open Questions** — 작성 중 끊임없이 추가 (자체 해결 못 하면 UPSTREAM_GAP)
+### Fill-In Order
+1. **frontmatter cluster metadata** — keep as produced by graph-gen (do not edit manually)
+2. **§1 Policy Decisions** — the core work; spend the most time here
+3. **§2 Screen Design** — how the §1 policy is exposed (PM should think in terms of policy ↔ UI coupling)
+4. **§α Technical Deliverables** — only for clusters that have an API/DB/migration (delete the panel if none)
+5. **§3 Data/Dependencies** — confirm boundaries with other clusters (internal metadata)
+6. **§4 Open Questions** — keep adding continuously while authoring (if not self-resolvable, mark UPSTREAM_GAP)
 
-### 검증 (필수)
+### Validation (required)
 - `python scripts/lint_publication_syntax.py --input drafts/cluster_*.draft.md`
 - `python scripts/md_to_storage.py --input drafts/cluster_*.draft.md --output /tmp/x.xml --validate`
 - `python scripts/round_trip_test.py`
 
-### /integrate R1~R3 사이클
-- R1: 본 draft 1차 작성 → /integrate 가 HARD/SOFT BLOCK 감지
-- R2: BLOCK 해소 + UPSTREAM_GAP 분류 → /draft-req --upstream-feedback (필요 시)
-- R3: 잔여 점검 → /confirm 동결
+### /integrate R1-R3 Cycle
+- R1: first draft of this file → /integrate detects HARD/SOFT BLOCK
+- R2: resolve BLOCKs + classify UPSTREAM_GAP → /draft-req --upstream-feedback (if needed)
+- R3: final check → /confirm to freeze
 
-### section 의 transpose 대상
-- §1 → D2 정책정의서 (cluster 챕터)
-- §2 → D3 화면설계서 (cluster 챕터)
-- §α-API / §α-DB / §α-MIG → Dα 카테고리별 별도 페이지 (있을 때만, type 키워드 분기)
-- §3 → 비공개 (작성 메타)
-- §4 → 비공개 (개발자 노트 / integrate 입력)
+### Transpose Targets by Section
+- §1 → D2 Policy Definition (cluster chapter)
+- §2 → D3 Screen Design (cluster chapter)
+- §α-API / §α-DB / §α-MIG → separate page per Dα category (only when present, branched by type keyword)
+- §3 → private (authoring metadata)
+- §4 → private (developer notes / /integrate input)
 
-### 색상 cycling
-publish 시 apply_color_cycling.py 가 frontmatter color_state 를 참조해 자동 산출.
-PM 이 수동으로 색상 span (`[..]{.color-green}` 등) 작성 금지 — 자동 산출만.
+### Color Cycling
+At publish time, apply_color_cycling.py auto-generates this by reading the frontmatter color_state.
+The PM must not manually author color spans (`[..]{.color-green}`, etc.) — auto-generated only.
 
-### lazy-split 트리거
-cluster draft 가 다음 임계 초과 시 child cluster 로 분할 권고 (사양 5D):
-- 본문 > 1500 lines
-- §1+§2 의 정책/화면 항목 수 > 8개
-- R2 BLOCK 누적 (HARD+SOFT) > 5건
-- PM 명시 `--split` 플래그
+### lazy-split Trigger
+When a cluster draft exceeds the following thresholds, splitting into child clusters is recommended (spec 5D):
+- body > 1500 lines
+- number of policy/screen items in §1+§2 > 8
+- accumulated R2 BLOCKs (HARD+SOFT) > 5
+- PM explicitly passes the `--split` flag
 
-split 시 자식 cluster ID: 부모 + suffix (예: G2-K-PR-01-a, G2-K-PR-01-b).
+On split, child cluster IDs: parent + suffix (e.g. PX-K-PR-01-a, PX-K-PR-01-b).
 
-### 작성 금지
-- 다른 cluster 의 정책 본문 인용 X (link 만 — `[[POL §X-Y]]`)
-- 공통 ({PREFIX}-B) 본문 재출력 X (render_assemble 이 인라인 전개)
-- 화면 디자인 토큰 재정의 X (공통 셸 cluster 참조)
-- 자체 검증 / 작성 메타를 §1/§2 안에 X (§3/§4 에 배치)
+### Prohibited When Authoring
+- Quoting another cluster's policy body (link only — `[[POL §X-Y]]`)
+- Re-printing common ({PREFIX}-B) body content (render_assemble expands it inline)
+- Redefining screen design tokens (reference the common-shell cluster instead)
+- Placing self-verification / authoring metadata inside §1/§2 (put it in §3/§4 instead)
 -->

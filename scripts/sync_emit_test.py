@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""sync_emit 유닛 테스트 (fix-plan-dossier-publish G1)."""
+"""sync_emit unit tests (fix-plan-dossier-publish G1)."""
 import json
 import os
 import sys
@@ -20,10 +20,10 @@ DOSSIERS = [
 SYNC_QUEUE = """# sync-queue — dbaas
 > **OUTDATED: 1 · REMOTE-DRIFT: 0 · PENDING: 0**
 
-| 파일 | doc_id | meta.json | 기준값 | 상태 | 사유 |
+| File | doc_id | meta.json | baseline | Status | Reason |
 |---|---|---|---|---|---|
 | G2-C-BDB-00.draft.md | `G2-C-BDB-00` | 00.meta.json | 2026-06-06 | **SYNCED** | ok |
-| G2-C-BDB-01.draft.md | `G2-C-BDB-01` | 01.meta.json | 2026-06-07 | **OUTDATED** | push 필요 |
+| G2-C-BDB-01.draft.md | `G2-C-BDB-01` | 01.meta.json | 2026-06-07 | **OUTDATED** | push needed |
 """
 
 
@@ -34,9 +34,9 @@ def test_parse_sync_queue_picks_most_severe():
 
 
 def test_parse_sync_queue_two_rows_per_doc_takes_severe():
-    text = SYNC_QUEUE + "| G2-C-BDB-00.draft.md | `G2-C-BDB-00` | 00 | v1/v2 | **REMOTE-DRIFT** | 원격 최신 |\n"
+    text = SYNC_QUEUE + "| G2-C-BDB-00.draft.md | `G2-C-BDB-00` | 00 | v1/v2 | **REMOTE-DRIFT** | remote is newer |\n"
     st = M.parse_sync_queue(text)
-    assert st["G2-C-BDB-00"] == "REMOTE-DRIFT"  # SYNCED 보다 심각 → 승격
+    assert st["G2-C-BDB-00"] == "REMOTE-DRIFT"  # more severe than SYNCED -> promoted
 
 
 def test_transform_sync_joins_status_and_pageid():
@@ -46,14 +46,14 @@ def test_transform_sync_joins_status_and_pageid():
     by = {it["docId"]: it for it in out["items"]}
     assert by["G2-C-BDB-00"]["pageId"] == "12345"
     assert by["G2-C-BDB-00"]["status"] == "SYNCED"
-    # page_id 없는 dossier 는 SYNCED 라도 PENDING 보정
-    assert by["G2-C-BDB-01"]["status"] == "OUTDATED"  # 원래 OUTDATED 유지
+    # a dossier with no page_id is corrected to PENDING even if SYNCED
+    assert by["G2-C-BDB-01"]["status"] == "OUTDATED"  # keeps its original OUTDATED
     assert out["totals"]["outdated"] == 1
 
 
 def test_no_pageid_synced_demoted_to_pending():
     st = {"G2-C-BDB-00": "SYNCED"}
-    out = M.transform_sync("d", [DOSSIERS[0]], st, set(), {})  # page_id 없음
+    out = M.transform_sync("d", [DOSSIERS[0]], st, set(), {})  # no page_id
     assert out["items"][0]["status"] == "PENDING"
 
 
@@ -77,13 +77,13 @@ def test_items_sorted_by_severity():
     st = {"G2-C-BDB-00": "SYNCED", "G2-C-BDB-01": "REMOTE-DRIFT"}
     out = M.transform_sync("d", DOSSIERS, st, set(),
                            {"G2-C-BDB-00": "1", "G2-C-BDB-01": "2"})
-    assert out["items"][0]["status"] == "REMOTE-DRIFT"  # 가장 심각 먼저
+    assert out["items"][0]["status"] == "REMOTE-DRIFT"  # most severe first
 
 
-# ── split-deliverable 발행 모드 (fix-plan-dossier-publish-split) ────────────
+# -- split-deliverable publication mode (fix-plan-dossier-publish-split) --------
 
 def _scaffold_product(pdir: Path, publication_mode: str | None):
-    """최소 product 디렉토리 — cluster_index + project-mode."""
+    """Minimal product directory — cluster_index + project-mode."""
     (pdir / "work-orders").mkdir(parents=True)
     (pdir / "reports").mkdir(parents=True)
     (pdir / "graph").mkdir(parents=True)
@@ -106,14 +106,14 @@ def test_collect_split_emits_two_deliverables():
     with tempfile.TemporaryDirectory() as d:
         pdir = Path(d)
         _scaffold_product(pdir, "split-deliverable")
-        # sync-queue 에 deliverable 2행 (render_sync_check 산출 모사)
+        # 2 deliverable rows in sync-queue (mimics render_sync_check output)
         (pdir / "reports" / "sync-queue.md").write_text(
-            "| 파일 | doc_id | meta.json | 기준값 | 상태 | 사유 |\n"
+            "| File | doc_id | meta.json | baseline | Status | Reason |\n"
             "|---|---|---|---|---|---|\n"
-            "| 정책정의서 | `02-policy-dbaas` | m | x | **OUTDATED** | push 필요 |\n"
-            "| 화면설계서 | `03-screen-design-dbaas` | m | x | **SYNCED** | ok |\n",
+            "| Policy Definition | `02-policy-dbaas` | m | x | **OUTDATED** | push needed |\n"
+            "| Screen Design | `03-screen-design-dbaas` | m | x | **SYNCED** | ok |\n",
             encoding="utf-8")
-        # per-deliverable meta (page_id 존재)
+        # per-deliverable meta (page_id present)
         src = pdir / "confluence-source"; src.mkdir()
         (src / "02-policy-dbaas.meta.json").write_text(
             json.dumps({"id": "111"}), encoding="utf-8")
@@ -123,7 +123,7 @@ def test_collect_split_emits_two_deliverables():
         out = M._collect(pdir, "dbaas")
         assert out["kind"] == "sync"
         by = {it["docId"]: it for it in out["items"]}
-        # 발행 단위 = 2개 deliverable + dossier 는 SOURCE-ONLY 정보 행(감사 갭2)
+        # publication units = 2 deliverables + dossier is a SOURCE-ONLY info row (audit gap 2)
         assert set(by) == {"02-policy-dbaas", "03-screen-design-dbaas",
                            "G2-C-BDB-00", "G2-C-BDB-01"}
         assert by["02-policy-dbaas"]["status"] == "OUTDATED"
@@ -132,21 +132,21 @@ def test_collect_split_emits_two_deliverables():
         assert by["G2-C-BDB-00"]["status"] == "SOURCE-ONLY"
         assert by["G2-C-BDB-01"]["status"] == "SOURCE-ONLY"
         assert out["totals"]["outdated"] == 1
-        # SOURCE-ONLY 는 최저 severity — 정렬상 deliverable 뒤
+        # SOURCE-ONLY is lowest severity — sorts after the deliverables
         assert out["items"][-1]["status"] == "SOURCE-ONLY"
 
 
 def test_collect_dossier_page_mode_unchanged():
-    # project-mode 없음 → dossier-page 기본 → 발행 단위 = per-dossier
+    # no project-mode -> defaults to dossier-page -> publication unit = per-dossier
     with tempfile.TemporaryDirectory() as d:
         pdir = Path(d)
         _scaffold_product(pdir, None)
         out = M._collect(pdir, "dbaas")
         docs = {it["docId"] for it in out["items"]}
-        assert docs == {"G2-C-BDB-00", "G2-C-BDB-01"}  # dossier 단위 유지
+        assert docs == {"G2-C-BDB-00", "G2-C-BDB-01"}  # stays at dossier granularity
 
 
-# ── 공통 발행 문서 D1/D4/D5 (감사 2026-06-11 갭1) ───────────────────────────
+# -- common publication docs D1/D4/D5 (audit 2026-06-11 gap 1) ------------------
 
 def test_collect_includes_common_docs_when_sources_exist():
     with tempfile.TemporaryDirectory() as d:
@@ -165,8 +165,8 @@ def test_collect_includes_common_docs_when_sources_exist():
         by = {it["docId"]: it for it in out["items"]}
         assert {"01-requirements-dbaas", "04-meetings-dbaas", "05-research-dbaas"} <= set(by)
         assert by["01-requirements-dbaas"]["pageId"] == "910"
-        assert by["01-requirements-dbaas"]["capability"] == "요구사항정의서"
-        # queue 행 없음 → 보수적 PENDING
+        assert by["01-requirements-dbaas"]["capability"] == "Requirements Definition"
+        # no queue row -> conservatively PENDING
         assert by["04-meetings-dbaas"]["status"] == "PENDING"
 
 

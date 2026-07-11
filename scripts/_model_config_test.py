@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""_model_config 회귀 테스트 — 역할 라벨 → provider/endpoint 라우팅(BYOK)."""
+"""_model_config regression tests — role label -> provider/endpoint routing (BYOK)."""
 from __future__ import annotations
 
 import pytest
@@ -34,7 +34,7 @@ def test_env_override_provider_colon_model(monkeypatch):
     monkeypatch.setenv("ORANGE_MODEL_BATCH", "ollama:qwen3:4b")
     spec = mc.resolve_role("batch")
     assert spec["provider"] == "ollama"
-    assert spec["model"] == "qwen3:4b"   # 모델명 내부 콜론 보존
+    assert spec["model"] == "qwen3:4b"   # colon inside model name is preserved
     assert spec["local"] is True
     assert spec["endpoint"].endswith("/v1")
 

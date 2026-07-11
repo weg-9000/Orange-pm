@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""tenant_emit — 테넌트 레지스트리 → 정규화 JSON (viz 거버넌스, Phase 6).
+"""tenant_emit — tenant registry -> normalized JSON (viz governance, Phase 6).
 
-플랫폼 hub 의 tenant-config.yml 을 viz 가 소비할 정규화 계약으로 변환한다.
-읽기 전용. --emit-json 계약(_emit_common).
+Converts the platform hub's tenant-config.yml into the normalized contract
+that viz consumes. Read-only. --emit-json contract (_emit_common).
 
     python tenant_emit.py --hub-root <platform> --emit-json
-출력: {kind:"tenants", activeTenant, tenants:[{id,label,root,gatePreset}], version}
+Output: {kind:"tenants", activeTenant, tenants:[{id,label,root,gatePreset}], version}
 """
 from __future__ import annotations
 
@@ -33,7 +33,7 @@ def main() -> int:
     if args.from_fixture:
         return C.emit(C.load_fixture(args.from_fixture))
     if not args.hub_root:
-        sys.stderr.write("--hub-root 필요\n")
+        sys.stderr.write("--hub-root required\n")
         return 2
     return C.emit(transform(args.hub_root))
 

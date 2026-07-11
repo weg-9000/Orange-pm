@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""tenant_admin 회귀 테스트 — 멀티테넌시 생성/격리 (Phase 4)."""
+"""tenant_admin regression tests — multi-tenancy create/isolation (Phase 4)."""
 from __future__ import annotations
 
 from pathlib import Path
@@ -11,7 +11,7 @@ import tenant_admin as ta
 
 
 def _platform(tmp_path: Path) -> Path:
-    """최소 플랫폼 hub: CONTEXT(+gates/_presets.yml) + tenant-config.yml."""
+    """Minimal platform hub: CONTEXT(+gates/_presets.yml) + tenant-config.yml."""
     hub = tmp_path / "Platform"
     ctx = hub / "CONTEXT"
     (ctx / "gates").mkdir(parents=True)
@@ -21,7 +21,7 @@ def _platform(tmp_path: Path) -> Path:
         "presets:\n  standard:\n    gates:\n      - discovery-exit-gate\n"
         "  strict:\n    gates:\n      - discovery-exit-gate\n", encoding="utf-8")
     (hub / "tenant-config.yml").write_text(
-        "active_tenant: default\n\ntenants:\n  - id: default\n    label: 기본\n"
+        "active_tenant: default\n\ntenants:\n  - id: default\n    label: Default\n"
         '    root: "."\n    gate_preset: standard\n', encoding="utf-8")
     return hub
 
@@ -43,12 +43,12 @@ def test_create_tenant_scaffolds_and_registers(tmp_path):
     hub = _platform(tmp_path)
     r = ta.create_tenant(hub, "acme", label="Acme", gate_preset="strict")
     assert r["status"] == "created" and r["root"] == "tenants/acme"
-    # 격리된 CONTEXT 복사 확인
+    # verify the isolated CONTEXT copy
     assert (hub / "tenants/acme/CONTEXT/layer-config.md").exists()
     assert (hub / "tenants/acme/PROJECTS").is_dir()
-    # 프리셋 마커
+    # preset marker
     assert (hub / "tenants/acme/CONTEXT/gates/_active-preset.txt").read_text(encoding="utf-8").strip() == "strict"
-    # 레지스트리 등록
+    # registry entry
     reg = ta.parse_registry(hub)
     assert any(t["id"] == "acme" and t["root"] == "tenants/acme" for t in reg["tenants"])
 
@@ -67,7 +67,7 @@ def test_create_bad_preset_rejected(tmp_path):
 
 def test_tenant_root_resolution(tmp_path):
     hub = _platform(tmp_path)
-    assert ta.tenant_root(hub, "default") == hub          # root "." → 플랫폼
+    assert ta.tenant_root(hub, "default") == hub          # root "." -> the platform
     ta.create_tenant(hub, "acme")
     assert ta.tenant_root(hub, "acme") == hub / "tenants" / "acme"
     assert ta.tenant_root(hub, "ghost") is None
@@ -77,7 +77,7 @@ def test_isolation_between_tenants(tmp_path):
     hub = _platform(tmp_path)
     ta.create_tenant(hub, "a")
     ta.create_tenant(hub, "b")
-    # a 에 데이터 추가 → b 에 영향 없음
+    # adding data to a -> no effect on b
     (hub / "tenants/a/CONTEXT/reference-docs/A-only.md").write_text("x", encoding="utf-8")
     assert (hub / "tenants/a/CONTEXT/reference-docs/A-only.md").exists()
     assert not (hub / "tenants/b/CONTEXT/reference-docs/A-only.md").exists()

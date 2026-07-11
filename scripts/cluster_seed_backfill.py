@@ -1,42 +1,44 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Cluster Seed Backfill — 부트스트랩 (P5, docs/fr-cluster-alignment.md).
+"""Cluster Seed Backfill — bootstrap (P5, docs/fr-cluster-alignment.md).
 
-무태그 requirements 를 정상화하기 위한 마이그레이션 도구.
+Migration tool for normalizing untagged requirements.
 
-배경 (P5 / 2패스 워크플로우):
-    씨앗(capability) 태그가 전혀 없는 제품도 `cluster_identify` 를 1회 돌리면
-    점수(5축)만으로 cluster_map.json 의 fr_index(FR→{capability,cluster_id}) 가
-    산출된다. 이 결과를 **사이드카 YAML(`requirements.seeds.yml`)** 에 backfill
-    하면, 이후 실행부터는 union-find 초기 파티션(씨앗)으로 소비되어 2패스가
-    정상 동작한다(seed-not-lock).
+Background (P5 / 2-pass workflow):
+    Even for a product with no seed (capability) tags at all, running
+    `cluster_identify` once produces a fr_index (FR→{capability,cluster_id})
+    in cluster_map.json based purely on scoring (5-axis). Backfilling this
+    result into a **sidecar YAML (`requirements.seeds.yml`)** means subsequent
+    runs consume it as the initial union-find partition (seed), so the 2-pass
+    workflow works correctly (seed-not-lock).
 
-설계 결정 — 씨앗은 사이드카에 산다:
-    requirements.md 본문을 변형하지 않고, 같은 디렉터리의 별도 YAML 파일에
-    씨앗을 보관·병합한다. 본문 비파괴 + 결정적 파싱 + git diff 명료.
+Design decision — seeds live in a sidecar:
+    Rather than modifying requirements.md's body, seeds are stored and merged
+    in a separate YAML file in the same directory. This keeps the body
+    non-destructive, parsing deterministic, and git diffs clear.
 
-원칙:
-    - 멱등(idempotent): 이미 capability 씨앗이 있는 FR 은 건너뛴다(--force 로 덮어쓰기).
-    - 비파괴(non-destructive): fr_index 에 없는 기존 씨앗 항목/필드는 보존한다.
-    - --dry-run: 변경 예정 내역만 출력하고 쓰지 않는다.
-    - 결정적 출력: 키 정렬(sort_keys) + allow_unicode 로 안정적인 diff 보장.
+Principles:
+    - Idempotent: FRs that already have a capability seed are skipped (--force to overwrite).
+    - Non-destructive: existing seed entries/fields not covered by fr_index are preserved.
+    - --dry-run: prints planned changes only, writes nothing.
+    - Deterministic output: sort_keys + allow_unicode guarantee a stable diff.
 
-사이드카 스키마 (`requirements.seeds.yml`, requirements.md 와 동일 디렉터리):
+Sidecar schema (`requirements.seeds.yml`, same directory as requirements.md):
     "FR-101":
       capability: "Provisioning"
-      cluster_hint: "PR-01"   # 선택 (없으면 생략)
-      lock: false             # 선택, 기본 false
+      cluster_hint: "PR-01"   # optional (omit if absent)
+      lock: false             # optional, default false
     "FR-102":
-      capability: "[확인필요]"
+      capability: "[needs-confirmation]"
 
 CLI:
     python cluster_seed_backfill.py \
         --cluster-map PROJECTS/{p}/graph/cluster_map.json \
         --seeds       PROJECTS/{p}/inputs/requirements.seeds.yml \
-        [--force]         # 기존 capability 씨앗도 덮어쓰기
-        [--dry-run]       # 변경 예정만 출력(쓰기 없음)
+        [--force]         # overwrite existing capability seeds too
+        [--dry-run]       # print planned changes only (no write)
 
-종료 코드: 0 성공 / 1 입력 오류
+Exit codes: 0 success / 1 input error
 """
 from __future__ import annotations
 
@@ -54,9 +56,9 @@ def _load_json(path: Path) -> dict:
 
 
 def _read_fr_index(cluster_map: dict[str, Any]) -> dict[str, dict]:
-    """cluster_map 에서 fr_index(FR→{capability,cluster_id}) 추출.
+    """Extract fr_index(FR→{capability,cluster_id}) from cluster_map.
 
-    포맷이 어긋나면 빈 dict 를 반환(예외 던지지 않음 — graceful)."""
+    Returns an empty dict if the format doesn't match (no exception — graceful)."""
     raw = cluster_map.get("fr_index")
     if not isinstance(raw, dict):
         return {}
@@ -68,9 +70,9 @@ def _read_fr_index(cluster_map: dict[str, Any]) -> dict[str, dict]:
 
 
 def _read_seeds(path: Path) -> dict[str, dict]:
-    """사이드카 YAML 로드. 없거나 비어 있으면 {} (graceful).
+    """Load the sidecar YAML. Returns {} if missing or empty (graceful).
 
-    top-level 이 map 이 아니면 {} 로 본다(파손 방지)."""
+    Returns {} if the top level isn't a map (corruption guard)."""
     if not path.is_file():
         return {}
     try:
@@ -84,37 +86,37 @@ def _read_seeds(path: Path) -> dict[str, dict]:
         if isinstance(info, dict):
             out[str(fr)] = dict(info)
         else:
-            # 형식이 어긋난 항목도 보존(비파괴) — 그대로 둔다
+            # preserve malformed entries too (non-destructive) — keep as-is
             out[str(fr)] = info
     return out
 
 
-# ── 순수 병합 로직 ────────────────────────────────────────────────────────
+# ── Pure merge logic ─────────────────────────────────────────────────────────
 def backfill_seeds(
     fr_index: dict,
     seeds: dict,
     *,
     force: bool = False,
 ) -> tuple[dict, list[dict]]:
-    """fr_index 를 사이드카 seeds dict 에 병합 (순수 함수).
+    """Merge fr_index into the sidecar seeds dict (pure function).
 
-    각 FR 에 대해 capability 와 cluster_hint(=cluster_id) 를 설정한다.
-    멱등: 이미 capability 가 있는 FR 은 건너뛴다(--force 면 덮어쓴다).
-    fr_index 에 없는 기존 seed 항목/필드는 보존한다(비파괴).
+    For each FR, sets capability and cluster_hint(=cluster_id).
+    Idempotent: FRs that already have a capability are skipped (overwritten with --force).
+    Existing seed entries/fields not covered by fr_index are preserved (non-destructive).
 
     Args:
         fr_index: FR → {"capability": ..., "cluster_id": ...}
-        seeds: 기존 사이드카 dict (FR → {capability, cluster_hint?, lock?})
-        force: True 면 기존 capability 씨앗도 덮어쓴다
+        seeds: existing sidecar dict (FR → {capability, cluster_hint?, lock?})
+        force: if True, overwrite existing capability seeds too
 
     Returns:
-        (new_seeds, changes) — changes 각 항목: {"fr", "action"}
+        (new_seeds, changes) — each change entry: {"fr", "action"}
           action ∈ {"injected", "updated", "skipped_existing"}
 
-    예외를 던지지 않는다(graceful). 항상 (dict, 변경목록) 반환."""
+    Never raises (graceful). Always returns (dict, change list)."""
     changes: list[dict] = []
 
-    # 기존 항목 보존을 위해 깊은(1단계) 복사
+    # shallow (1-level) copy to preserve existing entries
     new_seeds: dict = {}
     for fr, info in (seeds or {}).items():
         new_seeds[str(fr)] = dict(info) if isinstance(info, dict) else info
@@ -141,7 +143,7 @@ def backfill_seeds(
             changes.append({"fr": fr, "action": "skipped_existing"})
             continue
 
-        # 기존 dict 항목의 다른 필드(lock 등)는 보존하고 capability/cluster_hint 만 갱신
+        # preserve other fields (lock, etc.) of the existing dict entry, only update capability/cluster_hint
         entry: dict = dict(existing) if isinstance(existing, dict) else {}
         action = "updated" if has_capability else "injected"
         entry["capability"] = capability
@@ -155,19 +157,19 @@ def backfill_seeds(
 
 
 def _dump_seeds(seeds: dict) -> str:
-    """사이드카 dict → 결정적 YAML 문자열 (정렬 + unicode 유지)."""
+    """Sidecar dict → deterministic YAML string (sorted + unicode preserved)."""
     return yaml.safe_dump(seeds, allow_unicode=True, sort_keys=True)
 
 
 def _summarize(changes: list[dict]) -> dict[str, int]:
-    """action 별 건수 집계."""
+    """Tally counts per action."""
     counts: dict[str, int] = {}
     for c in changes:
         counts[c["action"]] = counts.get(c["action"], 0) + 1
     return counts
 
 
-# ── 파일 I/O ─────────────────────────────────────────────────────────────
+# ── File I/O ──────────────────────────────────────────────────────────────────
 def run_backfill(
     cluster_map_path: Path,
     seeds_path: Path,
@@ -175,28 +177,29 @@ def run_backfill(
     force: bool = False,
     dry_run: bool = False,
 ) -> tuple[int, list[dict]]:
-    """파일 I/O 래퍼. (exit_code, changes) 반환.
+    """File I/O wrapper. Returns (exit_code, changes).
 
-    cluster_map(fr_index) 로드(누락/파손 → exit 1), 기존 사이드카 YAML 로드
-    (누락 → {}), 병합 계산, dry_run 이 아니면 사이드카에 쓴다. fr_index 에 없는
-    기존 seed 항목/필드는 보존한다.
+    Loads cluster_map(fr_index) (missing/corrupt → exit 1), loads the existing
+    sidecar YAML (missing → {}), computes the merge, and writes to the sidecar
+    unless dry_run. Existing seed entries/fields not covered by fr_index are
+    preserved.
 
-    exit_code: 0 성공 / 1 입력 오류."""
+    exit_code: 0 success / 1 input error."""
     if not cluster_map_path.is_file():
-        print(f"[seed_backfill] ERROR: cluster_map 파일 없음: {cluster_map_path}",
+        print(f"[seed_backfill] ERROR: cluster_map file not found: {cluster_map_path}",
               file=sys.stderr)
         return 1, []
 
     try:
         cluster_map = _load_json(cluster_map_path)
     except (json.JSONDecodeError, OSError, ValueError) as exc:
-        print(f"[seed_backfill] ERROR: cluster_map 파싱 실패: {exc}", file=sys.stderr)
+        print(f"[seed_backfill] ERROR: failed to parse cluster_map: {exc}", file=sys.stderr)
         return 1, []
 
     fr_index = _read_fr_index(cluster_map)
     if not fr_index:
-        print("[seed_backfill] WARN: cluster_map 에 fr_index 가 비어 있음 — "
-              "먼저 cluster_identify 를 1회 실행하세요.", file=sys.stderr)
+        print("[seed_backfill] WARN: fr_index is empty in cluster_map — "
+              "run cluster_identify once first.", file=sys.stderr)
 
     seeds = _read_seeds(seeds_path)
     new_seeds, changes = backfill_seeds(fr_index, seeds, force=force)
@@ -205,9 +208,9 @@ def run_backfill(
     written = counts.get("injected", 0) + counts.get("updated", 0)
 
     if dry_run:
-        print(f"[seed_backfill] DRY-RUN: 주입예정 {counts.get('injected', 0)} · "
-              f"갱신예정 {counts.get('updated', 0)} · "
-              f"기존유지 {counts.get('skipped_existing', 0)} (쓰기 없음)")
+        print(f"[seed_backfill] DRY-RUN: to-inject {counts.get('injected', 0)} · "
+              f"to-update {counts.get('updated', 0)} · "
+              f"kept {counts.get('skipped_existing', 0)} (no write)")
         for c in changes:
             if c["action"] in ("injected", "updated"):
                 info = fr_index.get(c["fr"], {})
@@ -219,25 +222,25 @@ def run_backfill(
     seeds_path.parent.mkdir(parents=True, exist_ok=True)
     seeds_path.write_text(_dump_seeds(new_seeds), encoding="utf-8")
 
-    print(f"[seed_backfill] OK: 주입 {counts.get('injected', 0)} · "
-          f"갱신 {counts.get('updated', 0)} · "
-          f"기존유지 {counts.get('skipped_existing', 0)} → {seeds_path}")
+    print(f"[seed_backfill] OK: injected {counts.get('injected', 0)} · "
+          f"updated {counts.get('updated', 0)} · "
+          f"kept {counts.get('skipped_existing', 0)} → {seeds_path}")
     return 0, changes
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="cluster_seed_backfill",
-        description="cluster_map.fr_index 씨앗을 사이드카 YAML 에 backfill (P5)",
+        description="Backfill cluster_map.fr_index seeds into sidecar YAML (P5)",
     )
     parser.add_argument("--cluster-map", type=Path, required=True,
-                        help="cluster_map.json (fr_index 보유)")
+                        help="cluster_map.json (holds fr_index)")
     parser.add_argument("--seeds", type=Path, required=True,
-                        help="사이드카 requirements.seeds.yml (병합 대상)")
+                        help="Sidecar requirements.seeds.yml (merge target)")
     parser.add_argument("--force", action="store_true",
-                        help="이미 씨앗이 있는 FR 도 덮어쓰기")
+                        help="Overwrite FRs that already have seeds too")
     parser.add_argument("--dry-run", action="store_true",
-                        help="변경 예정만 출력(쓰기 없음)")
+                        help="Print planned changes only (no write)")
     args = parser.parse_args(argv)
 
     code, _ = run_backfill(

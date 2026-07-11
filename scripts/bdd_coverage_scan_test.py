@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""bdd_coverage_scan 유닛 테스트."""
+"""bdd_coverage_scan unit tests."""
 import os
 import sys
 
@@ -10,7 +10,7 @@ import bdd_coverage_scan as M  # noqa: E402
 
 FULL_4STATE = """## 2. 4-state
 
-| 상태 | 조건 | UI 표현 | 사용자 액션 | 다음 상태 |
+| Status | Condition | UI Display | User Action | Next Status |
 |---|---|---|---|---|
 | Empty | x | a | b | Loading |
 | Loading | x | a | b | Loaded |
@@ -20,26 +20,26 @@ FULL_4STATE = """## 2. 4-state
 
 MISSING_ERROR = """## 2. 4-state
 
-| 상태 | 조건 | UI 표현 | 사용자 액션 | 다음 상태 |
+| Status | Condition | UI Display | User Action | Next Status |
 |---|---|---|---|---|
 | Empty | x | a | b | Loading |
 | Loading | x | a | b | Loaded |
 | Loaded | x | a | b | Loaded |
 """
 
-MATRIX = """## 3. 상태 × 액션 매트릭스
+MATRIX = """## 3. Status × Action matrix
 
-| 상태 \\ 액션 | A1 | A2 |
+| Status \\ Action | A1 | A2 |
 |---|---|---|
-| S1 | 허용 | 금지 |
-| S2 | 허용 | 허용 |
+| S1 | allow | deny |
+| S2 | allow | allow |
 """
 
-SPARSE_MATRIX = """## 3. 상태 × 액션 매트릭스
+SPARSE_MATRIX = """## 3. Status × Action matrix
 
-| 상태 \\ 액션 | A1 | A2 | A3 | A4 |
+| Status \\ Action | A1 | A2 | A3 | A4 |
 |---|---|---|---|---|
-| S1 | 허용 |  |  |  |
+| S1 | allow |  |  |  |
 """
 
 
@@ -58,9 +58,9 @@ def test_missing_error_state_detected():
 
 
 def test_na_reason_exempts_missing():
-    draft = MISSING_ERROR + "\n\n비고: error 상태 해당 없음 — 이 화면은 정적 표시 전용.\n"
-    # screen_missing_states 는 표 데이터만 보므로 표 안에 N/A 행을 넣어 검증
-    with_na = MISSING_ERROR.rstrip() + "| Error | 해당 없음 | - | - | - |\n"
+    draft = MISSING_ERROR + "\n\nNote: error state N/A — this screen is static display only.\n"
+    # screen_missing_states only looks at table data, so verify with an N/A row inside the table
+    with_na = MISSING_ERROR.rstrip() + "| Error | N/A | - | - | - |\n"
     assert "error" not in M.screen_missing_states(_table(with_na, A.find_state_table))
 
 
@@ -76,11 +76,11 @@ def test_policy_sparse_matrix_ratio_under_half():
 
 
 CLUSTER_FULL = """## §1
-| 상태 \\ 액션 | A1 | A2 |
+| Status \\ Action | A1 | A2 |
 |---|---|---|
-| S1 | 허용 | 금지 |
+| S1 | allow | deny |
 ## §2
-| 상태 | 조건 | UI 표현 | 사용자 액션 | 다음 상태 |
+| Status | Condition | UI Display | User Action | Next Status |
 |---|---|---|---|---|
 | Empty | x | a | b | Loading |
 | Loading | x | a | b | Loaded |
@@ -93,22 +93,22 @@ CLUSTER_MISSING_STATE = CLUSTER_FULL.replace("| Error | x | a | b | Loading |\n"
 
 def test_cluster_both_tables_extracted():
     tables = A.extract_tables(CLUSTER_FULL)
-    assert A.find_matrix_table_strict(tables) is not None      # §1 매트릭스
+    assert A.find_matrix_table_strict(tables) is not None      # §1 matrix
     assert A.find_state_table(tables) is not None              # §2 4-state
-    # §2 4-state 가 strict 매트릭스로 오인되지 않음
+    # §2 4-state not mistaken for a strict matrix
     state = A.find_state_table(tables)
-    assert M.screen_missing_states(state) == []                # 4-state 전부
+    assert M.screen_missing_states(state) == []                # all 4-states
 
 
 def test_cluster_missing_4state_is_uncovered():
     tables = A.extract_tables(CLUSTER_MISSING_STATE)
     state = A.find_state_table(tables)
     miss = M.screen_missing_states(state)
-    assert "error" in miss                                     # §2 error 누락 → UNCOVERED 대상
+    assert "error" in miss                                     # §2 error missing → UNCOVERED target
 
 
 def _scan_one(tmp, *drafts, write_feature=False):
-    """tmp 아래 PROJECTS/p/drafts 에 draft 들을 깔고 scan 실행 → (rc, 큐 텍스트)."""
+    """Lay out drafts under PROJECTS/p/drafts in tmp and run scan → (rc, queue text)."""
     import pathlib
     proj = pathlib.Path(tmp) / "PROJECTS" / "p"
     (proj / "drafts").mkdir(parents=True)
@@ -122,18 +122,18 @@ def _scan_one(tmp, *drafts, write_feature=False):
 
 
 def test_screen_without_state_table_is_uncovered():
-    """4-state 표 없는 screen draft = UNCOVERED (허위 green 방지 회귀)."""
+    """A screen draft without a 4-state table = UNCOVERED (false-green prevention regression)."""
     import tempfile
-    no_tbl = "---\ntype: screen\n---\n\n## 화면 설명\n\n| 영역 | 값 |\n|---|---|\n| a | b |\n"
+    no_tbl = "---\ntype: screen\n---\n\n## Screen description\n\n| Area | Value |\n|---|---|\n| a | b |\n"
     with tempfile.TemporaryDirectory() as tmp:
         rc, q = _scan_one(tmp, ("WO-99", no_tbl))
     assert "UNCOVERED: 1" in q
-    assert "표 없음" in q
-    assert rc == 1  # 차단
+    assert "no table" in q
+    assert rc == 1  # blocked
 
 
 def test_cluster_draft_type_classified_as_screen():
-    """cluster_draft type 은 screen 으로 정규화 — 크래시 없이 처리(회귀)."""
+    """cluster_draft type is normalized to screen — processed without crashing (regression)."""
     import tempfile
     cluster = "---\ntype: cluster_draft\n---\n\n" + FULL_4STATE
     with tempfile.TemporaryDirectory() as tmp:
@@ -142,28 +142,28 @@ def test_cluster_draft_type_classified_as_screen():
     assert rc == 0
 
 
-LIFECYCLE_TABLE = """## §1-4 상태 / 라이프사이클
+LIFECYCLE_TABLE = """## §1-4 Status / lifecycle
 
-| 상태 | 정의 | 진입 조건 | 다음 상태(가능) |
+| Status | Definition | Entry Condition | Next Status (possible) |
 |---|---|---|---|
-| 마감(불변) | 스냅샷 확정 | 분기 마감 배치 | 보존 만료 |
+| closed (immutable) | snapshot fixed | quarterly close batch | retention expiry |
 """
 
 
 def test_policy_lifecycle_table_not_detected_as_screen():
-    """정책 라이프사이클 표(UI·액션 컬럼 없음)는 screen 4-state 표로 오인식 금지."""
+    """A policy lifecycle table (no UI/action columns) must not be mistaken for a screen 4-state table."""
     assert A.find_state_table(A.extract_tables(LIFECYCLE_TABLE)) is None
 
 
 def test_na_subsection_exempts_missing_state():
-    """'### error 상태' + '해당 없음' prose 는 error 누락을 면제(문서화 N/A)."""
+    """'### error state' + 'N/A' prose exempts the missing error state (documented N/A)."""
     import tempfile
     body = (
-        "---\ntype: screen\n---\n\n## 5. 4-State 인터랙션 시퀀스\n\n"
-        "### 5-1. idle\n\n| 항목 | 내용 |\n|---|---|\n| 진입 | a |\n\n"
-        "### 5-2. loading\n\n| 항목 | 내용 |\n|---|---|\n| 트리거 | a |\n\n"
-        "### 5-3. success\n\n| 항목 | 내용 |\n|---|---|\n| 완료 | a |\n\n"
-        "### error 상태\n\n- **해당 없음** — 정적 재산출이라 독립 error 없음.\n"
+        "---\ntype: screen\n---\n\n## 5. 4-State interaction sequence\n\n"
+        "### 5-1. idle\n\n| Item | Content |\n|---|---|\n| entry | a |\n\n"
+        "### 5-2. loading\n\n| Item | Content |\n|---|---|\n| trigger | a |\n\n"
+        "### 5-3. success\n\n| Item | Content |\n|---|---|\n| finish | a |\n\n"
+        "### error state\n\n- **N/A** — static recomputation, no standalone error.\n"
     )
     with tempfile.TemporaryDirectory() as tmp:
         rc, q = _scan_one(tmp, ("WO-NA", body), write_feature=True)
@@ -173,10 +173,10 @@ def test_na_subsection_exempts_missing_state():
 
 
 def test_wo_stub_skipped():
-    """'# Work Order:' 지시 스텁은 콘텐츠 draft 아님 — 스캔/카운트에서 제외."""
+    """'# Work Order:' instruction stubs are not content drafts — excluded from scan/counts."""
     import tempfile
-    stub = ("---\ntype: screen\n---\n\n# Work Order: WO-08 — 계산기 메인 화면\n\n"
-            "## 1. 할당 범위\n\n## 7. 완료 후 절차\n")
+    stub = ("---\ntype: screen\n---\n\n# Work Order: WO-08 — calculator main screen\n\n"
+            "## 1. Assigned scope\n\n## 7. Post-completion steps\n")
     with tempfile.TemporaryDirectory() as tmp:
         rc, q = _scan_one(tmp, ("WO-08", stub))
     assert "UNCOVERED: 0" in q

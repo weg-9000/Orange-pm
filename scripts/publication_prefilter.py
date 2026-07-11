@@ -1,38 +1,40 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Publication prefilter — process metadata 결정적 제거 (Source → Publication 단계 1).
+"""Publication prefilter — deterministic removal of process metadata (Source → Publication step 1).
 
-Source layer (drafts/*.draft.md) 는 DEC·open-issues·TBD·자기검증 체크리스트 등
-process metadata 를 포함한다. Confluence 정본은 클린본이 필요하다.
+The Source layer (drafts/*.draft.md) contains process metadata such as
+DEC/open-issues/TBD/self-verification checklists. The Confluence canonical
+copy needs a clean version.
 
-본 스크립트는 LLM 없이 정규식 기반으로 제거·치환만 수행한다 (재현성·검증성).
-LLM 어투 정규화는 별도 단계(/render --push --style-example)에서 처리한다.
+This script performs removal/substitution only via regex, with no LLM
+involved (for reproducibility and verifiability). LLM tone normalization is
+handled in a separate step (/render --push --style-example).
 
-제거 항목:
-    - HTML 주석 (<!-- ... -->)
-    - 자기 검증 체크리스트 섹션 ("## N. 자기 검증 체크리스트" 부터 다음 H2 직전까지)
-    - 금지 사항 섹션
-    - 작업 지시 메타블록 (RACI 등) — 정책 사실 아닌 작성 가이드
-    - render_assemble 출처 태그 (⟦전개: {id}@{ver} … 출처⟧)
-    - frontmatter slim down (wo_id/type/layer/version/last_updated만 유지)
+Removed items:
+    - HTML comments (<!-- ... -->)
+    - Self-verification checklist section (from "## N. Self-verification checklist" up to just before the next H2)
+    - Prohibited items section
+    - Work-order meta blocks (RACI etc.) — authoring guidance, not policy facts
+    - render_assemble source tags (⟦expand: {id}@{ver} … source⟧)
+    - frontmatter slim down (keep only wo_id/type/layer/version/last_updated)
 
-치환 항목:
-    - [TBD — ...]             → (미확정)
-    - [확인 필요: ...]         → (검토 중)
-    - [정책 충돌 — ...]        → (검토 필요 — 양립 항목 보존)
-    - <!-- DEC: ... -->        → 제거
+Substituted items:
+    - [TBD — ...]                → (unconfirmed)
+    - [needs-confirmation: ...]  → (under review)
+    - [policy conflict — ...]    → (needs review — compatible items kept)
+    - <!-- DEC: ... -->          → removed
 
-보존:
-    - 모든 표 셀
-    - 모든 정책 본문 텍스트
-    - 모든 [[POL §X-Y]] 마커
-    - 모든 [[WO-XX]] 마커 (Confluence 페이지 링크로 후속 변환됨)
-    - {PREFIX}-A 등재 어휘
+Preserved:
+    - All table cells
+    - All policy body text
+    - All [[POL §X-Y]] markers
+    - All [[WO-XX]] markers (later converted into Confluence page links)
+    - {PREFIX}-A registered vocabulary
 
 exit code:
-    0 = 성공
-    1 = 입력 파일 미존재 또는 파싱 오류
-    2 = 사용법 오류
+    0 = success
+    1 = input file missing or parse error
+    2 = usage error
 """
 from __future__ import annotations
 
@@ -41,64 +43,65 @@ import re
 import sys
 from pathlib import Path
 
-# ── 정규식 패턴 ──────────────────────────────────────────────────────────────
+# ── Regex patterns ──────────────────────────────────────────────────────────
 
-# HTML 주석 (multi-line 포함)
+# HTML comments (multi-line included)
 HTML_COMMENT_RE = re.compile(r"<!--.*?-->", re.DOTALL)
 
-# render_assemble 출처 태그: ⟦전개: id@ver … 출처⟧
-SOURCE_TAG_RE = re.compile(r"⟦전개:[^⟧]*⟧")
+# render_assemble source tag: ⟦expand: id@ver … source⟧
+SOURCE_TAG_RE = re.compile(r"⟦expand:[^⟧]*⟧")
 
-# TBD / 확인 필요 / 정책 충돌 마커
+# TBD / needs-confirmation / policy-conflict markers
 TBD_RE = re.compile(r"\[TBD[^\]]*\]")
-CONFIRM_NEEDED_RE = re.compile(r"\[확인\s*필요[^\]]*\]")
-POLICY_CONFLICT_RE = re.compile(r"\[정책\s*충돌[^\]]*\]")
+CONFIRM_NEEDED_RE = re.compile(r"\[needs-confirmation[^\]]*\]")
+POLICY_CONFLICT_RE = re.compile(r"\[policy\s*conflict[^\]]*\]")
 
-# H2 섹션 헤더
+# H2 section header
 H2_RE = re.compile(r"^##\s+(.+?)$", re.MULTILINE)
 
-# Frontmatter 추출
+# Frontmatter extraction
 FRONTMATTER_RE = re.compile(r"^---\s*\n(.*?)\n---\s*\n", re.DOTALL)
 
-# 제거 대상 섹션 제목 패턴 (## N. <title> 형식 또는 ## <title>)
+# Section-title patterns targeted for removal (## N. <title> format or ## <title>)
 SECTION_REMOVE_PATTERNS = [
-    re.compile(r"^##\s+\d+\.\s*자기\s*검증\s*체크리스트\s*$", re.MULTILINE),
-    re.compile(r"^##\s+자기\s*검증\s*체크리스트\s*$", re.MULTILINE),
-    re.compile(r"^##\s+\d+\.\s*금지\s*사항\s*$", re.MULTILINE),
-    re.compile(r"^##\s+금지\s*사항\s*$", re.MULTILINE),
-    re.compile(r"^##\s+\d+\.\s*완료\s*후\s*절차\s*$", re.MULTILINE),
-    re.compile(r"^##\s+완료\s*후\s*절차\s*$", re.MULTILINE),
+    re.compile(r"^##\s+\d+\.\s*Self-verification\s*checklist\s*$", re.MULTILINE),
+    re.compile(r"^##\s+Self-verification\s*checklist\s*$", re.MULTILINE),
+    re.compile(r"^##\s+\d+\.\s*Prohibited\s*items\s*$", re.MULTILINE),
+    re.compile(r"^##\s+Prohibited\s*items\s*$", re.MULTILINE),
+    re.compile(r"^##\s+\d+\.\s*Post-completion\s*procedure\s*$", re.MULTILINE),
+    re.compile(r"^##\s+Post-completion\s*procedure\s*$", re.MULTILINE),
     re.compile(r"^##\s+Workflow\s+Connections\s*$", re.MULTILINE),
-    re.compile(r"^##\s+불변\s*입력\s*$", re.MULTILINE),
-    re.compile(r"^##\s+\d+\.\s*불변\s*입력\s*$", re.MULTILINE),
-    re.compile(r"^##\s+할당\s*범위\s*$", re.MULTILINE),
-    re.compile(r"^##\s+\d+\.\s*할당\s*범위\s*$", re.MULTILINE),
+    re.compile(r"^##\s+Invariant\s*input\s*$", re.MULTILINE),
+    re.compile(r"^##\s+\d+\.\s*Invariant\s*input\s*$", re.MULTILINE),
+    re.compile(r"^##\s+Assignment\s*scope\s*$", re.MULTILINE),
+    re.compile(r"^##\s+\d+\.\s*Assignment\s*scope\s*$", re.MULTILINE),
 ]
 
-# Frontmatter 에서 publication 에 유지할 필드만 화이트리스트
+# Whitelist of fields to keep in the publication frontmatter
 PUBLICATION_FRONTMATTER_FIELDS = {
     "wo_id", "type", "layer", "version", "last_updated", "title",
 }
 
 
 def _strip_section(text: str, header_pattern: re.Pattern) -> str:
-    """header_pattern 이 매칭하는 H2 섹션을 다음 H2 직전까지 (또는 EOF까지) 제거."""
+    """Remove the H2 section matched by header_pattern, up to just before the next H2 (or EOF)."""
     m = header_pattern.search(text)
     if not m:
         return text
     start = m.start()
-    # 다음 H2 찾기 — 같은 레벨 헤더 또는 그 이상
+    # Find the next H2 — same-level header or higher
     next_h2 = H2_RE.search(text, m.end())
     end = next_h2.start() if next_h2 else len(text)
     return text[:start] + text[end:]
 
 
 def _slim_frontmatter(text: str) -> str:
-    """frontmatter 에서 publication 화이트리스트 필드만 유지.
+    """Keep only the publication-whitelisted fields in the frontmatter.
 
-    HIGH #5: multi-line YAML 값(block list, folded scalar '>', literal '|',
-    continuation indent) 도 보존. 키 라인은 colon 위치 + 들여쓰기 0 으로 판단,
-    하위 들여쓰기 라인은 직전 키의 continuation 으로 취급.
+    HIGH #5: also preserves multi-line YAML values (block list, folded scalar '>',
+    literal '|', continuation indent). A key line is identified by colon position +
+    zero indentation; indented lines below it are treated as a continuation of the
+    preceding key.
     """
     m = FRONTMATTER_RE.match(text)
     if not m:
@@ -107,24 +110,24 @@ def _slim_frontmatter(text: str) -> str:
     rest = text[m.end():]
 
     kept_lines: list[str] = []
-    current_key_kept = False  # 직전 key 가 화이트리스트인지
+    current_key_kept = False  # whether the preceding key is in the whitelist
     for line in fm_body.splitlines():
         stripped = line.strip()
         if not stripped:
-            # 빈 줄 — 직전 키의 영역 종료
+            # blank line — ends the preceding key's region
             current_key_kept = False
             continue
         if stripped.startswith("#"):
             continue
-        # 들여쓰기 (continuation line) 여부
+        # whether this is an indented (continuation) line
         is_indented = line and line[0] in (" ", "\t")
         if is_indented:
             if current_key_kept:
                 kept_lines.append(line)
             continue
-        # top-level 키 라인
+        # top-level key line
         if ":" not in stripped:
-            # 비정상 — 안전하게 skip
+            # malformed — skip safely
             current_key_kept = False
             continue
         key = stripped.split(":", 1)[0].strip()
@@ -139,19 +142,19 @@ def _slim_frontmatter(text: str) -> str:
 
 
 def _collapse_blank_lines(text: str) -> str:
-    """연속 3개 이상 빈 줄을 2개로 압축."""
+    """Collapse 3+ consecutive blank lines down to 2."""
     return re.sub(r"\n{3,}", "\n\n", text)
 
 
 def prefilter(text: str) -> str:
-    """publication prefilter 적용 — process metadata 제거 + 마커 치환.
+    """Apply the publication prefilter — remove process metadata + substitute markers.
 
-    멱등 보장: 두 번 호출해도 동일 결과.
+    Idempotent: calling twice yields the same result.
     """
     # 1. frontmatter slim
     text = _slim_frontmatter(text)
 
-    # 2. 섹션 단위 제거 (자기검증/금지/완료절차/Workflow Connections/불변입력/할당범위)
+    # 2. Section-level removal (self-verification/prohibited/post-completion/Workflow Connections/invariant-input/assignment-scope)
     for pattern in SECTION_REMOVE_PATTERNS:
         while pattern.search(text):
             new_text = _strip_section(text, pattern)
@@ -159,18 +162,18 @@ def prefilter(text: str) -> str:
                 break
             text = new_text
 
-    # 3. HTML 주석 제거 (render_assemble schema marker, DEC 마커 등 포함)
+    # 3. Remove HTML comments (includes render_assemble schema markers, DEC markers, etc.)
     text = HTML_COMMENT_RE.sub("", text)
 
-    # 4. 출처 태그 제거 (⟦전개: ...⟧)
+    # 4. Remove source tags (⟦expand: ...⟧)
     text = SOURCE_TAG_RE.sub("", text)
 
-    # 5. TBD/확인필요/정책충돌 → 단순 placeholder
-    text = TBD_RE.sub("(미확정)", text)
-    text = CONFIRM_NEEDED_RE.sub("(검토 중)", text)
-    text = POLICY_CONFLICT_RE.sub("(검토 필요 — 양립 항목 보존)", text)
+    # 5. TBD/confirmation-needed/policy-conflict → simple placeholder
+    text = TBD_RE.sub("(unconfirmed)", text)
+    text = CONFIRM_NEEDED_RE.sub("(under review)", text)
+    text = POLICY_CONFLICT_RE.sub("(needs review — compatible items kept)", text)
 
-    # 6. 연속 빈 줄 압축
+    # 6. Collapse consecutive blank lines
     text = _collapse_blank_lines(text)
 
     return text.strip() + "\n"
@@ -178,25 +181,25 @@ def prefilter(text: str) -> str:
 
 def main() -> int:
     ap = argparse.ArgumentParser(
-        description="Publication prefilter — process metadata 결정적 제거"
+        description="Publication prefilter — deterministic removal of process metadata"
     )
-    ap.add_argument("input", type=Path, help="입력 파일 (보통 reports/render/{WO}.complete.md)")
+    ap.add_argument("input", type=Path, help="Input file (usually reports/render/{WO}.complete.md)")
     ap.add_argument(
         "--output", "-o", type=Path, default=None,
-        help="출력 파일 (생략 시 stdout)"
+        help="Output file (stdout if omitted)"
     )
     ap.add_argument(
         "--in-place", action="store_true",
-        help="입력 파일을 결과로 덮어쓴다 (--output 와 함께 사용 금지)"
+        help="Overwrite the input file with the result (cannot be used together with --output)"
     )
     args = ap.parse_args()
 
     if not args.input.is_file():
-        print(f"[prefilter] FAIL: 입력 파일 없음 — {args.input}", file=sys.stderr)
+        print(f"[prefilter] FAIL: input file not found — {args.input}", file=sys.stderr)
         return 1
 
     if args.in_place and args.output:
-        print("[prefilter] FAIL: --in-place 와 --output 동시 사용 불가", file=sys.stderr)
+        print("[prefilter] FAIL: --in-place and --output cannot be used together", file=sys.stderr)
         return 2
 
     text = args.input.read_text(encoding="utf-8")

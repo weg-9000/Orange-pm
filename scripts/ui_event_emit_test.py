@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""ui_event_emit 유닛 테스트."""
+"""ui_event_emit unit tests."""
 import json
 import os
 import sys
@@ -18,7 +18,7 @@ def test_build_event_fields():
     assert ev["tool"] == "edit"
     assert ev["detail"] == "S01.draft.md"
     assert ev["ts"] == "2026-06-03T10:00:00+09:00"
-    assert "agent" not in ev          # None 필드는 제외
+    assert "agent" not in ev          # None fields are excluded
 
 
 def test_append_creates_and_appends():
@@ -38,13 +38,13 @@ def test_append_truncates_to_max():
             M.append_event(d, M.build_event("PostToolUse", f"e{i}", None, "edit"), max_lines=5)
         out = Path(d) / ".claude" / "ui-events.jsonl"
         lines = out.read_text(encoding="utf-8").strip().splitlines()
-        assert len(lines) == 5                      # 테일 보존
+        assert len(lines) == 5                      # tail preserved
         assert json.loads(lines[-1])["detail"] == "e9"
 
 
 def test_detail_from_stdin():
     assert M.detail_from_stdin('{"prompt": "/fanout dbaas"}') == "/fanout dbaas"
-    # 여러 줄 → 첫 줄만, 길이 제한
+    # multiple lines -> first line only, length-limited
     assert M.detail_from_stdin('{"prompt": "line1\\nline2"}') == "line1"
     assert M.detail_from_stdin('{"tool_name": "Edit"}') == "Edit"
     assert M.detail_from_stdin("not-json") is None      # graceful

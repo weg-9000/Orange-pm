@@ -3,139 +3,139 @@ publication:
   header:
     style: info
     body: |
-      **본 문서는 {{PRODUCT_NAME}}의 화면 설계서다. 개발·이해관계자가 단독으로 읽고 구현할 수 있도록 화면이 표시하는 모든 문구·레이아웃·인터랙션을 실제 텍스트로 기재한다. 요금 산식·정책 수치값 등은 정책정의서를 참조한다.**
+      **This document is the screen design specification for {{PRODUCT_NAME}}. So that developers and stakeholders can read it standalone and implement from it, every piece of copy, layout, and interaction the screen displays is written out as actual text. For billing formulas, policy figures, and the like, see the policy definition.**
       
-      doc_id: {{DOC_ID}} 버전: {{VERSION}} 최종 수정: {{DATE}}
+      doc_id: {{DOC_ID}} Version: {{VERSION}} Last updated: {{DATE}}
   meta:
     layout: two_equal
     cells:
       - panel:
-          title: "참고 자료"
+          title: "References"
           body: |
             ::: {.expand}
-            **관련 문서**
+            **Related Documents**
             
-            - [[page:[요구사항 정의서] {{PRODUCT_NAME}}]]
-            - [[page:[정책정의서] {{PRODUCT_NAME}}]]
+            - [[page:[Requirements Definition] {{PRODUCT_NAME}}]]
+            - [[page:[Policy Definition] {{PRODUCT_NAME}}]]
             :::
       - change_history: 3
 ---
 
-::: {.panel section="SCR-001 {{화면명}}"}
-## SCR-001 {{화면명}}
+::: {.panel section="SCR-001 {{screen name}}"}
+## SCR-001 {{screen name}}
 
 ---
 
-### §1 화면 개요
+### §1 Screen Overview
 
 <!-- col-widths: 20%, 80% -->
-| **화면 ID** | SCR-001 |
+| **Screen ID** | SCR-001 |
 |---|---|
-| **화면명** | {{화면명}} |
-| **진입 경로** | {{진입 경로}} |
-| **관련 FR** | FR-001, FR-002 |
-| **관련 정책** | 정책정의서 §{{섹션번호}} |
+| **Screen Name** | {{screen name}} |
+| **Entry Path** | {{entry path}} |
+| **Related FR** | FR-001, FR-002 |
+| **Related Policy** | Policy Definition §{{section number}} |
 
-### §2 레이아웃 구조
+### §2 Layout Structure
 
-{{레이아웃 설명 — 영역 분할, 고정/스크롤 여부 등}}
+{{layout description — area division, fixed/scrolling behavior, etc.}}
 
 ### §2-1 GNB (Global Navigation Bar)
 
 <!-- col-widths: 20%, 40%, 40% -->
-| 요소 | 표시 문구 / 상태 | 동작 |
+| Element | Displayed Copy / State | Behavior |
 |---|---|---|
-| {{요소명}} | {{문구}} | {{동작}} |
+| {{element name}} | {{copy}} | {{behavior}} |
 
 ### §2-2 LNB (Left Navigation Bar)
 
 <!-- col-widths: 20%, 40%, 40% -->
-| 요소 | 표시 문구 / 상태 | 동작 |
+| Element | Displayed Copy / State | Behavior |
 |---|---|---|
-| {{요소명}} | {{문구}} | {{동작}} |
+| {{element name}} | {{copy}} | {{behavior}} |
 
-### §2-3 메인 콘텐츠 영역
-
-<!-- col-widths: 20%, 80% -->
-| 요소 | 내용 |
-|---|---|
-| {{요소명}} | {{내용}} |
-
-### §2-4 우측 패널
-
-{{우측 패널 구성 설명}}
-
-### §2-5 푸터 (Footer)
-
-{{푸터 구성}}
-
-### §2-6 반응형 처리
+### §2-3 Main Content Area
 
 <!-- col-widths: 20%, 80% -->
-| 브레이크포인트 | 처리 방식 |
+| Element | Content |
 |---|---|
-| {{px 기준}} | {{처리}} |
+| {{element name}} | {{content}} |
 
-### §2-7 디자인 토큰
+### §2-4 Right Panel
+
+{{description of the right panel's composition}}
+
+### §2-5 Footer
+
+{{footer composition}}
+
+### §2-6 Responsive Handling
+
+<!-- col-widths: 20%, 80% -->
+| Breakpoint | Handling |
+|---|---|
+| {{px threshold}} | {{handling}} |
+
+### §2-7 Design Tokens
 
 <!-- col-widths: 20%, 20%, 60% -->
-| 토큰 유형 | 값 (HEX / px) | 적용 위치 |
+| Token Type | Value (HEX / px) | Applied Location |
 |---|---|---|
-| {{토큰명}} | {{값}} | {{적용 위치}} |
+| {{token name}} | {{value}} | {{applied location}} |
 
-### §3 인터랙션 명세
+### §3 Interaction Specification
 
 <!-- col-widths: 15%, 25%, 25%, 35% -->
-| 트리거 | 조건 | 결과 | 예외 처리 |
+| Trigger | Condition | Result | Exception Handling |
 |---|---|---|---|
-| {{트리거}} | {{조건}} | {{결과}} | {{예외}} |
+| {{trigger}} | {{condition}} | {{result}} | {{exception}} |
 
-### §4 UI 문구 명세
-
-<!-- col-widths: 20%, 45%, 35% -->
-| 요소 | 문구 (실제 텍스트 그대로) | 비고 |
-|---|---|---|
-| {{버튼/레이블명}} | {{실제 표시 문구}} | {{비고}} |
-
-### §5 에러 / 빈 상태
+### §4 UI Copy Specification
 
 <!-- col-widths: 20%, 45%, 35% -->
-| 상태 | 표시 내용 | 처리 |
+| Element | Copy (verbatim text) | Notes |
 |---|---|---|
-| {{에러/빈 상태명}} | {{표시 문구}} | {{처리}} |
+| {{button/label name}} | {{actual displayed copy}} | {{notes}} |
+
+### §5 Error / Empty States
+
+<!-- col-widths: 20%, 45%, 35% -->
+| State | Displayed Content | Handling |
+|---|---|---|
+| {{error/empty state name}} | {{displayed copy}} | {{handling}} |
 :::
 
-::: {.panel section="SCR-002 {{화면명}}"}
-## SCR-002 {{화면명}}
+::: {.panel section="SCR-002 {{screen name}}"}
+## SCR-002 {{screen name}}
 
 ---
 
-### §1 화면 개요
+### §1 Screen Overview
 
 <!-- col-widths: 20%, 80% -->
-| **화면 ID** | SCR-002 |
+| **Screen ID** | SCR-002 |
 |---|---|
-| **화면명** | {{화면명}} |
-| **진입 경로** | {{진입 경로}} |
-| **관련 FR** | {{FR 목록}} |
-| **관련 정책** | 정책정의서 §{{섹션번호}} |
+| **Screen Name** | {{screen name}} |
+| **Entry Path** | {{entry path}} |
+| **Related FR** | {{FR list}} |
+| **Related Policy** | Policy Definition §{{section number}} |
 
-### §2 레이아웃 구조
+### §2 Layout Structure
 
-{{레이아웃 설명}}
+{{layout description}}
 
-### §2-7 디자인 토큰
+### §2-7 Design Tokens
 
 <!-- col-widths: 20%, 20%, 60% -->
-| 토큰 유형 | 값 | 적용 위치 |
+| Token Type | Value | Applied Location |
 |---|---|---|
-| {{토큰명}} | {{값}} | {{적용 위치}} |
+| {{token name}} | {{value}} | {{applied location}} |
 
-### §3 인터랙션 명세
+### §3 Interaction Specification
 
-{{인터랙션 명세}}
+{{interaction specification}}
 
-### §4 UI 문구 명세
+### §4 UI Copy Specification
 
-{{문구 명세}}
+{{copy specification}}
 :::

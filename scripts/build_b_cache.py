@@ -1,24 +1,27 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""{PREFIX}-B 공통 정책서 요약 캐시 생성 (개선안 A — CONTEXT_OPTIMIZATION.md).
+"""Generate the {PREFIX}-B common policy document summary cache (Improvement A — CONTEXT_OPTIMIZATION.md).
 
-목적:
-    /write, /flow, /integrate 가 매 호출마다 CONTEXT/reference-docs/B/*.md 전체를
-    재로드하는 비효율을 제거한다. 각 정책 문서에서 "## " 헤딩 + 헤딩 직후 첫 문단
-    (3줄까지)만 발췌해 단일 요약본으로 합친 뒤 .template-cache/B-summary.md 에 저장한다.
+Purpose:
+    Eliminate the inefficiency of /write, /flow, /integrate reloading the
+    entire CONTEXT/reference-docs/B/*.md set on every invocation. From each
+    policy document, extract only the "## " headings plus the first
+    paragraph right after each heading (up to 3 lines), merge them into a
+    single summary, and save it to .template-cache/B-summary.md.
 
-    skill 들은 다음 순서로 사용한다:
-      1) B-summary.md 가 모든 reference-docs/B/*.md 보다 mtime 이 최신이면 캐시만 로드.
-      2) 그렇지 않으면 본 스크립트로 캐시를 재생성한 뒤 다시 캐시만 로드.
-    원문 전체 로드는 헤딩 인덱스(B-headings-index.json) 기반 발췌 모드에서만 수행한다.
+    Skills use it in the following order:
+      1) If B-summary.md's mtime is newer than every reference-docs/B/*.md, load the cache only.
+      2) Otherwise, regenerate the cache with this script, then load the cache only.
+    Loading the full original text happens only in excerpt mode based on the
+    heading index (B-headings-index.json).
 
-사용법:
-    python build_b_cache.py --hub-root <Planning-Agent-Hub 경로>
+Usage:
+    python build_b_cache.py --hub-root <Planning-Agent-Hub path>
 
 exit code:
-    0 = 성공 (캐시 새로 생성 또는 최신 상태 확인)
-    1 = layer-config.md 에서 PREFIX 추출 실패 또는 reference-docs/B 없음
-    2 = 인자 오류
+    0 = success (cache freshly generated or confirmed up to date)
+    1 = failed to extract PREFIX from layer-config.md, or reference-docs/B missing
+    2 = argument error
 """
 from __future__ import annotations
 
@@ -38,7 +41,7 @@ from _cache_utils import (
 
 
 def extract_summary(md_text: str, max_para_lines: int = 3) -> list[str]:
-    """헤딩 + 헤딩 직후 첫 문단(공백 라인 전까지, 최대 max_para_lines줄)만 추출."""
+    """Extract only the heading plus the first paragraph right after it (up to the blank line, max max_para_lines lines)."""
     lines = md_text.splitlines()
     out: list[str] = []
     i = 0
@@ -66,11 +69,11 @@ def extract_summary(md_text: str, max_para_lines: int = 3) -> list[str]:
 
 
 def _advise_drift(hub_root: Path) -> None:
-    """캐시 재생성 후 drift_scan 을 best-effort 로 연쇄한다.
+    """Chain into drift_scan on a best-effort basis after the cache is rebuilt.
 
-    공통(B) 캐시가 갱신됐다는 것은 B 원본이 바뀌었을 수 있다는 신호이므로,
-    영향 제품 draft 의 referenced_master 핀을 재대조한다.
-    실패하거나 PROJECTS 가 없으면 조용히 통과한다(build 의 exit code 불변).
+    A refreshed common (B) cache signals that a B source may have changed, so
+    re-check the referenced_master pins of affected product drafts.
+    Passes silently if it fails or PROJECTS doesn't exist (build's exit code is unaffected).
     """
     try:
         if not (hub_root / "PROJECTS").is_dir():
@@ -84,16 +87,16 @@ def _advise_drift(hub_root: Path) -> None:
         spec.loader.exec_module(mod)
         rc = mod.scan(hub_root)
         if rc:
-            print("[build_b_cache] drift BLOCK 존재 — reports/drift-queue.md 확인 권고")
-    except Exception as exc:  # 연쇄 실패가 캐시 빌드를 막지 않는다
-        print(f"[build_b_cache] drift_scan 연쇄 생략({exc})")
+            print("[build_b_cache] drift BLOCK found — recommend checking reports/drift-queue.md")
+    except Exception as exc:  # a chaining failure must not block the cache build
+        print(f"[build_b_cache] skipped drift_scan chaining ({exc})")
 
 
 def build(hub_root: Path) -> int:
     prefix = read_prefix(hub_root)
     sources = discover_b_sources(hub_root)
     cache_dir = ensure_cache_dir(hub_root)
-    # PREFIX 네임스페이스 캐시(주) + 레거시 무네임스페이스(부, 활성 PREFIX 한정).
+    # PREFIX-namespaced cache (primary) + legacy non-namespaced cache (secondary, active PREFIX only).
     cache_path = cache_dir / f"{prefix}-b-summary.md"
     legacy_path = cache_dir / "B-summary.md"
 
@@ -105,9 +108,9 @@ def build(hub_root: Path) -> int:
     parts: list[str] = [
         f"# {prefix}-B Summary Cache (auto-generated)",
         "",
-        "> 본 파일은 build_b_cache.py 가 자동 생성한 요약본이다. 직접 수정하지 말 것.",
-        f"> 생성 시각: {datetime.now().isoformat(timespec='seconds')}",
-        f"> 원본: CONTEXT/reference-docs/{prefix}/B/ ({len(sources)}개 문서)",
+        "> This file is an auto-generated summary from build_b_cache.py. Do not edit directly.",
+        f"> Generated at: {datetime.now().isoformat(timespec='seconds')}",
+        f"> Source: CONTEXT/reference-docs/{prefix}/B/ ({len(sources)} document(s))",
         "",
     ]
     for src in sources:
@@ -118,7 +121,7 @@ def build(hub_root: Path) -> int:
 
     payload = "\n".join(parts)
     cache_path.write_text(payload, encoding="utf-8")
-    # 레거시 호환: 활성 PREFIX 요약을 무네임스페이스 파일로도 미러링(구버전 skill 참조용).
+    # legacy compat: mirror the active PREFIX summary into the non-namespaced file too (for older skills to reference).
     legacy_path.write_text(payload, encoding="utf-8")
     print(f"[build_b_cache] wrote {cache_path} (+legacy {legacy_path.name}, {len(sources)} sources)")
     _advise_drift(hub_root)

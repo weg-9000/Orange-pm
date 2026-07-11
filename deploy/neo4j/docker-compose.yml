@@ -1,28 +1,28 @@
-# Neo4j 셀프호스팅 (멀티테넌트 SaaS — 벡터 저장소)
+# Neo4j self-hosting (multi-tenant SaaS — vector store)
 #
-# VM/클라우드 인스턴스에서 1회 기동. 벡터 검색용 Neo4j 5.x.
-# 사용:
-#   cp .env.example .env   # 비밀번호 등 채움(.env 는 git 미추적)
+# Started once on a VM/cloud instance. Neo4j 5.x for vector search.
+# Usage:
+#   cp .env.example .env   # fill in password etc. (.env is not tracked by git)
 #   docker compose up -d
-#   # 방화벽: 7687(bolt, 앱 접속) / 7474(브라우저, 내부망 한정) 만 개방
+#   # Firewall: open only 7687 (bolt, app access) / 7474 (browser, internal network only)
 #
-# 적재/검색 측은 NEO4J_URI=bolt://<이 서버IP>:7687 로 가리킨다.
+# The ingestion/search side should point NEO4J_URI to bolt://<this-server-ip>:7687.
 services:
   neo4j:
-    image: neo4j:5.18      # 벡터 인덱스 GA(5.13+). 5.18 권장.
+    image: neo4j:5.18      # Vector index GA (5.13+). 5.18 recommended.
     container_name: orange-pm-neo4j
     restart: unless-stopped
     ports:
-      - "7687:7687"        # Bolt — 애플리케이션(embed_pipeline/context_search)
-      - "7474:7474"        # HTTP 브라우저 — 내부망에서만 접근 권장
+      - "7687:7687"        # Bolt — application (embed_pipeline/context_search)
+      - "7474:7474"        # HTTP browser — recommended internal-network access only
     environment:
-      # 비밀번호는 .env 에서 주입(레포에 평문 금지)
+      # Password is injected via .env (never commit plaintext to the repo)
       NEO4J_AUTH: "neo4j/${NEO4J_PASSWORD:?set NEO4J_PASSWORD in .env}"
       NEO4J_server_memory_heap_initial__size: "1G"
       NEO4J_server_memory_heap_max__size: "2G"
       NEO4J_server_memory_pagecache_size: "1G"
     volumes:
-      - neo4j_data:/data           # 그래프·벡터 영속(컨테이너 재생성에도 보존)
+      - neo4j_data:/data           # graph/vector persistence (survives container recreation)
       - neo4j_logs:/logs
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:7474 >/dev/null 2>&1 || exit 1"]

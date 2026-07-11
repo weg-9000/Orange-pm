@@ -1,6 +1,6 @@
 ---
 name: fanout
-description: validate_graph.py로 graph.json을 검증한 후 fanout_dag.py를 실행해 policy WO와 screen WO를 생성하고 work-orders/index.md를 구성한다. Phase 1 시작 스킬이다.
+description: Validates graph.json with validate_graph.py, then runs fanout_dag.py to generate policy WOs and screen WOs and build work-orders/index.md. This is the Phase 1 entry skill.
 triggers:
   - "fanout"
   - "generate work orders"
@@ -10,97 +10,96 @@ effort: medium
 user-invocable: true
 ---
 
-## Bootstrap 캐시 가드 (개선안 F — CONTEXT_OPTIMIZATION.md)
+## Bootstrap cache guard (Improvement F — CONTEXT_OPTIMIZATION.md)
 
-세션 첫 진입 시 `CONTEXT/_session-bootstrap.md` 를 1회만 로드한다.
-이미 같은 세션에서 본 파일을 읽었다면 재독을 금지한다.
-캐시가 없거나 stale 이면 다음 명령으로 갱신한 뒤 진행한다:
+Load `CONTEXT/_session-bootstrap.md` only once per session, on first entry.
+Do not re-read it if it was already read in the same session.
+If the cache is missing or stale, refresh it with the following command before proceeding:
 
 ```bash
 python ${CLAUDE_PLUGIN_ROOT}/scripts/build_bootstrap.py --hub-root .
 ```
 
-본 가드는 layer-config / about-pm / project-rules / brand-voice /
-doc-layer-schema / team-members 6개 원본 파일 재로드를 대체한다.
-원본 파일 직접 Read 는 본 skill 의 핵심 작업에 필수인 경우에만 허용된다.
+This guard replaces reloading the 6 source files layer-config / about-pm / project-rules / brand-voice /
+doc-layer-schema / team-members. Reading the source files directly is allowed only when it is essential
+to this skill's core task.
 
-## 전제조건 검사
+## Prerequisite checks
 
-0. **트랙 감사 (fix-plan-track-routing P2 — 최우선)**
-   다음 중 하나라도 존재하면 이 프로젝트는 **cluster(dossier) 모델 = Track A** 다.
+0. **Track audit (fix-plan-track-routing P2 — highest priority)**
+   If any of the following exist, this project is the **cluster(dossier) model = Track A**.
    - `PROJECTS/{product}/graph/project-mode.json` (track=A / model=dossier)
-   - `PROJECTS/{product}/graph/cluster_map.json` 또는 `graph.clustered.json`
-   - `PROJECTS/{product}/drafts/cluster_*.draft.md` (이미 작성된 dossier)
+   - `PROJECTS/{product}/graph/cluster_map.json` or `graph.clustered.json`
+   - `PROJECTS/{product}/drafts/cluster_*.draft.md` (dossier already written)
 
-   감지되면 **legacy fanout 을 진행하지 않는다.** `/fanout --cluster-mode` 로
-   안내한다. PM 이 명시적으로 legacy 강제를 원하는 경우에만 `--force-legacy` 를
-   전달한다(이 경우 기존 dossier 옆에 WO 셸이 함께 생성됨을 반드시 고지).
-   판단이 서지 않으면 `/plan-audit {product}` 로 트랙을 먼저 확정한다.
+   If detected, **do not proceed with legacy fanout.** Direct the PM to `/fanout --cluster-mode`.
+   Only pass `--force-legacy` if the PM explicitly wants to force legacy (in this case, be sure to
+   disclose that WO shells will be generated alongside the existing dossier).
+   If uncertain, run `/plan-audit {product}` first to confirm the track.
 
-   > fanout_dag.py 자체가 이 신호를 감지해 fail-closed 로 중단하므로, 본 항목을
-   > 건너뛰어도 빈 WO 셸이 양산되지는 않는다. 다만 PM 에게 트랙을 먼저 안내하는
-   > 것이 올바른 순서다.
+   > fanout_dag.py itself detects this signal and fails closed, so skipping this item will not
+   > mass-produce empty WO shells. Still, informing the PM of the track first is the correct order.
 
-1. `PROJECTS/{product}/graph/graph.json` 존재 여부를 확인한다.
-   미존재 시 `/graph-gen {product}` 실행을 안내하고 중단한다.
+1. Check whether `PROJECTS/{product}/graph/graph.json` exists.
+   If missing, direct the user to run `/graph-gen {product}` and stop.
 
-2. `open-issues.md`의 P0 항목 수를 확인한다.
-   P0가 1건 이상이면 목록을 출력하고 중단한다.
+2. Check the number of P0 items in `open-issues.md`.
+   If there is 1 or more P0 item, print the list and stop.
 
-3. `CONTEXT/layer-config.md`에서 PREFIX를 읽는다.
-   PREFIX 미등록 시 PM에게 입력을 요청한다.
+3. Read PREFIX from `CONTEXT/layer-config.md`.
+   If PREFIX is not registered, ask the PM for input.
 
-4. `decisions.md`에서 `freeze: false` 여부를 확인한다.
-   이미 frozen이면 WO 재생성 의도인지 PM에게 확인한다.
+4. Check whether `freeze: false` in `decisions.md`.
+   If already frozen, confirm with the PM whether WO regeneration is intended.
 
 
-## 실행 단계
+## Execution steps
 
-### 단계 1 — graph.json 검증
+### Step 1 — Validate graph.json
 
-`scripts/validate_graph.py`를 실행한다:
+Run `scripts/validate_graph.py`:
 ```
 validate_graph.py  PROJECTS/{product}/graph/graph.json
                    --json
 ```
-> `--schema` 는 생략한다(감사 2026-06-08 H5). validate_graph 는 schema 미지정 시
-> cwd(Hub) → graph.json 상위 → 플러그인 순으로 `templates/graph-schema.json` 을
-> 자동 탐색한다. literal `--schema templates/graph-schema.json` 은 Hub cwd 에서만
-> 해석되어 cwd 가 다를 때 FileNotFoundError→exit 2 로 오탐 중단된다. graph-gen 단계 4
-> 와 동일하게 auto-discovery 에 위임한다.
+> Omit `--schema` (per the 2026-06-08 H5 audit). When no schema is given, validate_graph
+> auto-discovers `templates/graph-schema.json` in this order: cwd (Hub) → graph.json's parent →
+> the plugin. A literal `--schema templates/graph-schema.json` only resolves from the Hub cwd,
+> so it fails with a false FileNotFoundError→exit 2 when cwd differs. Defer to auto-discovery,
+> as in graph-gen step 4.
 
-결과를 파싱한다:
-- FAIL 항목이 있으면 오류 목록을 출력하고 실행을 중단한다.
-  `/graph-gen {product}` 재실행을 안내한다.
-- WARN 항목이 있으면 목록을 출력하고 PM에게 계속 진행 여부를 묻는다.
-- PASS이면 다음 단계로 진행한다.
+Parse the result:
+- If there are FAIL items, print the error list and stop execution.
+  Direct the user to re-run `/graph-gen {product}`.
+- If there are WARN items, print the list and ask the PM whether to continue.
+- If PASS, proceed to the next step.
 
-검증 통계(node 수, edge 수, type별 집계)를 한 줄로 출력한다.
+Print validation statistics (node count, edge count, per-type aggregates) in one line.
 
 
-### 단계 2 — delta_required: false 노드 처리
+### Step 2 — Handle nodes with delta_required: false
 
-graph.json의 policy 노드 중 `delta_required: false`인 노드를 수집한다.
-해당 노드는 WO 생성 대상에서 제외하고
-`work-orders/no-delta-list.md`에 다음 형식으로 기록한다:
+Collect policy nodes in graph.json with `delta_required: false`.
+Exclude these nodes from WO generation and record them in
+`work-orders/no-delta-list.md` in the following format:
 
 ```markdown
-# No-Delta 노드 목록
+# No-Delta Node List
 
-다음 노드는 {PREFIX}-B 공통 정책을 완전 적용하며 별도 WO가 생성되지 않습니다.
-Confluence 업로드 시 "[{doc_id} 기본 정책 완전 적용]" 으로 자동 기록됩니다.
+The following nodes fully apply the {PREFIX}-B common policy as-is and no separate WO is generated.
+When uploaded to Confluence, they are auto-recorded as "[{doc_id} default policy fully applied]".
 
-| doc_id | 문서 제목 | inherits_from | 비고 |
+| doc_id | Document title | inherits_from | Notes |
 |---|---|---|---|
 | {doc_id} | {title} | {PREFIX}-B-{NNN} | delta_required: false |
 ```
 
-screen 노드는 `delta_required` 필드와 무관하게 모두 WO 생성 대상이다.
+Screen nodes are always subject to WO generation regardless of the `delta_required` field.
 
 
-### 단계 3 — fanout_dag.py 실행
+### Step 3 — Run fanout_dag.py
 
-`scripts/fanout_dag.py`를 실행한다:
+Run `scripts/fanout_dag.py`:
 ```
 fanout_dag.py  PROJECTS/{product}/graph/graph.json
                --output  PROJECTS/{product}/work-orders/
@@ -108,108 +107,109 @@ fanout_dag.py  PROJECTS/{product}/graph/graph.json
                --prefix  {PREFIX}
 ```
 
-**모드 플래그 (fix-plan-track-routing):**
-- (없음) — **기본 = legacy**. section policy WO + screen WO 생성. 단, 전제조건 0의
-  cluster 신호가 감지되면 fail-closed 로 중단된다.
-- `--cluster-mode` — **Track A (Full Product)**. cluster(dossier) 단위 WO 생성.
-  `cluster_identify.py` 가 선행되어 graph 에 capability/cluster_id 가 있어야 한다.
-- `--force-legacy` — cluster 신호를 무시하고 legacy 를 강제(fail-closed 우회).
-  기존 dossier 옆에 WO 셸이 함께 생성되므로 의도 확인 후에만 사용.
-- `--publication-mode {dossier-page|split-deliverable}` — **cluster-mode 전용**
-  발행 모드 (fix-plan-dossier-publish-split). `graph/project-mode.json` 에 영속
-  기록되어 `/render`·`/cr`·sync 가 분기 기준으로 읽는다.
-  - `dossier-page` (기본): 기능정의서 1개 = Confluence 페이지 1개.
-  - `split-deliverable`: dossier §1 → D2 정책정의서 / §2 → D3 화면설계서로
-    transpose 분할 발행(페이지 2개).
-  - 미지정 시 기존 값(없으면 dossier-page) 보존 — 작성 동작 자체는 모드와 무관하게
-    동일하다(dossier draft 양식 불변). 모드는 **발행 단위**에만 영향을 준다.
+**Mode flags (fix-plan-track-routing):**
+- (none) — **default = legacy**. Generates section policy WOs + screen WOs. However, if the
+  cluster signal from prerequisite 0 is detected, it fails closed and stops.
+- `--cluster-mode` — **Track A (Full Product)**. Generates WOs at cluster(dossier) granularity.
+  `cluster_identify.py` must run first so the graph has capability/cluster_id.
+- `--force-legacy` — Ignores the cluster signal and forces legacy (bypasses fail-closed).
+  Use only after confirming intent, since WO shells will be generated alongside the existing dossier.
+- `--publication-mode {dossier-page|split-deliverable}` — **cluster-mode only**
+  publication mode (fix-plan-dossier-publish-split). Persisted in `graph/project-mode.json`
+  and read by `/render`, `/cr`, and sync as the branching basis.
+  - `dossier-page` (default): 1 feature definition doc = 1 Confluence page.
+  - `split-deliverable`: dossier §1 → transposed and split-published as a D2 policy definition
+    doc / §2 → a D3 screen design spec (2 pages).
+  - If unspecified, the existing value is preserved (default `dossier-page` if none exists) —
+    the authoring behavior itself is identical regardless of mode (the dossier draft format is
+    unchanged). The mode only affects the **publication unit**.
 
-실행 결과를 수신한다:
-- 성공: `[fanout] 완료 — policy WO: {N}개 / screen WO: {N}개` 메시지 확인
-- 실패: 오류 메시지를 출력하고 중단한다.
-  - `FAIL: 이 프로젝트는 cluster(dossier) 모델...` → fail-closed 가드. 전제조건 0을
-    따라 `--cluster-mode` 또는 (의도 확인 후) `--force-legacy` 로 재실행한다.
-  - 그 외 → graph.json 구조 재확인을 안내한다.
+Receive the execution result:
+- Success: confirm the message `[fanout] complete — policy WO: {N} / screen WO: {N}`
+- Failure: print the error message and stop.
+  - `FAIL: this project is the cluster(dossier) model...` → fail-closed guard. Per prerequisite 0,
+    re-run with `--cluster-mode` or (after confirming intent) `--force-legacy`.
+  - Otherwise → direct the user to re-check the graph.json structure.
 
 
-### 단계 4 — 생성 결과 요약 출력
+### Step 4 — Print generation result summary
 
-실행 모드에 따라 읽는 산출물과 보고 항목이 다르다.
+The artifacts read and items reported differ depending on the execution mode.
 
 **(A) cluster-mode (Track A) — `work-orders/cluster_index.json`**
 
-cluster-mode 는 `index.md` 를 생성하지 않는다. `work-orders/cluster_index.json` 을
-읽어 capability별 dossier 생성 현황을 보고한다:
+cluster-mode does not generate `index.md`. Read `work-orders/cluster_index.json`
+and report the dossier generation status per capability:
 
 ```
-Dossier(cluster) 생성 완료
+Dossier(cluster) generation complete
 
-  dossier(cluster): {N}개
-  capability별:
-    {capability}: {N}개 ({cluster_id 목록, wo_id={PREFIX}-K-{cluster_id}})
+  dossier(cluster): {N}
+  by capability:
+    {capability}: {N} ({list of cluster_id, wo_id={PREFIX}-K-{cluster_id}})
     ...
-  no-delta:  {N}개 (WO 미생성)
+  no-delta:  {N} (no WO generated)
 ```
 
-**(B) legacy node-mode (비 cluster) — `work-orders/index.md`**
+**(B) legacy node-mode (non-cluster) — `work-orders/index.md`**
 
-`work-orders/index.md`를 읽어 다음 항목을 PM에게 보고한다:
+Read `work-orders/index.md` and report the following items to the PM:
 
 ```
-Work Order 생성 완료
+Work Order generation complete
 
-  policy WO: {N}개
-  screen WO: {N}개
-  no-delta:  {N}개 (WO 미생성)
-  총 레벨:   {N}개
+  policy WO: {N}
+  screen WO: {N}
+  no-delta:  {N} (no WO generated)
+  total levels:   {N}
 
-  레벨별 병렬 그룹:
-  레벨 0 ({N}개): {WO ID 목록}
-  레벨 1 ({N}개): {WO ID 목록}
+  parallel groups by level:
+  level 0 ({N}): {list of WO IDs}
+  level 1 ({N}): {list of WO IDs}
   ...
 
-  전제조건 주의 WO:
-  {precondition 엣지가 있는 WO 목록}
+  WOs needing prerequisite attention:
+  {list of WOs with prerequisite edges}
 ```
 
 
-### 단계 5 — session-log.md 갱신
+### Step 5 — Update session-log.md
 
-Phase 1 진입을 기록한다. 실행 모드에 맞춰 요약 컬럼을 작성한다:
+Record the Phase 1 entry. Fill in the summary column matching the execution mode:
 ```markdown
 # cluster-mode (Track A)
-| 1 (Work Orders) | {UTC 타임스탬프} | /fanout --cluster-mode | dossier(cluster) {N}개 / no-delta {N}개 |
+| 1 (Work Orders) | {UTC timestamp} | /fanout --cluster-mode | dossier(cluster) {N} / no-delta {N} |
 # legacy node-mode
-| 1 (Work Orders) | {UTC 타임스탬프} | /fanout | policy WO {N}개 / screen WO {N}개 / no-delta {N}개 |
+| 1 (Work Orders) | {UTC timestamp} | /fanout | policy WO {N} / screen WO {N} / no-delta {N} |
 ```
 
 
-### 단계 6 — open-issues.md graph-gen 항목 종결
+### Step 6 — Close graph-gen items in open-issues.md
 
-`open-issues.md`에서 `/graph-gen` 단계에서 등록된 항목 중
-graph.json이 정상 생성되어 해소된 항목을 완료 처리한다.
+Mark as resolved any items registered during the `/graph-gen` step in `open-issues.md`
+that have now been resolved because graph.json was successfully generated.
 
 
-## 결과 파일 목록
+## Result file list
 
-| 파일 | 변경 내용 |
+| File | Change |
 |---|---|
-| `work-orders/WO-NN.md` | policy + screen WO 전체 생성 |
-| `work-orders/index.md` | 레벨별 병렬 그룹 + 요약 카드 |
-| `work-orders/no-delta-list.md` | delta_required: false 노드 기록 |
-| `session-log.md` | Phase 1 진입 기록 |
-| `open-issues.md` | graph-gen 해소 항목 완료 처리 |
+| `work-orders/WO-NN.md` | All policy + screen WOs generated |
+| `work-orders/index.md` | Parallel groups by level + summary card |
+| `work-orders/no-delta-list.md` | Record of nodes with delta_required: false |
+| `session-log.md` | Phase 1 entry record |
+| `open-issues.md` | graph-gen items marked resolved |
 
 
-## 실패 처리 원칙
+## Failure handling principles
 
-- validate_graph.py FAIL: 즉시 중단. `/graph-gen` 재실행 안내.
-- fanout_dag.py 실패: 오류 코드 출력 후 중단. 부분 생성된 WO 파일은 삭제하지 않는다.
-- no-delta-list.md 기록 실패: 경고 출력 후 계속 진행.
+- validate_graph.py FAIL: stop immediately. Direct the user to re-run `/graph-gen`.
+- fanout_dag.py failure: print the error code and stop. Do not delete partially generated WO files.
+- no-delta-list.md write failure: print a warning and continue.
 
 
-## 다음 단계
+## Next steps
 
-WO 생성 완료 후 레벨 0의 WO부터 병렬 작업 시작:
-- 각 WO에 대해: `/write {WO_ID}` 또는 PM이 직접 draft 작성
-- 전체 draft 완성 후: `/integrate {product}`
+Once WO generation is complete, start parallel work from the level-0 WOs:
+- For each WO: `/write {WO_ID}` or have the PM author the draft directly
+- Once all drafts are complete: `/integrate {product}`

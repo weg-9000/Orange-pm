@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""reference_submodule 회귀 테스트 — 명령 구성(URL 사용자 입력)."""
+"""reference_submodule regression tests — command construction (user-supplied URL)."""
 from __future__ import annotations
 
 import reference_submodule as rs
@@ -23,11 +23,11 @@ def test_build_update_cmd():
 
 
 def test_prompt_url_uses_given():
-    assert rs._prompt_url("  git@x/y.git ") == "git@x/y.git"  # 인자 우선·trim
+    assert rs._prompt_url("  git@x/y.git ") == "git@x/y.git"  # given arg takes precedence, trimmed
 
 
 def test_prompt_url_blank_returns_empty(monkeypatch):
-    # 비대화형(EOF) 환경에서 빈 입력 → 빈 문자열(상위에서 오류 처리)
+    # non-interactive (EOF) environment -> empty input -> empty string (caller handles the error)
     monkeypatch.setattr("builtins.input", lambda *a, **k: (_ for _ in ()).throw(EOFError()))
     assert rs._prompt_url(None) == ""
 

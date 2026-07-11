@@ -1,26 +1,26 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""테넌트 관리 — 생성/조회/경로 (멀티테넌트 SaaS Phase 4).
+"""Tenant administration — create/list/path (multi-tenant SaaS Phase 4).
 
-모델: **테넌트 = 하나의 hub 디렉토리.**
-  - default: 플랫폼 CONTEXT 직접 사용(root ".") — 레거시 호환.
-  - 신규: tenants/{id}/ 하위 독립 CONTEXT·PROJECTS(완전 파일 격리).
-모든 스크립트가 --hub-root 로 테넌트 루트를 받으므로 코드 변경 없이 격리된다.
+Model: **tenant = one hub directory.**
+  - default: uses the platform CONTEXT directly (root ".") — legacy compatibility.
+  - new: tenants/{id}/ gets its own isolated CONTEXT·PROJECTS (full file isolation).
+Every script receives the tenant root via --hub-root, so isolation requires no code changes.
 
-생성 절차(create):
-  1. tenant-config.yml·_presets.yml 검증(중복 id 금지, 프리셋 존재)
-  2. tenants/{id}/CONTEXT ← 플랫폼 CONTEXT 템플릿 복사(.template-cache·_session-bootstrap 제외)
-  3. gates/_active-preset.txt 에 프리셋 기록, PROJECTS/ 생성
-  4. tenant-config.yml 에 테넌트 등록(주석 보존 — 말미 블록 추가)
-  5. (선택) --sample 로 샘플 데이터 적재
+Create procedure (create):
+  1. Validate tenant-config.yml / _presets.yml (no duplicate id, preset must exist)
+  2. Copy the platform CONTEXT template into tenants/{id}/CONTEXT (excluding .template-cache / _session-bootstrap)
+  3. Record the preset in gates/_active-preset.txt, create PROJECTS/
+  4. Register the tenant in tenant-config.yml (comments preserved — block appended at the end)
+  5. (optional) Load sample data via --sample
 
-사용법:
+Usage:
   python tenant_admin.py create --hub-root <platform> --id acme [--label "Acme"] \
       [--gate-preset standard] [--sample orange]
   python tenant_admin.py list  --hub-root <platform>
   python tenant_admin.py path  --hub-root <platform> --id acme
 
-exit code: 0 성공 / 1 검증 실패 / 2 인자 오류
+exit code: 0 success / 1 validation failure / 2 argument error
 """
 from __future__ import annotations
 
@@ -39,7 +39,7 @@ def _registry_path(hub_root: Path) -> Path:
 
 
 def parse_registry(hub_root: Path) -> dict:
-    """{active_tenant, tenants:[{id, root, gate_preset, label}]} 반환(경량 파서)."""
+    """Returns {active_tenant, tenants:[{id, root, gate_preset, label}]} (lightweight parser)."""
     p = _registry_path(hub_root)
     if not p.exists():
         return {"active_tenant": "default", "tenants": []}
@@ -111,8 +111,8 @@ def create_tenant(hub_root: Path, tenant_id: str, *, label: str = "",
         f"    label: {label or tenant_id}\n"
         f"    root: tenants/{tenant_id}\n"
         f"    gate_preset: {gate_preset}\n"
-        f"    # 외부 연동은 테넌트 CONTEXT/connectors.md 의 capability 매핑으로 선언한다.\n"
-        f"    # (wiki / chat / design / repo / tasks — 규약: 플러그인 CONNECTORS.md)\n"
+        f"    # External integrations are declared via the tenant's CONTEXT/connectors.md capability mapping.\n"
+        f"    # (wiki / chat / design / repo / tasks — convention: plugin CONNECTORS.md)\n"
     )
     reg_path = _registry_path(hub_root)
     if not reg_path.exists():
@@ -125,13 +125,13 @@ def create_tenant(hub_root: Path, tenant_id: str, *, label: str = "",
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description="테넌트 생성/조회/경로")
+    ap = argparse.ArgumentParser(description="Tenant create/list/path")
     ap.add_argument("command", choices=["create", "list", "path"])
     ap.add_argument("--hub-root", required=True, type=Path)
     ap.add_argument("--id", default=None)
     ap.add_argument("--label", default="")
     ap.add_argument("--gate-preset", default="standard")
-    ap.add_argument("--sample", default=None, help="생성 후 샘플 적재(load_sample_tenant)")
+    ap.add_argument("--sample", default=None, help="Load sample data after creation (load_sample_tenant)")
     args = ap.parse_args()
     if not args.hub_root.is_dir():
         sys.stderr.write(f"hub-root not found: {args.hub_root}\n")
@@ -146,7 +146,7 @@ def main() -> int:
 
     if args.command == "path":
         if not args.id:
-            sys.stderr.write("--id 필요\n")
+            sys.stderr.write("--id required\n")
             return 2
         r = tenant_root(args.hub_root, args.id)
         if r is None:
@@ -156,11 +156,11 @@ def main() -> int:
         return 0
 
     if not args.id:
-        sys.stderr.write("--id 필요\n")
+        sys.stderr.write("--id required\n")
         return 2
     r = create_tenant(args.hub_root, args.id, label=args.label, gate_preset=args.gate_preset)
     if r["status"] != "created":
-        sys.stderr.write(f"[tenant_admin] 생성 실패: {r}\n")
+        sys.stderr.write(f"[tenant_admin] creation failed: {r}\n")
         return 1
     print(f"[tenant_admin] created tenant '{r['id']}' → {r['root']} (preset={r['gate_preset']})")
     if args.sample:
@@ -170,12 +170,12 @@ def main() -> int:
             sample_dir = lst._resolve_sample_dir(dest, args.sample, None)
             if sample_dir:
                 rr = lst.load_tenant(dest, sample_dir)
-                print(f"  샘플 적재: copied={rr['copied_prefixes']} active={rr['active_prefix']}")
+                print(f"  sample loaded: copied={rr['copied_prefixes']} active={rr['active_prefix']}")
             else:
-                print(f"  (샘플 '{args.sample}' 미발견 — 수동 적재 필요)")
+                print(f"  (sample '{args.sample}' not found — manual loading required)")
         except Exception as exc:
-            print(f"  샘플 적재 생략({exc})")
-    print(f"  다음: --hub-root tenants/{args.id} 로 스킬/스크립트 실행(완전 격리)")
+            print(f"  sample loading skipped ({exc})")
+    print(f"  next: run skills/scripts with --hub-root tenants/{args.id} (full isolation)")
     return 0
 
 

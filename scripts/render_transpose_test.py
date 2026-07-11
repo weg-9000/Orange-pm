@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""render_transpose.py 단위 테스트 (stdlib unittest).
+"""render_transpose.py unit tests (stdlib unittest).
 
-실행:
+Run:
     python render_transpose_test.py
 """
 from __future__ import annotations
@@ -21,7 +21,7 @@ if str(_THIS_DIR) not in sys.path:
 import render_transpose as rt  # noqa: E402
 
 
-# ── 픽스처 헬퍼 ─────────────────────────────────────────────────────────────
+# ── fixture helpers ─────────────────────────────────────────────────────────
 
 
 def _make_cluster_draft(
@@ -33,12 +33,12 @@ def _make_cluster_draft(
     is_common_shell: bool = False,
     include_s1: bool = True,
     include_s2: bool = True,
-    include_alpha: str | None = None,  # "api" / "db" / "migration" 또는 None
-    s1_body: str = "정책 본문 — POL-001 기본 규칙.",
-    s2_body: str = "화면 본문 — SCR-001 메인 화면.",
-    alpha_body: str = "API 본문 — POST /v1/foo.",
+    include_alpha: str | None = None,  # "api" / "db" / "migration" or None
+    s1_body: str = "policy body — POL-001 base rule.",
+    s2_body: str = "screen body — SCR-001 main screen.",
+    alpha_body: str = "API body — POST /v1/foo.",
 ) -> str:
-    """cluster_draft 양식의 MD 문자열 생성."""
+    """Build a cluster_draft style MD string."""
     targets_yaml = "\n".join(f"  - {t}" for t in targets)
     fm = (
         "---\n"
@@ -60,25 +60,25 @@ def _make_cluster_draft(
     parts = [fm]
     if include_s1:
         parts.append(
-            '::: {.panel section="§1 정책 결정 (D2 → 정책정의서로 transpose)"}\n'
-            "## §1 정책 결정\n\n"
-            "### §1-1 정책 범위\n\n"
+            '::: {.panel section="§1 Policy Decisions (D2 → transpose to policy definition)"}\n'
+            "## §1 Policy Decisions\n\n"
+            "### §1-1 Policy scope\n\n"
             f"{s1_body}\n"
             ":::\n\n"
         )
     if include_s2:
         parts.append(
-            '::: {.panel section="§2 화면 설계 (D3 → 화면설계서로 transpose)"}\n'
-            "## §2 화면 설계\n\n"
-            "### §2-1 주요 화면\n\n"
+            '::: {.panel section="§2 Screen Design (D3 → transpose to screen design spec)"}\n'
+            "## §2 Screen Design\n\n"
+            "### §2-1 Main screens\n\n"
             f"{s2_body}\n"
             ":::\n\n"
         )
     if include_alpha:
         alpha_title = {
-            "api": "§α API 스펙",
-            "db": "§α DB 스키마",
-            "migration": "§α 마이그레이션",
+            "api": "§α API Spec",
+            "db": "§α DB Schema",
+            "migration": "§α Migration",
         }[include_alpha]
         parts.append(
             f'::: {{.panel section="{alpha_title}"}}\n'
@@ -86,18 +86,18 @@ def _make_cluster_draft(
             f"{alpha_body}\n"
             ":::\n\n"
         )
-    # §3 / §4 (publish 제외) — 어셈블 결과에 포함되지 않아야 함
+    # §3 / §4 (excluded from publish) — must not appear in the assembled result
     parts.append(
-        '::: {.panel section="§3 데이터 / 의존성 (내부용, publish 제외)"}\n'
-        "## §3 데이터\n\n"
-        "내부용 데이터 — 절대 D2/D3 에 포함되면 안 됨 (SENTINEL_S3).\n"
+        '::: {.panel section="§3 Data / Dependencies (internal, excluded from publish)"}\n'
+        "## §3 Data\n\n"
+        "internal data — must never appear in D2/D3 (SENTINEL_S3).\n"
         ":::\n\n"
     )
     parts.append(
-        '::: {.panel section="§4 Open Questions (내부용, publish 제외)" '
+        '::: {.panel section="§4 Open Questions (internal, excluded from publish)" '
         'style="tbd"}\n'
         "## §4 OQ\n\n"
-        "OQ-001 SENTINEL_S4 — 절대 publish 안 됨.\n"
+        "OQ-001 SENTINEL_S4 — never published.\n"
         ":::\n"
     )
     return "".join(parts)
@@ -109,7 +109,7 @@ def _write(tmpdir: Path, name: str, content: str) -> Path:
     return p
 
 
-# ── T1: 단일 cluster D2 transpose ───────────────────────────────────────────
+# ── T1: single-cluster D2 transpose ─────────────────────────────────────────
 
 
 class T1SingleClusterD2(unittest.TestCase):
@@ -124,40 +124,40 @@ class T1SingleClusterD2(unittest.TestCase):
                     cluster_id="PR-01",
                     cluster_name="PlanMatrix",
                     targets=["D2", "D3"],
-                    s1_body="POL-101 기본 요금 정책 적용.",
+                    s1_body="POL-101 base pricing policy applies.",
                 ),
             )
             result = rt.transpose([draft], "D2")
-            # 챕터 panel 1개
+            # 1 chapter panel
             self.assertEqual(
                 result.count("::: {.panel section="),
                 1,
-                f"D2 챕터 panel 1개 기대\n{result}",
+                f"expected 1 D2 chapter panel\n{result}",
             )
-            # 챕터 타이틀 (publication-map.md §7 형식)
+            # chapter title (publication-map.md §7 format)
             self.assertIn(
                 'section="§1 Pricing / PlanMatrix (PR-01)"', result
             )
             self.assertIn("## §1 Pricing / PlanMatrix (PR-01)", result)
-            # §1 본문 포함
-            self.assertIn("POL-101 기본 요금 정책 적용.", result)
-            # §2 / §3 / §4 본문 미포함
-            self.assertNotIn("화면 본문", result)
+            # §1 body included
+            self.assertIn("POL-101 base pricing policy applies.", result)
+            # §2 / §3 / §4 bodies excluded
+            self.assertNotIn("screen body", result)
             self.assertNotIn("SENTINEL_S3", result)
             self.assertNotIn("SENTINEL_S4", result)
-            # frontmatter 기본 (template 없음)
+            # default frontmatter (no template)
             self.assertIn("title: ", result)
             self.assertIn("type: policy", result)
 
 
-# ── T2: 다중 cluster D2 — 정렬 검증 ─────────────────────────────────────────
+# ── T2: multi-cluster D2 — sort verification ────────────────────────────────
 
 
 class T2MultiClusterSorting(unittest.TestCase):
     def test_sort_by_capability_then_cluster_id_natural(self):
         with tempfile.TemporaryDirectory() as tmp:
             tmpdir = Path(tmp)
-            # 의도적으로 무작위 순서로 입력
+            # intentionally shuffled input order
             drafts = [
                 _write(
                     tmpdir,
@@ -205,17 +205,17 @@ class T2MultiClusterSorting(unittest.TestCase):
                 ),
             ]
             result = rt.transpose(drafts, "D2")
-            # 기대 순서: Pricing PR-01 < Pricing PR-02 < Provisioning PV-02 < Provisioning PV-10
+            # expected order: Pricing PR-01 < Pricing PR-02 < Provisioning PV-02 < Provisioning PV-10
             i_pr01 = result.index("PRICING_PR01_BODY")
             i_pr02 = result.index("PRICING_PR02_BODY")
             i_pv02 = result.index("PROV_PV02_BODY")
             i_pv10 = result.index("PROV_PV10_BODY")
-            self.assertLess(i_pr01, i_pr02, "PR-01 이 PR-02 보다 먼저")
-            self.assertLess(i_pr02, i_pv02, "Pricing 이 Provisioning 보다 먼저")
+            self.assertLess(i_pr01, i_pr02, "PR-01 before PR-02")
+            self.assertLess(i_pr02, i_pv02, "Pricing before Provisioning")
             self.assertLess(
-                i_pv02, i_pv10, "PV-02 가 PV-10 보다 먼저 (자연 정렬)"
+                i_pv02, i_pv10, "PV-02 before PV-10 (natural sort)"
             )
-            # 챕터 번호 자동 매김 §1~§4
+            # chapter numbers auto-assigned §1~§4
             self.assertIn("§1 Pricing / PlanMatrix (PR-01)", result)
             self.assertIn("§2 Pricing / PriceCalc (PR-02)", result)
             self.assertIn(
@@ -226,7 +226,7 @@ class T2MultiClusterSorting(unittest.TestCase):
             )
 
 
-# ── T3: D3 with 공통 셸 — 부록 별도 ─────────────────────────────────────────
+# ── T3: D3 with common shell — separate appendix ────────────────────────────
 
 
 class T3D3WithCommonShell(unittest.TestCase):
@@ -241,7 +241,7 @@ class T3D3WithCommonShell(unittest.TestCase):
                     cluster_id="PR-01",
                     cluster_name="PlanMatrix",
                     targets=["D3"],
-                    s2_body="MAIN_SCREEN_BODY — SCR-001 본문.",
+                    s2_body="MAIN_SCREEN_BODY — SCR-001 body.",
                 ),
             )
             shell = _write(
@@ -253,7 +253,7 @@ class T3D3WithCommonShell(unittest.TestCase):
                     cluster_name="NavShell",
                     targets=["D3"],
                     is_common_shell=True,
-                    s2_body="COMMON_NAVSHELL_BODY — 글로벌 nav.",
+                    s2_body="COMMON_NAVSHELL_BODY — global nav.",
                 ),
             )
             shell2 = _write(
@@ -265,7 +265,7 @@ class T3D3WithCommonShell(unittest.TestCase):
                     cluster_name="AuthFlow",
                     targets=["D3"],
                     is_common_shell=True,
-                    s2_body="COMMON_AUTH_BODY — 로그인 흐름.",
+                    s2_body="COMMON_AUTH_BODY — login flow.",
                 ),
             )
             result = rt.transpose(
@@ -273,36 +273,35 @@ class T3D3WithCommonShell(unittest.TestCase):
                 "D3",
                 common_shell_clusters=[shell, shell2],
             )
-            # 일반 챕터: PR-01 만 (shell 은 is_common_shell 로 제외)
+            # normal chapters: PR-01 only (shells excluded via is_common_shell)
             self.assertIn("§1 Pricing / PlanMatrix (PR-01)", result)
             self.assertIn("MAIN_SCREEN_BODY", result)
-            # 부록 별도
-            self.assertIn('section="§부록 A — 공통 셸"', result)
-            self.assertIn("부록 A.1 NavShell (COMMON-01)", result)
-            self.assertIn("부록 A.2 AuthFlow (COMMON-02)", result)
+            # appendix separate
+            self.assertIn('section="§Appendix A — Common Shell"', result)
+            self.assertIn("Appendix A.1 NavShell (COMMON-01)", result)
+            self.assertIn("Appendix A.2 AuthFlow (COMMON-02)", result)
             self.assertIn("COMMON_NAVSHELL_BODY", result)
             self.assertIn("COMMON_AUTH_BODY", result)
-            # 일반 챕터로는 NavShell 이 안 잡혔어야 함 — 부록 panel
-            # (section= 속성 + 본문 h3) 에만 등장
-            # 일반 챕터 section= 속성에는 NavShell 없음
+            # NavShell must not have been captured as a normal chapter —
+            # it appears only in the appendix panel (section= attribute + body h3)
             self.assertNotIn(
                 '"§1 Common / NavShell', result,
-                "공통 셸이 일반 챕터로 잘못 분류됨",
+                "common shell misclassified as a normal chapter",
             )
             self.assertNotIn(
                 '"§2 Common / AuthFlow', result,
-                "공통 셸이 일반 챕터로 잘못 분류됨",
+                "common shell misclassified as a normal chapter",
             )
 
 
-# ── T4: deliverable_targets 에 D2 미포함 → 제외 ─────────────────────────────
+# ── T4: D2 not in deliverable_targets → excluded ────────────────────────────
 
 
 class T4FilterByTarget(unittest.TestCase):
     def test_filter_when_d2_not_in_targets(self):
         with tempfile.TemporaryDirectory() as tmp:
             tmpdir = Path(tmp)
-            # 1개는 D2, 1개는 D3 만
+            # one targets D2, one targets D3 only
             d1 = _write(
                 tmpdir,
                 "c1.draft.md",
@@ -321,7 +320,7 @@ class T4FilterByTarget(unittest.TestCase):
                     capability="Pricing",
                     cluster_id="PR-02",
                     cluster_name="Other",
-                    targets=["D3"],  # D2 없음
+                    targets=["D3"],  # no D2
                     s1_body="EXCLUDED_BODY",
                 ),
             )
@@ -331,7 +330,7 @@ class T4FilterByTarget(unittest.TestCase):
             self.assertEqual(result.count("::: {.panel section="), 1)
 
 
-# ── T5: §1 없는 cluster → 경고 + skip ──────────────────────────────────────
+# ── T5: cluster without §1 → warn + skip ────────────────────────────────────
 
 
 class T5MissingSection(unittest.TestCase):
@@ -357,7 +356,7 @@ class T5MissingSection(unittest.TestCase):
                     cluster_id="PR-02",
                     cluster_name="NoS1",
                     targets=["D2"],
-                    include_s1=False,  # §1 없음
+                    include_s1=False,  # no §1
                     s1_body="UNUSED",
                 ),
             )
@@ -367,10 +366,10 @@ class T5MissingSection(unittest.TestCase):
             stderr_text = buf.getvalue()
             self.assertIn("PR-02", stderr_text)
             self.assertIn("§1", stderr_text)
-            # 정상 cluster 는 어셈블 결과에 포함
+            # the healthy cluster is included in the assembled result
             self.assertIn("OK_BODY", result)
             self.assertIn("§1 Pricing / PlanMatrix (PR-01)", result)
-            # bad cluster 챕터는 없음
+            # no chapter for the bad cluster
             self.assertNotIn("NoS1", result)
             self.assertEqual(result.count("::: {.panel section="), 1)
 
@@ -394,19 +393,19 @@ class T5MissingSection(unittest.TestCase):
                     rt.transpose([d], "D2")
 
 
-# ── T6: target_template frontmatter 적용 ────────────────────────────────────
+# ── T6: target_template frontmatter applied ─────────────────────────────────
 
 
 class T6TargetTemplate(unittest.TestCase):
     def test_target_template_frontmatter_applied(self):
         with tempfile.TemporaryDirectory() as tmp:
             tmpdir = Path(tmp)
-            # 가짜 template
+            # fake template
             tpl = _write(
                 tmpdir,
                 "D2_policy_tpl.md",
                 "---\n"
-                'title: "[정책정의서] DBaaS"\n'
+                'title: "[Policy Definition] DBaaS"\n'
                 "type: policy\n"
                 "layer: C\n"
                 "version: 1.2\n"
@@ -415,9 +414,9 @@ class T6TargetTemplate(unittest.TestCase):
                 "  header:\n"
                 "    style: info\n"
                 "    body: |\n"
-                "      **테스트 정책서 골격**\n"
+                "      **TEST_POLICY_SKELETON**\n"
                 "---\n\n"
-                "기존 본문 (사용 안 됨).\n",
+                "existing body (unused).\n",
             )
             d = _write(
                 tmpdir,
@@ -431,30 +430,30 @@ class T6TargetTemplate(unittest.TestCase):
                 ),
             )
             result = rt.transpose([d], "D2", target_template=tpl)
-            # template 의 title 보존 (yaml.safe_dump 가 '' 또는 "" 사용)
-            self.assertIn("[정책정의서] DBaaS", result)
+            # template title preserved (yaml.safe_dump uses '' or "")
+            self.assertIn("[Policy Definition] DBaaS", result)
             self.assertTrue(
                 result.startswith("---\n") and "title:" in result.split("---")[1],
-                "frontmatter 정상 생성",
+                "frontmatter generated correctly",
             )
-            # last_updated 가 갱신됨 (2020-01-01 이 아님)
+            # last_updated refreshed (not 2020-01-01)
             self.assertNotIn("2020-01-01", result)
             self.assertIn("last_updated:", result)
-            # transposed_at / transposed_from 메타 추가
+            # transposed_at / transposed_from metadata added
             self.assertIn("transposed_from:", result)
             self.assertIn("transposed_at:", result)
-            # template 의 publication.header 도 보존
-            self.assertIn("테스트 정책서 골격", result)
+            # template's publication.header also preserved
+            self.assertIn("TEST_POLICY_SKELETON", result)
 
 
-# ── T7: Dα 타입 분기 ─────────────────────────────────────────────────────────
+# ── T7: Dα type branching ────────────────────────────────────────────────────
 
 
 class T7DalphaTypes(unittest.TestCase):
     def test_da_api_extracts_alpha_api_only(self):
         with tempfile.TemporaryDirectory() as tmp:
             tmpdir = Path(tmp)
-            # API 만
+            # API only
             d_api = _write(
                 tmpdir,
                 "c_api.draft.md",
@@ -467,7 +466,7 @@ class T7DalphaTypes(unittest.TestCase):
                     alpha_body="API_BODY POST /v1/plans.",
                 ),
             )
-            # DB 만 (Da_api 대상 아님)
+            # DB only (not a Da_api target)
             d_db = _write(
                 tmpdir,
                 "c_db.draft.md",
@@ -485,28 +484,28 @@ class T7DalphaTypes(unittest.TestCase):
             self.assertNotIn("DB_BODY", result)
 
     def test_template_alpha_labels_extracted(self):
-        """cluster-draft.md 의 실제 §α 라벨(§α-API / §α-DB / §α-MIG)이 deliverable
-        별로 추출되는지 — 템플릿 ↔ render_transpose 계약 드리프트 가드."""
+        """Verifies the actual §α labels of cluster-draft.md (§α-API / §α-DB / §α-MIG)
+        are extracted per deliverable — guards template ↔ render_transpose contract drift."""
         cases = [
-            ("Da_api", '§α-API API 스펙 (Dα → API 스펙으로 transpose · 선택)', "ALPHA_API_BODY"),
-            ("Da_db", '§α-DB DB 스키마 (Dα → DB 스키마로 transpose · 선택)', "ALPHA_DB_BODY"),
-            ("Da_migration", '§α-MIG 마이그레이션 (Dα → 마이그레이션 플랜으로 transpose · 선택)', "ALPHA_MIG_BODY"),
+            ("Da_api", '§α-API API Spec (Dα → transpose to API spec · optional)', "ALPHA_API_BODY"),
+            ("Da_db", '§α-DB DB Schema (Dα → transpose to DB schema · optional)', "ALPHA_DB_BODY"),
+            ("Da_migration", '§α-MIG Migration (Dα → transpose to migration plan · optional)', "ALPHA_MIG_BODY"),
         ]
         for deliverable, label, body in cases:
             with tempfile.TemporaryDirectory() as tmp:
                 tmpdir = Path(tmp)
                 draft = (
                     "---\n"
-                    'title: "Cluster Pricing / PR-01 — 요금"\n'
+                    'title: "Cluster Pricing / PR-01 — Pricing"\n'
                     "wo_id: G2-K-PR-01\ntype: cluster_draft\nlayer: C\n"
                     "cluster:\n  capability: \"Pricing\"\n  cluster_id: \"PR-01\"\n"
-                    "  cluster_name: \"요금\"\n"
+                    "  cluster_name: \"Pricing\"\n"
                     f"deliverable_targets:\n  - {deliverable}\n---\n\n"
                     f'::: {{.panel section="{label}"}}\n## {label}\n\n{body}\n:::\n'
                 )
                 p = _write(tmpdir, "cluster_pr01.draft.md", draft)
                 result = rt.transpose([p], deliverable)
-                self.assertIn(body, result, f"{deliverable}: {label} 추출 실패")
+                self.assertIn(body, result, f"{deliverable}: failed to extract {label}")
 
 
 # ── T8: CLI main() smoke ────────────────────────────────────────────────────
@@ -553,7 +552,7 @@ class T8CLI(unittest.TestCase):
                     capability="Pricing",
                     cluster_id="PR-01",
                     cluster_name="X",
-                    targets=["D3"],  # D2 아님
+                    targets=["D3"],  # not D2
                     s1_body="X",
                 ),
             )
@@ -574,7 +573,7 @@ class T8CLI(unittest.TestCase):
             self.assertFalse(out.exists())
 
 
-# ── 헬퍼 — 정렬 직접 검증 ──────────────────────────────────────────────────
+# ── helper — direct sort verification ───────────────────────────────────────
 
 
 class TSortHelper(unittest.TestCase):
@@ -584,7 +583,7 @@ class TSortHelper(unittest.TestCase):
         self.assertEqual(ids, ["PR-01", "PR-2", "PR-09", "PR-10"])
 
 
-# ── P3-1: D1 capability group-by 파생 뷰 (DEC-C) ────────────────────────────
+# ── P3-1: D1 capability group-by derived view (DEC-C) ───────────────────────
 
 
 class TP3FrCapabilityView(unittest.TestCase):
@@ -595,23 +594,23 @@ class TP3FrCapabilityView(unittest.TestCase):
             "FR-201": {"capability": "Provisioning", "cluster_id": "PV-02"},
         }
         out = rt.render_fr_capability_view(fr_index)
-        # 패널 wrapper + SSoT 출처 명시
-        self.assertIn('::: {.panel section="§D1 capability별 FR 묶음', out)
+        # panel wrapper + SSoT provenance note
+        self.assertIn('::: {.panel section="§D1 FR groups by capability', out)
         self.assertIn("fr_index", out)
-        # capability 헤더 그룹
+        # capability group headers
         self.assertIn("### Pricing", out)
         self.assertIn("### Provisioning", out)
-        # FR → 기능정의서(cluster_id) 앵커
-        self.assertIn("**FR-101** → [기능정의서 PR-01](#PR-01)", out)
-        self.assertIn("**FR-201** → [기능정의서 PV-02](#PV-02)", out)
-        # 같은 capability 의 FR 둘 다 동일 그룹 아래
+        # FR → feature-definition (cluster_id) anchor
+        self.assertIn("**FR-101** → [feature definition PR-01](#PR-01)", out)
+        self.assertIn("**FR-201** → [feature definition PV-02](#PV-02)", out)
+        # both FRs of the same capability sit under the same group
         i_cap = out.index("### Pricing")
         self.assertIn("FR-101", out[i_cap:])
         self.assertIn("FR-103", out[i_cap:])
 
     def test_deterministic_order(self):
-        # 입력 순서를 섞어도 출력은 결정적 (capability 알파벳 → FR 자연 순)
-        # FR-1 / FR-2 자연 순 + Pricing 이 Provisioning 보다 먼저
+        # output is deterministic even with shuffled input (capability alphabetical → FR natural order)
+        # FR-1 / FR-2 natural order + Pricing before Provisioning
         fr_index = {
             "FR-10": {"capability": "Provisioning", "cluster_id": "PV-01"},
             "FR-2": {"capability": "Pricing", "cluster_id": "PR-01"},
@@ -620,29 +619,29 @@ class TP3FrCapabilityView(unittest.TestCase):
         out = rt.render_fr_capability_view(fr_index)
         self.assertLess(out.index("### Pricing"), out.index("### Provisioning"))
         self.assertLess(out.index("FR-1**"), out.index("FR-2**"))
-        # 멱등 (동일 입력 → 동일 출력)
+        # idempotent (same input → same output)
         self.assertEqual(out, rt.render_fr_capability_view(fr_index))
 
     def test_empty_input(self):
         out = rt.render_fr_capability_view({})
-        self.assertIn('::: {.panel section="§D1 capability별 FR 묶음', out)
-        self.assertIn("매핑된 FR 없음", out)
-        # 패널이 정상적으로 닫힘
+        self.assertIn('::: {.panel section="§D1 FR groups by capability', out)
+        self.assertIn("No FRs mapped", out)
+        # the panel closes properly
         self.assertTrue(out.rstrip().endswith(":::"))
 
     def test_unmapped_cluster(self):
         out = rt.render_fr_capability_view(
             {"FR-9": {"capability": "Misc", "cluster_id": ""}}
         )
-        self.assertIn("**FR-9** → (cluster 미매핑)", out)
+        self.assertIn("**FR-9** → (cluster unmapped)", out)
 
 
-# ── P3-2: 횡단 관심사 매트릭스 파생 뷰 (DEC-F) ──────────────────────────────
+# ── P3-2: cross-cutting concern matrix derived view (DEC-F) ─────────────────
 
 
 class TP3CrossCuttingMatrix(unittest.TestCase):
     def test_multi_module_matrix(self):
-        # 일반성 검증 — 이메일 아닌 모듈도 동일하게 동작
+        # generality check — non-email modules behave the same
         module_index = {
             "DOC-EMAIL": [
                 {
@@ -671,18 +670,18 @@ class TP3CrossCuttingMatrix(unittest.TestCase):
             ],
         }
         out = rt.render_cross_cutting_matrix(module_index)
-        self.assertIn('::: {.panel section="§횡단 관심사 매트릭스', out)
+        self.assertIn('::: {.panel section="§Cross-cutting concern matrix', out)
         self.assertIn("module_index", out)
-        # 모듈별 헤더 (docId 알파벳 순: DOC-EMAIL < DOC-LOG)
+        # per-module headers (docId alphabetical order: DOC-EMAIL < DOC-LOG)
         self.assertLess(out.index("### DOC-EMAIL"), out.index("### DOC-LOG"))
-        # 테이블 헤더
+        # table header
         self.assertIn(
             "| capability | cluster_id | source | via | section |", out
         )
-        # 행 내용 + None section → "—"
+        # row content + None section → "—"
         self.assertIn("| Provisioning | PV-01 | NODE-C | includes | — |", out)
         self.assertIn("| Account | PR-01 | NODE-A | references | §1 |", out)
-        # 모듈 내 행 결정적 정렬 (Account < Backup)
+        # deterministic row sort within a module (Account < Backup)
         email_block = out[out.index("### DOC-EMAIL"):out.index("### DOC-LOG")]
         self.assertLess(
             email_block.index("Account"), email_block.index("Backup")
@@ -694,14 +693,14 @@ class TP3CrossCuttingMatrix(unittest.TestCase):
                 {"cluster_id": "PR-01", "capability": "A",
                  "source": "N1", "via": "references", "section": "§1"}
             ]},
-            node_titles={"DOC-EMAIL": "이메일·SMS 발송 모듈"},
+            node_titles={"DOC-EMAIL": "Email/SMS delivery module"},
         )
-        self.assertIn("### 이메일·SMS 발송 모듈 (DOC-EMAIL)", out)
+        self.assertIn("### Email/SMS delivery module (DOC-EMAIL)", out)
 
     def test_empty_input(self):
         out = rt.render_cross_cutting_matrix({})
-        self.assertIn('::: {.panel section="§횡단 관심사 매트릭스', out)
-        self.assertIn("횡단 참조 모듈 없음", out)
+        self.assertIn('::: {.panel section="§Cross-cutting concern matrix', out)
+        self.assertIn("No cross-cutting modules", out)
         self.assertTrue(out.rstrip().endswith(":::"))
 
     def test_deterministic(self):
@@ -720,7 +719,7 @@ class TP3CrossCuttingMatrix(unittest.TestCase):
         self.assertEqual(out1, out2)
 
 
-# ── T9: D3 화면 단위 챕터 (split-deliverable) ───────────────────────────────
+# ── T9: D3 screen-level chapters (split-deliverable) ────────────────────────
 
 
 def _d3_screen_draft(
@@ -738,7 +737,7 @@ def _d3_screen_draft(
         "deliverable_targets:\n  - D3\n"
         f"related_screens:\n{rs}\n"
         "is_common_shell: false\n---\n\n"
-        '::: {.panel section="§2 화면 설계"}\n## §2 화면 설계\n\n'
+        '::: {.panel section="§2 Screen Design"}\n## §2 Screen Design\n\n'
         f"{s2_inner}\n:::\n"
     )
 
@@ -753,22 +752,22 @@ class T9D3ScreenChapters(unittest.TestCase):
                     cluster_id="PR-01", cluster_name="PlanMatrix",
                     capability="Pricing", related=["SCR-002", "SCR-001"],
                     s2_inner=(
-                        "### §2-1 목록 화면 (SCR-001)\n\nLIST_BODY 목록.\n\n"
-                        "### §2-2 생성 화면 (SCR-002)\n\nCREATE_BODY 생성.\n"
+                        "### §2-1 List Screen (SCR-001)\n\nLIST_BODY list.\n\n"
+                        "### §2-2 Create Screen (SCR-002)\n\nCREATE_BODY create.\n"
                     ),
                 ),
             )
             result = rt.transpose([d], "D3")
-            # 화면 인덱스 패널
-            self.assertIn('section="§화면 인덱스"', result)
-            self.assertIn("| SCR-001 | 목록 화면 |", result)
-            self.assertIn("| SCR-002 | 생성 화면 |", result)
-            # 화면 단위 챕터 (Screen ID 자연순: SCR-001 < SCR-002)
-            self.assertIn('section="§1 목록 화면 (SCR-001)"', result)
-            self.assertIn('section="§2 생성 화면 (SCR-002)"', result)
+            # screen index panel
+            self.assertIn('section="§Screen Index"', result)
+            self.assertIn("| SCR-001 | List Screen |", result)
+            self.assertIn("| SCR-002 | Create Screen |", result)
+            # screen-level chapters (Screen ID natural order: SCR-001 < SCR-002)
+            self.assertIn('section="§1 List Screen (SCR-001)"', result)
+            self.assertIn('section="§2 Create Screen (SCR-002)"', result)
             self.assertLess(result.index("LIST_BODY"), result.index("CREATE_BODY"))
-            # cluster 단위 챕터 panel 제목은 등장하지 않음 (화면 단위로 분해됨).
-            # cluster 문자열은 화면 인덱스 '출처' 열에만 나타난다.
+            # no cluster-level chapter panel titles appear (split into screens).
+            # the cluster string appears only in the screen index 'source' column.
             self.assertNotIn('section="§1 Pricing / PlanMatrix (PR-01)"', result)
             self.assertNotIn("## §1 Pricing / PlanMatrix (PR-01)", result)
 
@@ -780,18 +779,18 @@ class T9D3ScreenChapters(unittest.TestCase):
                 _d3_screen_draft(
                     cluster_id="PR-01", cluster_name="PlanMatrix",
                     capability="Pricing", related=[],
-                    s2_inner="### §2-1 주요 화면\n\nNO_TAG_BODY 본문.\n",
+                    s2_inner="### §2-1 Main screens\n\nNO_TAG_BODY body.\n",
                 ),
             )
             buf = io.StringIO()
             with redirect_stderr(buf):
                 result = rt.transpose([d], "D3")
             # fallback WARN
-            self.assertIn("화면 단위 분해 불가", buf.getvalue())
-            # cluster 단위 챕터로 어셈블
+            self.assertIn("cannot split into screen-level chapters", buf.getvalue())
+            # assembled as a cluster-level chapter
             self.assertIn("§1 Pricing / PlanMatrix (PR-01)", result)
             self.assertIn("NO_TAG_BODY", result)
-            self.assertNotIn('section="§화면 인덱스"', result)
+            self.assertNotIn('section="§Screen Index"', result)
 
     def test_common_shell_still_routed_to_appendix_in_screen_mode(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -801,7 +800,7 @@ class T9D3ScreenChapters(unittest.TestCase):
                 _d3_screen_draft(
                     cluster_id="PR-01", cluster_name="PlanMatrix",
                     capability="Pricing", related=["SCR-001"],
-                    s2_inner="### §2-1 목록 (SCR-001)\n\nMAIN_BODY.\n",
+                    s2_inner="### §2-1 List (SCR-001)\n\nMAIN_BODY.\n",
                 ),
             )
             shell = _write(
@@ -815,11 +814,11 @@ class T9D3ScreenChapters(unittest.TestCase):
             result = rt.transpose(
                 [main, shell], "D3", common_shell_clusters=[shell]
             )
-            # 화면 챕터 + 부록 공존, shell 은 일반 챕터로 안 잡힘
-            self.assertIn('section="§1 목록 (SCR-001)"', result)
-            self.assertIn("§부록 A — 공통 셸", result)
+            # screen chapters + appendix coexist, shell not captured as a normal chapter
+            self.assertIn('section="§1 List (SCR-001)"', result)
+            self.assertIn("§Appendix A — Common Shell", result)
             self.assertIn("SHELL_NAV_BODY", result)
-            self.assertNotIn("(COMMON-01)\"", result.split("§부록")[0])
+            self.assertNotIn("(COMMON-01)\"", result.split("§Appendix")[0])
 
 
 if __name__ == "__main__":

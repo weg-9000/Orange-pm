@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""graph_emit — graph.json(raw schema) → 정규화 graph 계약 (01-data-contract §1)."""
+"""graph_emit — graph.json (raw schema) → normalized graph contract (01-data-contract §1)."""
 from __future__ import annotations
 
 import json
@@ -9,21 +9,21 @@ from pathlib import Path
 
 import _emit_common as C
 
-# 엣지 type → 시각 style (계약 §1 고정 규칙)
+# edge type → visual style (contract §1 fixed rules)
 _STYLE = {
     "inherits_from": "solid",
     "includes": "solid-thick",
-    "과금대상": "danger",
+    "billing-target": "danger",
 }
 
 
 def _edge_style(etype: str) -> str:
-    # inherits_from→solid · includes→solid-thick · 과금대상→danger · 그 외(references/*기준)→dashed (계약 §1)
+    # inherits_from→solid · includes→solid-thick · billing-target→danger · others (references/*-standard)→dashed (contract §1)
     return _STYLE.get(etype, "dashed")
 
 
 def transform_graph(raw: dict, product: str = "") -> dict:
-    """raw graph.json → 계약. raw 는 {graph:{...}} 또는 평면 모두 허용."""
+    """raw graph.json → contract. raw may be {graph:{...}} or flat."""
     g = raw.get("graph", raw)
     meta = g.get("metadata", {})
     raw_nodes = g.get("nodes", {})
@@ -47,7 +47,7 @@ def transform_graph(raw: dict, product: str = "") -> dict:
             "summary": n.get("summary", ""),
             "sectionCount": len(n.get("sections", {}) or {}),
         }
-        # cluster_identify.py 가 붙인 클러스터 메타데이터 — 있을 때만 통과 (back-compat)
+        # cluster metadata attached by cluster_identify.py — pass through only when present (back-compat)
         for raw_key, contract_key in (
             ("capability", "capability"),
             ("cluster_id", "clusterId"),
@@ -92,11 +92,11 @@ def main(argv: list[str]) -> int:
     if args.from_fixture:
         return C.emit(C.load_fixture(args.from_fixture))
     if not (args.hub_root and args.product):
-        sys.stderr.write("--hub-root, --product 필요\n")
+        sys.stderr.write("--hub-root and --product are required\n")
         return 2
     path = C.product_dir(args.hub_root, args.product) / "graph" / "graph.json"
     if not path.exists():
-        sys.stderr.write(f"graph.json 없음: {path}\n")
+        sys.stderr.write(f"graph.json not found: {path}\n")
         return C.emit({"version": "empty", "product": args.product, "kind": "graph",
                        "metadata": {}, "nodes": [], "edges": []}) or 1
     raw = json.loads(path.read_text(encoding="utf-8"))

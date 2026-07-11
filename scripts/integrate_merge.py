@@ -1,22 +1,24 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""drafts/*.draft.md를 수집해 integrator 입력 번들을 생성한다.
+"""Collect drafts/*.draft.md to build an integrator input bundle.
 
 [STANDALONE / NOT-WIRED]
-    이 스크립트는 어떤 스킬에서도 호출되지 않는다. /integrate(및 integrator
-    에이전트)는 draft frontmatter 를 직접 스캔하므로 reports/integration-input.json
-    번들을 거치지 않는다. 본 스크립트는 사람이 수동으로 통합 입력을 점검할 때
-    쓰는 선택적 도구로만 유지한다(파이프라인 비연결은 의도된 상태).
+    This script is not invoked by any skill. /integrate (and the integrator
+    agent) scan draft frontmatter directly, so they never go through the
+    reports/integration-input.json bundle. This script is kept only as an
+    optional tool for humans to manually inspect the integration input
+    (the pipeline disconnection is intentional).
 
-변경 이력:
-    v1.0: 최초 구현 (heading + 파일 크기만 추출)
-    v2.0: type 분리 / WO 누락 감지 / decisions.md 해시 불일치 감지 /
-          체크리스트 완료 여부 / graph 노드 ID / level 추출
+Change history:
+    v1.0: initial implementation (heading + file size only)
+    v2.0: type separation / missing-WO detection / decisions.md hash
+          mismatch detection / checklist completion / graph node ID /
+          level extraction
 
-실행:
+Usage:
     python integrate_merge.py <project-dir>
 
-bundle 구조:
+Bundle structure:
     {
       "generated_at": "...",
       "project": "...",
@@ -58,19 +60,19 @@ from datetime import datetime
 from pathlib import Path
 
 
-# ── 파싱 헬퍼 ─────────────────────────────────────────────────────────────────
+# ── Parsing helpers ───────────────────────────────────────────────────────────
 
 def _extract_bold_field(text: str, field: str) -> str:
-    """**field**: `value` 패턴에서 value를 추출한다."""
+    """Extract value from a **field**: `value` pattern."""
     pattern = rf"\*\*{re.escape(field)}\*\*:\s*`([^`]+)`"
     match = re.search(pattern, text)
     return match.group(1).strip() if match else ""
 
 
 def _extract_title(text: str) -> str:
-    """첫 번째 H1에서 섹션 제목을 추출한다.
+    """Extract the section title from the first H1.
 
-    예: # Work Order: WO-01 — 섹션 제목  →  섹션 제목
+    Example: # Work Order: WO-01 — Section Title  →  Section Title
     """
     match = re.search(r"^\s*#\s+.+?—\s+(.+)$", text, flags=re.M)
     if match:
@@ -80,7 +82,7 @@ def _extract_title(text: str) -> str:
 
 
 def _extract_checklist(text: str) -> tuple[int, int]:
-    """체크리스트 총 항목 수와 미완료(- [ ]) 항목 수를 반환한다."""
+    """Return the total checklist item count and the unchecked (- [ ]) count."""
     total = len(re.findall(r"- \[[ xX]\]", text))
     unchecked = len(re.findall(r"- \[ \]", text))
     return total, unchecked
@@ -95,32 +97,32 @@ def _hash_file(path: Path) -> str:
 
 
 def _count_dec_status(decisions_path: Path) -> dict:
-    """decisions.md DEC 표의 `승인` 칼럼을 파싱해 상태별 개수를 반환한다.
+    """Parse the `Approval` column of the decisions.md DEC table and return counts by status.
 
-    스키마: CONTEXT/dec-schema.md
-    | ID | 일자 | 도메인 | 핵심 결정 | 번복 | 승인 | 근거(스킬·세션) |
+    Schema: CONTEXT/dec-schema.md
+    | ID | Date | Domain | Key Decision | Reversal | Approval | (optional trailing Rationale) |
 
-    승인 ENUM:
+    Approval ENUM:
         ⬜              → pending
         ✅ {pm_id}      → approved
         ❌ {pm_id}: ... → rejected
-        🟡 보류         → hold
+        🟡 hold         → hold
 
-    표 미존재·헤더 mismatch 시 모든 카운트를 -1 로 반환 (미적용).
+    If the table is missing or the header doesn't match, all counts are returned as -1 (not applicable).
     """
     if not decisions_path.exists():
         return {"total": -1, "pending": -1, "approved": -1, "rejected": -1, "hold": -1}
 
     text = decisions_path.read_text(encoding="utf-8", errors="replace")
-    # 헤더 라인 탐지 (필수 5 칼럼 확인)
+    # Detect the header line (verify the 5 required columns)
     header_re = re.compile(
-        r"^\|\s*ID\s*\|\s*일자\s*\|\s*도메인\s*\|\s*핵심 결정\s*\|\s*번복\s*\|\s*승인\s*\|",
+        r"^\|\s*ID\s*\|\s*Date\s*\|\s*Domain\s*\|\s*Key Decision\s*\|\s*Reversal\s*\|\s*Approval\s*\|",
         re.M,
     )
     if not header_re.search(text):
         return {"total": -1, "pending": -1, "approved": -1, "rejected": -1, "hold": -1}
 
-    # DEC 행 추출 (| DEC-NNN | ... | 승인셀 | ... |)
+    # Extract DEC rows (| DEC-NNN | ... | approval cell | ... |)
     row_re = re.compile(
         r"^\|\s*~?~?(DEC-\d+)~?~?\s*\|[^|\n]*\|[^|\n]*\|[^|\n]*\|[^|\n]*\|\s*([^|\n]*?)\s*\|",
         re.M,
@@ -140,10 +142,10 @@ def _count_dec_status(decisions_path: Path) -> dict:
     return counts
 
 
-# ── index.md에서 WO ID 목록 추출 ──────────────────────────────────────────────
+# ── Extract WO ID list from index.md ──────────────────────────────────────────
 
 def _load_index_wo_ids(project: Path) -> list[str]:
-    """work-orders/index.md에서 WO-NN ID 목록을 추출한다."""
+    """Extract the WO-NN ID list from work-orders/index.md."""
     index_path = project / "work-orders" / "index.md"
     if not index_path.exists():
         return []
@@ -151,7 +153,7 @@ def _load_index_wo_ids(project: Path) -> list[str]:
     return re.findall(r"`(WO-\d+)`", text)
 
 
-# ── 메인 ──────────────────────────────────────────────────────────────────────
+# ── Main ───────────────────────────────────────────────────────────────────────
 
 def main() -> int:
     if len(sys.argv) != 2:
@@ -163,22 +165,22 @@ def main() -> int:
 
     if not drafts_dir.exists():
         print(
-            f"[integrate_merge] FAIL: drafts/ 디렉토리 없음: {drafts_dir}",
+            f"[integrate_merge] FAIL: drafts/ directory not found: {drafts_dir}",
             file=sys.stderr,
         )
         return 1
 
-    # ── 현재 해시 계산 ──────────────────────────────────────────────────────────
+    # ── Compute current hashes ────────────────────────────────────────────────
     graph_hash = _hash_file(project / "graph" / "graph.json")
     decisions_path = project / "decisions.md"
     decisions_hash = _hash_file(decisions_path)
     dec_counts = _count_dec_status(decisions_path)
 
-    # ── index.md 기준 WO 목록 로드 ─────────────────────────────────────────────
+    # ── Load WO list from index.md ────────────────────────────────────────────
     index_wo_ids = _load_index_wo_ids(project)
     index_wo_set = set(index_wo_ids)
 
-    # ── draft 파일 수집 ────────────────────────────────────────────────────────
+    # ── Collect draft files ───────────────────────────────────────────────────
     draft_files = sorted(drafts_dir.glob("*.draft.md"))
     draft_wo_set: set[str] = set()
     drafts: list[dict] = []
@@ -189,9 +191,9 @@ def main() -> int:
         draft_wo_set.add(wo_id)
 
         wo_type = _extract_bold_field(text, "type") or "unknown"
-        graph_node = _extract_bold_field(text, "문서명") or ""
+        graph_node = _extract_bold_field(text, "Document Name") or ""
         if not graph_node:
-            # screen WO는 Screen ID 필드 사용
+            # screen WO uses the Screen ID field
             graph_node = _extract_bold_field(text, "Screen ID") or ""
 
         level_parts = _extract_bold_field(text, "level").split()
@@ -201,7 +203,7 @@ def main() -> int:
         except (ValueError, IndexError):
             level = -1
 
-        wo_decisions_hash = _extract_bold_field(text, "decisions.md 스냅샷 해시")
+        wo_decisions_hash = _extract_bold_field(text, "decisions.md snapshot hash")
         decisions_hash_match = (
             wo_decisions_hash == decisions_hash
             if wo_decisions_hash not in ("", "n/a")
@@ -223,28 +225,28 @@ def main() -> int:
             "checklist_unchecked": checklist_unchecked,
         })
 
-    # ── 누락 WO 탐지 ──────────────────────────────────────────────────────────
+    # ── Detect missing WOs ─────────────────────────────────────────────────────
     missing_wos = sorted(index_wo_set - draft_wo_set) if index_wo_set else []
 
-    # ── stale WO 탐지 (decisions.md 해시 불일치) ───────────────────────────────
+    # ── Detect stale WOs (decisions.md hash mismatch) ─────────────────────────
     stale_wos = [
         d["wo_id"]
         for d in drafts
         if d["decisions_hash_match"] is False
     ]
 
-    # ── 체크리스트 미완료 WO ───────────────────────────────────────────────────
+    # ── WOs with incomplete checklists ────────────────────────────────────────
     checklist_incomplete = [
         d["wo_id"]
         for d in drafts
         if d["checklist_unchecked"] > 0
     ]
 
-    # ── type별 집계 ────────────────────────────────────────────────────────────
+    # ── Aggregate by type ──────────────────────────────────────────────────────
     policy_count = sum(1 for d in drafts if d["type"] == "policy")
     screen_count = sum(1 for d in drafts if d["type"] == "screen")
 
-    # ── 번들 구성 ──────────────────────────────────────────────────────────────
+    # ── Build bundle ───────────────────────────────────────────────────────────
     bundle = {
         "generated_at": datetime.utcnow().isoformat() + "Z",
         "project": project.name,
@@ -267,7 +269,7 @@ def main() -> int:
         "drafts": drafts,
     }
 
-    # ── 저장 ──────────────────────────────────────────────────────────────────
+    # ── Save ───────────────────────────────────────────────────────────────────
     out_dir = project / "reports"
     out_dir.mkdir(parents=True, exist_ok=True)
     out_path = out_dir / "integration-input.json"
@@ -275,11 +277,11 @@ def main() -> int:
         json.dumps(bundle, ensure_ascii=False, indent=2), encoding="utf-8"
     )
 
-    # ── 콘솔 요약 ─────────────────────────────────────────────────────────────
-    # 콘솔 stdout 인코딩이 utf-8 이 아니면 (Windows cp949 등) emoji 를 ASCII fallback
+    # ── Console summary ────────────────────────────────────────────────────────
+    # Fall back to ASCII if console stdout encoding isn't utf-8 (e.g. Windows cp949)
     use_emoji = (sys.stdout.encoding or "").lower().startswith("utf")
     if dec_counts["total"] < 0:
-        dec_summary = "DEC: 표 미존재 또는 헤더 mismatch — 마이그레이션 필요"
+        dec_summary = "DEC: table missing or header mismatch — migration required"
     elif use_emoji:
         dec_summary = (
             f"DEC: total {dec_counts['total']} / "
@@ -302,11 +304,11 @@ def main() -> int:
         f"  {dec_summary}"
     )
 
-    # 누락 WO가 있으면 비정상 종료
+    # Exit with an error if any WOs are missing
     if missing_wos:
         print(
-            f"[integrate_merge] FAIL: 누락 draft {missing_wos}. "
-            "/integrate 실행 전 해당 WO 작성을 완료하세요.",
+            f"[integrate_merge] FAIL: missing drafts {missing_wos}. "
+            "Complete authoring those WOs before running /integrate.",
             file=sys.stderr,
         )
         return 1

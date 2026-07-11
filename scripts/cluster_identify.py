@@ -2,38 +2,41 @@
 # -*- coding: utf-8 -*-
 """Cluster Identification (Phase 5A).
 
-graph.json 의 policy 노드에 capability + cluster_id 를 부여한다.
-publication-map.md §1 의 4축 + D2/D3 정합성 = 5축 가중 점수 (≥0.55 → 결합) 로
-군집을 산출하고, 안정 ID 매핑(cluster_map.json) 으로 재실행 시 동일 결과를 보장한다.
+Assigns capability + cluster_id to policy nodes in graph.json.
+Clusters are computed from publication-map.md §1's 4 axes + D2/D3 alignment,
+combined into a 5-axis weighted score (≥0.55 → merge), and a stable ID
+mapping (cluster_map.json) guarantees identical results on rerun.
 
-사용 시점:
-    /graph-gen 직후 또는 /fanout --cluster-mode 의 사전 단계.
+When to run:
+    Right after /graph-gen, or as a pre-step of /fanout --cluster-mode.
 
-입력:
-    PROJECTS/{product}/graph/graph.json (policy 노드 + edges)
-    PROJECTS/{product}/inputs/requirements.md (선택 — FR 메타에서 cluster 힌트 추출)
+Input:
+    PROJECTS/{product}/graph/graph.json (policy nodes + edges)
+    PROJECTS/{product}/inputs/requirements.md (optional — extracts cluster hints from FR metadata)
 
-씨앗(seed) — P2 (docs/fr-cluster-alignment.md):
-    요구사항 태그(capability / cluster_hint)를 union-find 초기 파티션으로 사전 결합한다.
-    점수(5축·threshold)는 그 위에서 추가 병합하므로 조절 레버는 유지된다(seed-not-lock).
-    cluster_lock: true 노드는 점수 병합에서 제외(씨앗 경계 고정). --ignore-seed 로 순수 점수 군집.
+Seed — P2 (docs/fr-cluster-alignment.md):
+    Requirement tags (capability / cluster_hint) are pre-merged as the initial
+    union-find partition (seed). Scoring (5-axis · threshold) merges further on
+    top of that, so the tuning lever is preserved (seed-not-lock).
+    Nodes with cluster_lock: true are excluded from score-based merging (locks
+    the seed boundary). Use --ignore-seed for pure score-based clustering.
 
-출력:
+Output:
     PROJECTS/{product}/graph/graph.clustered.json
-        — 각 policy 노드에 capability / cluster_id / cluster_name + cluster_provenance 추가
+        — each policy node gets capability / cluster_id / cluster_name + cluster_provenance added
     PROJECTS/{product}/graph/cluster_map.json
-        — 안정 ID 매핑(canonical_to_id) + FR 권위 인덱스(fr_index: FR→{capability,cluster_id})
+        — stable ID mapping (canonical_to_id) + FR authority index (fr_index: FR→{capability,cluster_id})
     PROJECTS/{product}/reports/cluster-summary.md
-        — PM 검토용 요약 (capability 별 cluster 수, 결합 점수, 씨앗 검증 kept/overridden)
+        — summary for PM review (cluster count per capability, merge scores, seed validation kept/overridden)
 
 CLI:
     python cluster_identify.py --graph PROJECTS/{p}/graph/graph.json \
         --output PROJECTS/{p}/graph/graph.clustered.json \
         [--cluster-map PROJECTS/{p}/graph/cluster_map.json] \
-        [--threshold 0.55]                  # 결합 임계 (publication-map.md §1)
+        [--threshold 0.55]                  # merge threshold (publication-map.md §1)
         [--summary PROJECTS/{p}/reports/cluster-summary.md]
 
-종료 코드: 0 성공 / 1 입력 오류 / 2 graph 구조 오류
+Exit codes: 0 success / 1 input error / 2 graph structure error
 """
 from __future__ import annotations
 
@@ -46,13 +49,13 @@ from pathlib import Path
 from typing import Any
 
 
-# 5축 가중치 (publication-map.md §1)
+# 5-axis weights (publication-map.md §1)
 WEIGHTS = {
-    "decision_domain": 0.30,   # policy_axis 일치
-    "domain_object":   0.20,   # data 객체 공유
-    "screen_surface":  0.20,   # primary_screen 일치
-    "dependency_cone": 0.15,   # inherits_from 50%+ 중복
-    "publication_fit": 0.15,   # D2/D3 챕터 정합성 (heuristic)
+    "decision_domain": 0.30,   # policy_axis match
+    "domain_object":   0.20,   # shared data objects
+    "screen_surface":  0.20,   # primary_screen match
+    "dependency_cone": 0.15,   # inherits_from 50%+ overlap
+    "publication_fit": 0.15,   # D2/D3 chapter alignment (heuristic)
 }
 DEFAULT_THRESHOLD = 0.55
 
@@ -70,21 +73,24 @@ def _save_json(path: Path, data: dict) -> None:
 
 
 def write_project_mode(graph_dir: Path, cluster_count: int) -> Path:
-    """영속 트랙 마커 graph/project-mode.json 을 기록한다 (fix-plan-track-routing P1).
+    """Records the persistent track marker graph/project-mode.json (fix-plan-track-routing P1).
 
-    cluster_identify 가 실행됐다는 것은 이 프로젝트가 cluster(dossier) 모델
-    = Track A 임을 뜻한다. 이를 기계가독 SSoT 로 박아 fanout 의 fail-closed
-    가드(_detect_cluster_signals)·plan-audit·lc 가 트랙을 추론하지 않고 읽게 한다.
+    Running cluster_identify means this project uses the cluster(dossier)
+    model = Track A. This is stamped as a machine-readable SSoT so fanout's
+    fail-closed guard (_detect_cluster_signals), plan-audit, and lc read the
+    track instead of inferring it.
 
-    기존 파일이 있으면 PM 이 설정한 decided_by(DEC) / section_wo_retired /
-    publication_mode 는 보존하고 카운트·타임스탬프만 갱신한다.
+    If an existing file is present, decided_by(DEC) / section_wo_retired /
+    publication_mode set by the PM are preserved, and only the count/timestamp
+    are updated.
 
     publication_mode (fix-plan-dossier-publish-split):
-        "dossier-page"      — 기능정의서 1개 = Confluence 페이지 1개 (기본)
-        "split-deliverable" — dossier §1/§2 를 D2 정책정의서 / D3 화면설계서로
-                              transpose 분할 발행
-    값이 없으면 기존 동작(dossier-page) 으로 폴백한다 — dbaas 등 기존
-    프로젝트 무변경 보장. split 전환은 /fanout --publication-mode 가 기록한다.
+        "dossier-page"      — 1 feature spec = 1 Confluence page (default)
+        "split-deliverable" — dossier §1/§2 are transposed and published as
+                              separate D2 policy doc / D3 screen design spec
+    Falls back to existing behavior (dossier-page) when no value is present —
+    guarantees no change for existing projects like dbaas. The split
+    transition is recorded by /fanout --publication-mode.
     """
     path = graph_dir / "project-mode.json"
     existing: dict = {}
@@ -107,9 +113,9 @@ def write_project_mode(graph_dir: Path, cluster_count: int) -> Path:
     return path
 
 
-# ── 4+1축 점수 계산 ───────────────────────────────────────────────────────
+# ── 4+1-axis score computation ─────────────────────────────────────────────
 def _set_overlap(a: list[str], b: list[str]) -> float:
-    """Jaccard 유사도 — 두 집합의 교집합 비율."""
+    """Jaccard similarity — intersection ratio of two sets."""
     sa, sb = set(a or []), set(b or [])
     if not sa and not sb:
         return 0.0
@@ -118,17 +124,17 @@ def _set_overlap(a: list[str], b: list[str]) -> float:
 
 
 def _score_decision_domain(n1: dict, n2: dict) -> float:
-    """policy_axis 공유도."""
+    """policy_axis overlap ratio."""
     return _set_overlap(n1.get("policy_axis") or [], n2.get("policy_axis") or [])
 
 
 def _score_domain_object(n1: dict, n2: dict) -> float:
-    """domain_object 공유도."""
+    """domain_object overlap ratio."""
     return _set_overlap(n1.get("domain_object") or [], n2.get("domain_object") or [])
 
 
 def _score_screen_surface(n1: dict, n2: dict) -> float:
-    """primary_screen 일치 — 단일 값 비교 (1.0 또는 0.0)."""
+    """primary_screen match — single-value comparison (1.0 or 0.0)."""
     ps1, ps2 = n1.get("primary_screen"), n2.get("primary_screen")
     if ps1 and ps2 and ps1 == ps2:
         return 1.0
@@ -138,23 +144,24 @@ def _score_screen_surface(n1: dict, n2: dict) -> float:
 def _score_dependency_cone(
     n1_key: str, n2_key: str, dep_map: dict[str, set[str]]
 ) -> float:
-    """inherits_from 의존성 집합 Jaccard. 50% 이상이면 결합 시그널."""
+    """Jaccard of inherits_from dependency sets. 50%+ overlap is a merge signal."""
     deps1 = dep_map.get(n1_key, set())
     deps2 = dep_map.get(n2_key, set())
     return _set_overlap(list(deps1), list(deps2))
 
 
 def _score_publication_fit(n1: dict, n2: dict) -> float:
-    """D2/D3 챕터 정합성 — heuristic.
+    """D2/D3 chapter alignment — heuristic.
 
-    두 노드가 같은 deliverable_targets 를 가지고 (예: 모두 D2 + D3),
-    sections 명명이 비슷한 형태이면 한 챕터로 묶이기 자연스러움.
+    If two nodes share the same deliverable_targets (e.g. both D2 + D3) and
+    their sections are named similarly, it's natural for them to be grouped
+    into the same chapter.
     """
     targets1 = set(n1.get("deliverable_targets") or ["D2"])
     targets2 = set(n2.get("deliverable_targets") or ["D2"])
     if not targets1 & targets2:
         return 0.0
-    # 같은 deliverable 공유 비율
+    # shared deliverable ratio
     return len(targets1 & targets2) / len(targets1 | targets2)
 
 
@@ -163,7 +170,7 @@ def cluster_score(
     n2_key: str, n2: dict,
     dep_map: dict[str, set[str]],
 ) -> tuple[float, dict[str, float]]:
-    """두 노드 간 결합 점수 (0~1) + 축별 breakdown."""
+    """Merge score between two nodes (0-1) + per-axis breakdown."""
     breakdown = {
         "decision_domain": _score_decision_domain(n1, n2) * WEIGHTS["decision_domain"],
         "domain_object":   _score_domain_object(n1, n2) * WEIGHTS["domain_object"],
@@ -174,7 +181,7 @@ def cluster_score(
     return sum(breakdown.values()), breakdown
 
 
-# ── 군집 알고리즘 (점수 기반 union-find) ──────────────────────────────────
+# ── Clustering algorithm (score-based union-find) ───────────────────────────
 class _UnionFind:
     def __init__(self, keys: list[str]) -> None:
         self.parent = {k: k for k in keys}
@@ -188,7 +195,7 @@ class _UnionFind:
     def union(self, a: str, b: str) -> None:
         ra, rb = self.find(a), self.find(b)
         if ra != rb:
-            # 작은 ID 가 부모 (결정성)
+            # smaller ID becomes the parent (determinism)
             if ra < rb:
                 self.parent[rb] = ra
             else:
@@ -196,7 +203,7 @@ class _UnionFind:
 
 
 def _build_dep_map(edges: list[dict]) -> dict[str, set[str]]:
-    """node → 직접 의존하는 노드 집합 (inherits_from)."""
+    """node → set of directly dependent nodes (inherits_from)."""
     dep_map: dict[str, set[str]] = defaultdict(set)
     for e in edges:
         if e.get("type") == "inherits_from":
@@ -204,21 +211,21 @@ def _build_dep_map(edges: list[dict]) -> dict[str, set[str]]:
     return dep_map
 
 
-# ── 씨앗(seed) 헬퍼 — 요구사항 태그를 군집 씨앗으로 사용 (P2) ────────────────
+# ── Seed helpers — use requirement tags as cluster seeds (P2) ───────────────
 def _seed_capability(node: dict) -> str | None:
-    """노드의 씨앗 capability (요구사항 태그). seed_capability 우선, 없으면 capability."""
+    """Node's seed capability (requirement tag). Prefers seed_capability, falls back to capability."""
     cap = node.get("seed_capability") or node.get("capability")
     return str(cap) if cap else None
 
 
 def _cluster_hint(node: dict) -> str | None:
-    """노드의 cluster_hint (씨앗 멤버십 키). 비어있으면 None."""
+    """Node's cluster_hint (seed membership key). None if empty."""
     h = node.get("cluster_hint")
     return str(h).strip() if h and str(h).strip() else None
 
 
 def _is_locked(node: dict) -> bool:
-    """cluster_lock 옵트인 — 점수 기반 cross-cluster 병합에서 제외(씨앗 경계 고정)."""
+    """cluster_lock opt-in — excludes from score-based cross-cluster merging (locks the seed boundary)."""
     return bool(node.get("cluster_lock"))
 
 
@@ -229,16 +236,18 @@ def cluster_nodes(
     threshold: float = DEFAULT_THRESHOLD,
     ignore_seed: bool = False,
 ) -> tuple[dict[str, str], list[tuple[str, str, float, dict]]]:
-    """policy 노드들을 cluster 로 군집.
+    """Cluster policy nodes.
 
-    P2(seed-not-lock): 동일 (capability, cluster_hint) 노드를 union-find 초기
-    파티션으로 사전 결합한다(씨앗). 점수(5축·threshold)는 그 위에서 추가 병합하므로
-    조절 레버는 그대로 유지된다. cluster_lock 노드는 점수 병합에서 제외(씨앗 경계 고정).
-    ignore_seed=True 면 순수 점수 군집(씨앗 무시).
+    P2 (seed-not-lock): nodes sharing the same (capability, cluster_hint) are
+    pre-merged as the initial union-find partition (seed). Scoring (5-axis ·
+    threshold) merges further on top of that, so the tuning lever is fully
+    preserved. Nodes with cluster_lock are excluded from score-based merging
+    (locks the seed boundary). If ignore_seed=True, clustering is purely
+    score-based (seeds ignored).
 
     Returns:
         - assignments: node_key → cluster_canonical_id (union-find root)
-        - merge_log: [(node_a, node_b, score, breakdown)] — 임계 초과 결합 기록
+        - merge_log: [(node_a, node_b, score, breakdown)] — merges above threshold
     """
     policy_keys = sorted(
         k for k, n in nodes.items() if n.get("node_type") != "screen"
@@ -250,7 +259,7 @@ def cluster_nodes(
     uf = _UnionFind(policy_keys)
     merge_log: list[tuple[str, str, float, dict]] = []
 
-    # P2 — 씨앗 사전 결합: 동일 (capability, cluster_hint) 노드를 미리 union
+    # P2 — seed pre-merge: union nodes sharing the same (capability, cluster_hint) upfront
     if not ignore_seed:
         by_seed: dict[tuple[str | None, str], list[str]] = defaultdict(list)
         for k in policy_keys:
@@ -261,7 +270,7 @@ def cluster_nodes(
             for other in group[1:]:
                 uf.union(group[0], other)
 
-    # 점수 기반 결합 (locked 노드는 cross-cluster 병합 제외)
+    # Score-based merging (locked nodes excluded from cross-cluster merges)
     for i, ka in enumerate(policy_keys):
         for kb in policy_keys[i + 1 :]:
             if _is_locked(nodes[ka]) or _is_locked(nodes[kb]):
@@ -275,23 +284,23 @@ def cluster_nodes(
     return assignments, merge_log
 
 
-# ── ID 채번 (안정 매핑) ──────────────────────────────────────────────────
+# ── ID assignment (stable mapping) ──────────────────────────────────────────
 def _capability_of(node: dict, default: str = "Default") -> str:
-    """노드의 capability 추출 — 메타에서 명시 또는 default."""
+    """Extract node's capability — from metadata or default."""
     cap = node.get("capability") or default
-    # 정규화: 알파벳 + 숫자만, 공백 제거
+    # normalize: alnum only, strip whitespace
     return "".join(c for c in str(cap) if c.isalnum() or c == "-") or default
 
 
 def _capability_prefix(capability: str, used: set[str]) -> str:
-    """capability → cluster_id prefix (대문자 2자, used 와 충돌 방지).
+    """capability → cluster_id prefix (2 uppercase letters, avoids collisions with used).
 
-    전략 (안정성 + 유일성):
-      1. 첫 2 글자 (예: Provisioning → PR)
-      2. 충돌 시 첫 + 3번째 (Provisioning → PO)
-      3. 충돌 시 첫 + 첫 대문자 자음 (Provisioning → PV — Pr-oV-isioning)
-      4. 충돌 시 첫 + 끝 글자 (Provisioning → PG)
-      5. 충돌 지속 시 hash 기반 fallback (예: P0, P1, ...)
+    Strategy (stability + uniqueness):
+      1. First 2 letters (e.g. Provisioning → PR)
+      2. On collision, 1st + 3rd letter (Provisioning → PO)
+      3. On collision, 1st + first uppercase consonant (Provisioning → PV — Pr-oV-isioning)
+      4. On collision, 1st + last letter (Provisioning → PG)
+      5. On persistent collision, hash-based fallback (e.g. P0, P1, ...)
     """
     letters = [c.upper() for c in capability if c.isalpha()] or ["X", "X"]
 
@@ -302,7 +311,7 @@ def _capability_prefix(capability: str, used: set[str]) -> str:
     # 2
     if len(letters) >= 3:
         candidates.append(letters[0] + letters[2])
-    # 3 — 자음 (vowel 제외)
+    # 3 — consonant (excluding vowels)
     vowels = set("AEIOU")
     for c in letters[1:]:
         if c not in vowels:
@@ -310,7 +319,7 @@ def _capability_prefix(capability: str, used: set[str]) -> str:
             if cand not in candidates:
                 candidates.append(cand)
             break
-    # 4 — 끝 글자
+    # 4 — last letter
     if len(letters) >= 1:
         candidates.append(letters[0] + letters[-1])
 
@@ -318,7 +327,7 @@ def _capability_prefix(capability: str, used: set[str]) -> str:
         if c not in used:
             return c
 
-    # 5 — fallback: 첫 글자 + 숫자
+    # 5 — fallback: first letter + digit
     for i in range(10):
         cand = f"{letters[0]}{i}"
         if cand not in used:
@@ -331,23 +340,23 @@ def assign_cluster_ids(
     assignments: dict[str, str],
     cluster_map: dict[str, Any],
 ) -> dict[str, dict]:
-    """canonical id → (capability, cluster_id, cluster_name) 매핑.
+    """Map canonical id → (capability, cluster_id, cluster_name).
 
-    cluster_map (안정 매핑) 을 우선 참조 — 재실행 시 동일 cluster_id 유지.
+    Prefers cluster_map (stable mapping) — keeps the same cluster_id across reruns.
     """
-    # canonical 별 capability + 멤버 수집
+    # collect capability + members per canonical
     by_canonical: dict[str, list[str]] = defaultdict(list)
     for node_key, canonical in assignments.items():
         by_canonical[canonical].append(node_key)
 
-    # capability 별 cluster 순번 (안정 매핑 우선)
+    # cluster sequence per capability (stable mapping takes priority)
     cap_to_seq: dict[str, int] = defaultdict(int)
     persistent_map = cluster_map.get("canonical_to_id", {})
-    # capability → prefix 매핑도 persistent (안정성)
+    # capability → prefix mapping is also persistent (stability)
     capability_prefix_map: dict[str, str] = cluster_map.get("capability_to_prefix", {})
     used_prefixes: set[str] = set(capability_prefix_map.values())
 
-    # cap_to_seq 복원 — 기존 매핑에서 capability 별 마지막 순번
+    # restore cap_to_seq — last sequence number per capability from existing mapping
     for cid in persistent_map.values():
         if "-" in cid:
             p, num = cid.rsplit("-", 1)
@@ -363,14 +372,14 @@ def assign_cluster_ids(
 
     result: dict[str, dict] = {}
 
-    # 안정성 보장: canonical 정렬 후 처리
+    # ensure stability: process after sorting canonicals
     for canonical in sorted(by_canonical.keys()):
         members = sorted(by_canonical[canonical])
-        # capability 결정 — 멤버들의 capability 중 가장 흔한 것 (단순)
+        # determine capability — most common among members' capabilities (simple)
         caps = [_capability_of(nodes[k]) for k in members]
         capability = max(set(caps), key=caps.count) if caps else "Default"
 
-        # capability 별 unique prefix (안정 매핑 우선)
+        # unique prefix per capability (stable mapping takes priority)
         if capability in capability_prefix_map:
             prefix = capability_prefix_map[capability]
         else:
@@ -378,7 +387,7 @@ def assign_cluster_ids(
             capability_prefix_map[capability] = prefix
             used_prefixes.add(prefix)
 
-        # cluster_id 결정 — 안정 매핑 우선
+        # determine cluster_id — stable mapping takes priority
         if canonical in persistent_map:
             cluster_id = persistent_map[canonical]
         else:
@@ -386,7 +395,7 @@ def assign_cluster_ids(
             cluster_id = f"{prefix}-{cap_to_seq[capability]:02d}"
             persistent_map[canonical] = cluster_id
 
-        # cluster_name 결정 — 첫 멤버의 sections 또는 node_name 기반
+        # determine cluster_name — based on first member's sections or node_name
         first_node = nodes[members[0]]
         cluster_name = (
             first_node.get("cluster_name")
@@ -406,17 +415,17 @@ def assign_cluster_ids(
     return result
 
 
-# ── 씨앗 검증(provenance) + FR 인덱스 (P2) ───────────────────────────────
+# ── Seed validation (provenance) + FR index (P2) ────────────────────────────
 def compute_provenance(
     nodes: dict[str, dict],
     assignments: dict[str, str],
     cluster_info: dict[str, dict],
 ) -> dict[str, str]:
-    """노드별 씨앗 검증 결과.
+    """Per-node seed validation result.
 
-    - "computed"          : 씨앗(capability/cluster_hint) 없음 — 순수 계산 군집
-    - "seed_kept"         : 최종 cluster capability == 씨앗 capability
-    - "seed_overridden:…" : 점수 병합으로 다른 capability 군집에 흡수됨(사유)
+    - "computed"          : no seed (capability/cluster_hint) — purely computed cluster
+    - "seed_kept"         : final cluster capability == seed capability
+    - "seed_overridden:…" : absorbed into a different capability cluster by score merge (reason)
     """
     canon_cap = {canon: info["capability"] for canon, info in cluster_info.items()}
     prov: dict[str, str] = {}
@@ -440,10 +449,11 @@ def build_fr_index(
     assignments: dict[str, str],
     cluster_info: dict[str, dict],
 ) -> dict[str, dict]:
-    """FR → {capability, cluster_id} 권위 매핑 (cluster_map.json 에 보관).
+    """FR → {capability, cluster_id} authority mapping (stored in cluster_map.json).
 
-    노드의 fr_refs 를 cluster 멤버십으로 역인덱싱한다. D1 발행이 capability 별
-    FR 묶음(파생 뷰)을 그릴 때 cluster_ref 주입 키로 사용한다(DEC-A/C).
+    Reverse-indexes each node's fr_refs by cluster membership. Used as the
+    cluster_ref injection key when D1 publication renders per-capability FR
+    groupings (derived views) (DEC-A/C).
     """
     fr_index: dict[str, dict] = {}
     for k, canon in assignments.items():
@@ -458,7 +468,7 @@ def build_fr_index(
     return fr_index
 
 
-# 횡단 모듈 참조로 보는 엣지 타입 (graph-schema.json edges.type)
+# Edge types treated as cross-cutting module references (graph-schema.json edges.type)
 _MODULE_EDGE_TYPES = {"inherits_from", "includes", "references"}
 
 
@@ -468,15 +478,17 @@ def build_module_index(
     assignments: dict[str, str],
     cluster_info: dict[str, dict],
 ) -> dict[str, list[dict]]:
-    """횡단(cross-cutting) 모듈 → 이를 참조하는 cluster 역인덱스 (DEC-F).
+    """Cross-cutting module → reverse index of clusters referencing it (DEC-F).
 
-    이메일·SMS 발송 모듈처럼 여러 capability 가 공유하는 관심사는 capability 로
-    쪼개 인라인하지 않고 한 곳(모듈/전용 capability)에 두고 각 기능이 참조한다.
-    그 참조(엣지)를 역인덱싱하면 "어느 기능이 이 모듈을 쓰나"를 한꺼번에 보는
-    **횡단 트리거 매트릭스**가 된다(발행 P3 파생 뷰의 입력).
+    Concerns shared across multiple capabilities — like an email/SMS sending
+    module — aren't split inline per capability; they live in one place
+    (a module / dedicated capability) that each feature references. Reverse-
+    indexing those references (edges) produces a **cross-cutting trigger
+    matrix** showing "which features use this module" all at once (input for
+    the publication P3 derived view).
 
-    모듈 판정: 대상이 군집 대상 policy 노드가 아니거나(reference/외부) node_type==reference,
-    또는 role=='cross-cutting'.
+    Module determination: target is not a clustering-target policy node
+    (reference/external), or node_type==reference, or role=='cross-cutting'.
     """
     node_info = {k: cluster_info.get(c) for k, c in assignments.items()}
     module_index: dict[str, list[dict]] = defaultdict(list)
@@ -487,7 +499,7 @@ def build_module_index(
         src, tgt = e.get("source"), e.get("target")
         if not src or not tgt:
             continue
-        info = node_info.get(src)  # source 가 군집된 기능 노드일 때만(기능→모듈 방향)
+        info = node_info.get(src)  # only when source is a clustered feature node (feature→module direction)
         if not info:
             continue
         tgt_node = nodes.get(tgt, {})
@@ -509,21 +521,21 @@ def build_module_index(
             "via": e.get("type"),
             "section": e.get("source_section"),
         })
-    # 결정성: cluster_id 정렬
+    # determinism: sort by cluster_id
     return {
         k: sorted(v, key=lambda r: (r["capability"], r["cluster_id"], r["source"]))
         for k, v in sorted(module_index.items())
     }
 
 
-# ── 노드 메타 어노테이션 ──────────────────────────────────────────────────
+# ── Node metadata annotation ────────────────────────────────────────────────
 def annotate_graph(
     graph: dict,
     assignments: dict[str, str],
     cluster_info: dict[str, dict],
     provenance: dict[str, str] | None = None,
 ) -> dict:
-    """graph 의 각 policy 노드에 cluster 메타(+씨앗 provenance) 부여."""
+    """Attach cluster metadata (+ seed provenance) to each policy node in the graph."""
     nodes = graph["graph"]["nodes"]
     for node_key, canonical in assignments.items():
         info = cluster_info.get(canonical)
@@ -538,39 +550,39 @@ def annotate_graph(
     return graph
 
 
-# ── 요약 보고서 ──────────────────────────────────────────────────────────
+# ── Summary report ───────────────────────────────────────────────────────────
 def make_summary(
     cluster_info: dict[str, dict],
     merge_log: list[tuple[str, str, float, dict]],
     threshold: float,
     provenance: dict[str, str] | None = None,
 ) -> str:
-    """PM 검토용 markdown 요약."""
-    lines = ["# Cluster Identification 요약\n"]
-    lines.append(f"**임계값**: 결합 점수 ≥ {threshold} (publication-map.md §1)\n")
+    """Markdown summary for PM review."""
+    lines = ["# Cluster Identification Summary\n"]
+    lines.append(f"**Threshold**: merge score ≥ {threshold} (publication-map.md §1)\n")
 
-    # P2 — 씨앗 검증 요약 (seed_kept / seed_overridden)
+    # P2 — seed validation summary (seed_kept / seed_overridden)
     if provenance:
         kept = sum(1 for v in provenance.values() if v == "seed_kept")
         overridden = {k: v for k, v in provenance.items() if v.startswith("seed_overridden")}
         computed = sum(1 for v in provenance.values() if v == "computed")
         lines.append(
-            f"**씨앗 검증**: seed_kept {kept} · seed_overridden {len(overridden)} · computed {computed}\n"
+            f"**Seed validation**: seed_kept {kept} · seed_overridden {len(overridden)} · computed {computed}\n"
         )
         if overridden:
-            lines.append("| 노드 | 씨앗 override 사유 |")
+            lines.append("| Node | Seed Override Reason |")
             lines.append("|---|---|")
             for k in sorted(overridden):
                 lines.append(f"| {k} | {overridden[k].split(':', 1)[1].strip()} |")
             lines.append("")
 
-    lines.append(f"**Capability 별 cluster 수**:\n")
+    lines.append(f"**Cluster Count per Capability**:\n")
 
     cap_clusters: dict[str, list[dict]] = defaultdict(list)
     for canonical, info in cluster_info.items():
         cap_clusters[info["capability"]].append(info)
 
-    lines.append("| Capability | Cluster 수 | Cluster IDs | 총 노드 수 |")
+    lines.append("| Capability | Cluster Count | Cluster IDs | Total Nodes |")
     lines.append("|---|---|---|---|")
     for cap in sorted(cap_clusters.keys()):
         clusters = cap_clusters[cap]
@@ -578,11 +590,11 @@ def make_summary(
         total = sum(len(c["members"]) for c in clusters)
         lines.append(f"| {cap} | {len(clusters)} | {ids} | {total} |")
 
-    lines.append("\n## 결합 이벤트 (임계 초과 쌍)\n")
+    lines.append("\n## Merge Events (pairs above threshold)\n")
     if not merge_log:
-        lines.append("- 결합 이벤트 없음 (모든 노드가 독립 cluster).")
+        lines.append("- No merge events (all nodes are independent clusters).")
     else:
-        lines.append("| Node A | Node B | 총 점수 | 도메인 | 객체 | 화면 | 의존성 | 발행정합 |")
+        lines.append("| Node A | Node B | Total Score | Domain | Object | Screen | Dependency | Pub. Fit |")
         lines.append("|---|---|---|---|---|---|---|---|")
         for a, b, score, bd in sorted(merge_log, key=lambda x: -x[2]):
             lines.append(
@@ -594,19 +606,19 @@ def make_summary(
                 f"{round(bd['publication_fit'], 3)} |"
             )
 
-    lines.append("\n## 권장 검토")
-    lines.append("- 점수 0.55~0.70 (경계 결합) 의 쌍은 PM 검토 권장")
-    lines.append("- Cluster 가 1 노드뿐인 항목은 capability 라벨링 보강 검토")
-    lines.append("- 후속: /fanout --cluster-mode 로 WO 생성")
+    lines.append("\n## Recommended Review")
+    lines.append("- Pairs scoring 0.55–0.70 (borderline merges) should get PM review")
+    lines.append("- Review capability labeling for clusters with only 1 node")
+    lines.append("- Next: generate WOs via /fanout --cluster-mode")
     lines.append(
-        "  (graph/project-mode.json 에 track=A 기록됨 — legacy /fanout 은 "
-        "fail-closed 로 차단되며 --force-legacy 로만 우회 가능)"
+        "  (track=A is recorded in graph/project-mode.json — legacy /fanout is "
+        "fail-closed blocked and can only be bypassed with --force-legacy)"
     )
 
     return "\n".join(lines) + "\n"
 
 
-# ── 메인 ─────────────────────────────────────────────────────────────────
+# ── Main ─────────────────────────────────────────────────────────────────────
 def identify_clusters(
     graph_path: Path,
     output_path: Path,
@@ -615,44 +627,44 @@ def identify_clusters(
     threshold: float = DEFAULT_THRESHOLD,
     ignore_seed: bool = False,
 ) -> tuple[dict, dict[str, dict], list]:
-    """graph.json 로드 → cluster 식별 → 어노테이션 → 저장."""
+    """Load graph.json → identify clusters → annotate → save."""
     graph = _load_json(graph_path)
     nodes = graph.get("graph", {}).get("nodes", {})
     edges = graph.get("graph", {}).get("edges", [])
 
     if not nodes:
-        raise ValueError(f"graph 의 nodes 가 비어 있음: {graph_path}")
+        raise ValueError(f"graph has no nodes: {graph_path}")
 
-    # cluster_map 로드 (안정 매핑)
+    # load cluster_map (stable mapping)
     cluster_map: dict = {}
     if cluster_map_path and cluster_map_path.is_file():
         cluster_map = _load_json(cluster_map_path)
     if "canonical_to_id" not in cluster_map:
         cluster_map["canonical_to_id"] = {}
 
-    # 군집 (씨앗 사전결합 + 점수)
+    # cluster (seed pre-merge + score)
     assignments, merge_log = cluster_nodes(
         nodes, edges, threshold=threshold, ignore_seed=ignore_seed
     )
 
-    # ID 부여
+    # assign IDs
     cluster_info = assign_cluster_ids(nodes, assignments, cluster_map)
 
-    # P2 — 씨앗 검증 + FR 권위 인덱스 + 횡단 모듈 인덱스(DEC-F)
+    # P2 — seed validation + FR authority index + cross-cutting module index (DEC-F)
     provenance = compute_provenance(nodes, assignments, cluster_info)
     cluster_map["fr_index"] = build_fr_index(nodes, assignments, cluster_info)
     cluster_map["module_index"] = build_module_index(nodes, edges, assignments, cluster_info)
 
-    # graph 어노테이션 (+provenance)
+    # annotate graph (+provenance)
     annotated = annotate_graph(graph, assignments, cluster_info, provenance)
 
-    # 저장
+    # save
     _save_json(output_path, annotated)
     if cluster_map_path:
         _save_json(cluster_map_path, cluster_map)
 
-    # P1 — 영속 트랙 마커 기록 (Track A / dossier 모델을 기계가독 SSoT 로 박음).
-    # fanout fail-closed 가드·plan-audit·lc 가 이 파일을 읽어 트랙을 강제한다.
+    # P1 — record persistent track marker (stamps Track A / dossier model as machine-readable SSoT).
+    # fanout's fail-closed guard, plan-audit, and lc read this file to enforce the track.
     write_project_mode(output_path.parent, len(cluster_info))
 
     return annotated, cluster_info, merge_log
@@ -661,37 +673,37 @@ def identify_clusters(
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="cluster_identify",
-        description="graph.json policy 노드에 capability/cluster_id 부여 (Phase 5A)",
+        description="Assign capability/cluster_id to policy nodes in graph.json (Phase 5A)",
     )
-    parser.add_argument("--graph", type=Path, required=True, help="입력 graph.json")
-    parser.add_argument("--output", type=Path, required=True, help="출력 graph.clustered.json")
+    parser.add_argument("--graph", type=Path, required=True, help="Input graph.json")
+    parser.add_argument("--output", type=Path, required=True, help="Output graph.clustered.json")
     parser.add_argument(
         "--cluster-map",
         type=Path,
         default=None,
-        help="안정 매핑 cluster_map.json (재실행 시 동일 ID 보장)",
+        help="Stable mapping cluster_map.json (guarantees same IDs on rerun)",
     )
     parser.add_argument(
         "--threshold",
         type=float,
         default=DEFAULT_THRESHOLD,
-        help=f"결합 임계 (default {DEFAULT_THRESHOLD})",
+        help=f"Merge threshold (default {DEFAULT_THRESHOLD})",
     )
     parser.add_argument(
         "--summary",
         type=Path,
         default=None,
-        help="요약 보고서 markdown 출력 경로",
+        help="Output path for markdown summary report",
     )
     parser.add_argument(
         "--ignore-seed",
         action="store_true",
-        help="요구사항 씨앗(cluster_hint) 무시 — 순수 점수 군집(레버만)",
+        help="Ignore requirement seeds (cluster_hint) — pure score-based clustering (lever only)",
     )
     args = parser.parse_args(argv)
 
     if not args.graph.is_file():
-        print(f"[cluster_identify] ERROR: graph 파일 없음: {args.graph}", file=sys.stderr)
+        print(f"[cluster_identify] ERROR: graph file not found: {args.graph}", file=sys.stderr)
         return 1
 
     try:
@@ -707,7 +719,7 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     if args.summary:
-        # annotated 노드에서 provenance 회수 (요약에 씨앗 검증 표기)
+        # retrieve provenance from annotated nodes (for seed validation display in summary)
         prov = {
             k: n["cluster_provenance"]
             for k, n in annotated.get("graph", {}).get("nodes", {}).items()

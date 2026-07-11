@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""update_orange_pm.py 테스트 — .vscode 부트스트랩(ensure_vscode_settings) 멱등성."""
+"""Tests for update_orange_pm.py — .vscode bootstrap (ensure_vscode_settings) idempotency."""
 from __future__ import annotations
 
 import json
@@ -34,7 +34,7 @@ class TestEnsureVscodeSettings(unittest.TestCase):
         root = _mk_workspace(self.tmp, ["dbaas", "pm-viz"])
         self.assertTrue(ensure_vscode_settings(root, quiet=True))
         data = json.loads((root / ".vscode" / "settings.json").read_text(encoding="utf-8"))
-        self.assertEqual(data["orangePmViz.product"], "dbaas")  # 정렬 첫 항목
+        self.assertEqual(data["orangePmViz.product"], "dbaas")  # first entry after sorting
 
     def test_hub_at_workspace_root(self):
         root = _mk_workspace(self.tmp, ["alpha"], hub_sub=False)
@@ -51,7 +51,7 @@ class TestEnsureVscodeSettings(unittest.TestCase):
         )
         self.assertTrue(ensure_vscode_settings(root, quiet=True))
         data = json.loads((vsdir / "settings.json").read_text(encoding="utf-8"))
-        self.assertEqual(data["editor.fontSize"], 13)          # 타 설정 불가침
+        self.assertEqual(data["editor.fontSize"], 13)          # other settings left untouched
         self.assertEqual(data["orangePmViz.product"], "alpha")
 
     def test_idempotent_when_product_already_set(self):
@@ -63,7 +63,7 @@ class TestEnsureVscodeSettings(unittest.TestCase):
         )
         self.assertFalse(ensure_vscode_settings(root, quiet=True))
         data = json.loads((vsdir / "settings.json").read_text(encoding="utf-8"))
-        self.assertEqual(data["orangePmViz.product"], "custom")  # 기존 값 보존
+        self.assertEqual(data["orangePmViz.product"], "custom")  # existing value preserved
 
     def test_leaves_jsonc_untouched(self):
         root = _mk_workspace(self.tmp, ["alpha"])
@@ -76,7 +76,7 @@ class TestEnsureVscodeSettings(unittest.TestCase):
 
     def test_no_projects_no_write(self):
         root = self.tmp / "ws"
-        (root / "Planning-Agent-Hub" / "PROJECTS").mkdir(parents=True)  # 빈 PROJECTS
+        (root / "Planning-Agent-Hub" / "PROJECTS").mkdir(parents=True)  # empty PROJECTS
         self.assertFalse(ensure_vscode_settings(root, quiet=True))
         self.assertFalse((root / ".vscode" / "settings.json").exists())
 

@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""gate_emit — gates 정의 + ssot 큐 → 정규화 gates 계약 (§4, 1차 단순판).
+"""gate_emit — gate definitions + ssot queues → normalized gates contract (§4, v1 simplified).
 
-주: 전체 /lc Phase 판정 통합은 후속. 본 1차판은 ssot BLOCK 등가로 draft-complete
-게이트 차단을 도출하고, CONTEXT/gates/*.md 존재 게이트를 나열한다.
+Note: full /lc phase-determination integration is a follow-up. This v1 derives
+draft-complete gate blocking from ssot BLOCK equivalence, and lists gates
+present under CONTEXT/gates/*.md.
 """
 from __future__ import annotations
 
@@ -27,11 +28,12 @@ def _phases(current: int) -> list[dict]:
 
 def transform_gates(ssot: dict, gate_names: list[str], product: str = "",
                     current_phase: int | None = None) -> dict:
-    """ssot 계약 결과 + 게이트 이름 목록 → gates 계약.
+    """ssot contract result + gate name list → gates contract.
 
-    current_phase=None 이면 ssot BLOCK 등가로 Phase 를 추정한다(phaseEstimated=True):
-    BLOCK>0 → draft-complete(2→3) 차단이므로 Phase 2(Draft), 아니면 Phase 3(Integrate).
-    명시값을 주면 그대로 사용하고 추정 플래그를 끈다.
+    If current_phase=None, the phase is estimated from ssot BLOCK equivalence
+    (phaseEstimated=True): BLOCK>0 blocks draft-complete (2→3), so Phase 2 (Draft);
+    otherwise Phase 3 (Integrate). If an explicit value is given, it is used
+    as-is and the estimated flag is turned off.
     """
     blockers = []
     for q in ssot.get("queues", []):
@@ -39,7 +41,7 @@ def transform_gates(ssot: dict, gate_names: list[str], product: str = "",
             blockers.append({"source": q["id"], "count": q["block"], "ref": q["queueFile"]})
     total_block = ssot.get("totals", {}).get("block", 0)
 
-    # fr-cluster-trace 게이트 상태 = fr-cluster 큐 BLOCK 으로 결정(mismatch 차단).
+    # fr-cluster-trace gate state = determined by the fr-cluster queue BLOCK count (mismatch blocks).
     frc = next((q for q in ssot.get("queues", []) if q.get("id") == "fr-cluster"), None)
     frc_block = frc.get("block", 0) if frc else 0
     frc_ref = frc.get("queueFile", "reports/fr-cluster-queue.md") if frc \
@@ -59,7 +61,7 @@ def transform_gates(ssot: dict, gate_names: list[str], product: str = "",
                 "total": 5, "blockers": blockers,
             })
         elif name == "fr-cluster-trace":
-            # FR↔cluster 추적성: mismatch(BLOCK) 있으면 차단, 없으면 통과.
+            # FR↔cluster traceability: blocked if a mismatch (BLOCK) exists, otherwise passes.
             frc_blockers = (
                 [{"source": "fr-cluster", "count": frc_block, "ref": frc_ref}]
                 if frc_block else []
@@ -79,7 +81,7 @@ def transform_gates(ssot: dict, gate_names: list[str], product: str = "",
         "phaseEstimated": estimated,
         "phases": _phases(current_phase),
         "gates": gates,
-        "recommended": [{"label": "게이트 검증", "cmd": "/lc", "arg": product}],
+        "recommended": [{"label": "Verify gates", "cmd": "/lc", "arg": product}],
     }
 
 
@@ -88,9 +90,9 @@ def main(argv: list[str]) -> int:
     if args.from_fixture:
         return C.emit(C.load_fixture(args.from_fixture))
     if not (args.hub_root and args.product):
-        sys.stderr.write("--hub-root, --product 필요\n")
+        sys.stderr.write("--hub-root, --product required\n")
         return 2
-    # ssot 큐 집계 재사용
+    # reuse ssot queue aggregation
     rdir = C.product_dir(args.hub_root, args.product) / "reports"
 
     def read_queue(fname: str):

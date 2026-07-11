@@ -2,57 +2,59 @@
 # -*- coding: utf-8 -*-
 """Cluster Draft → Deliverable Transpose (Phase 5F).
 
-발행 모드 의존 (fix-plan-dossier-publish-split):
-    transpose() 는 **split-deliverable 발행 모드에서 재활성**된다
+Publication-mode dependent (fix-plan-dossier-publish-split):
+    transpose() is **re-enabled in the split-deliverable publication mode**
     (graph/project-mode.json `publication_mode: split-deliverable`).
-    - dossier-page (기본)  : 기능정의서 1개 = 페이지 1개. transpose 미호출.
-                             (render/SKILL.md 단계 3-A, publication-map.md §0)
-    - split-deliverable    : dossier §1 → D2 정책정의서 / §2 → D3 화면설계서로
-                             분할 발행. 본 모듈의 transpose() 가 그 조립을 담당.
-    P3 파생 뷰(`render_fr_capability_view`·`render_cross_cutting_matrix`)는
-    두 모드 모두에서 유효하다(링크 대상만 모드별로 다름).
+    - dossier-page (default): 1 feature definition = 1 page. transpose not called.
+                             (render/SKILL.md step 3-A, publication-map.md §0)
+    - split-deliverable    : dossier §1 → D2 policy definition / §2 → D3 screen
+                             design spec, published split. This module's
+                             transpose() owns that assembly.
+    The P3 derived views (`render_fr_capability_view`·`render_cross_cutting_matrix`)
+    are valid in both modes (only the link targets differ per mode).
 
-    ⚠️ FLAG: §0/§5/§6 은 D2/D3 에 미반영(정책은 §1 에 self-contained). dossier 가
-       deliverable_targets 에서 D2/D3 를 빼면 해당 cluster 가 누락된다 —
-       render/SKILL.md 의 split 분기 주의 표기 참조.
+    ⚠️ FLAG: §0/§5/§6 are not reflected into D2/D3 (policy is self-contained in
+       §1). If a dossier drops D2/D3 from deliverable_targets, that cluster is
+       omitted — see the split-branch caution note in render/SKILL.md.
 
-목적:
-    Track A (Full Product) 의 cluster work 산출물 (drafts/cluster_*.draft.md) 을
-    publication 산출물 (D2 정책 / D3 화면 / Dα etc) 의 단일 페이지로
-    어셈블하는 결정적 transpose 함수.
+Purpose:
+    Deterministic transpose function assembling Track A (Full Product) cluster
+    work outputs (drafts/cluster_*.draft.md) into single pages of publication
+    deliverables (D2 policy / D3 screen / Dα etc).
 
-    cluster_draft 의 §1 / §2 / §α panel block 만 추출 → deliverable 별로
-    capability + cluster_id 정렬 → 챕터 panel 로 재포장.
-    §3 (데이터/의존성), §4 (OQ/UPSTREAM_GAP) 는 publish 제외.
+    Extract only the §1 / §2 / §α panel blocks of cluster_drafts → sort by
+    capability + cluster_id per deliverable → rewrap as chapter panels.
+    §3 (data/dependencies) and §4 (OQ/UPSTREAM_GAP) are excluded from publish.
 
-사양 SSoT:
-    - skills/render/publication-map.md §2 (transpose 매트릭스)
-    - skills/render/publication-map.md §4 (함수 인터페이스)
-    - skills/render/publication-map.md §7 (챕터 명명)
-    - templates/standard/cluster-draft.md (cluster 4-section 양식)
-    - templates/standard/D2_policy.md / D3_screen.md / Dα_*.md (목적 양식)
+Spec SSoT:
+    - skills/render/publication-map.md §2 (transpose matrix)
+    - skills/render/publication-map.md §4 (function interface)
+    - skills/render/publication-map.md §7 (chapter naming)
+    - templates/standard/cluster-draft.md (cluster 4-section format)
+    - templates/standard/D2_policy.md / D3_screen.md / Dα_*.md (target formats)
 
-동작:
-    1. cluster_draft 의 frontmatter 파싱 (cluster.capability / cluster_id /
+Behavior:
+    1. parse cluster_draft frontmatter (cluster.capability / cluster_id /
        cluster_name + deliverable_targets)
-    2. deliverable_targets 에 deliverable_type 포함된 cluster 만 선별
-    3. deliverable_type 별 § 섹션 매핑:
-         - D2          → cluster §1 panel block 추출
-         - D3          → cluster §2 panel block 추출
-         - Da_api      → cluster §α (api) panel block 추출
-         - Da_db       → cluster §α (db) panel block 추출
-         - Da_migration→ cluster §α (migration) panel block 추출
-    4. 정렬 (deterministic): capability 알파벳 → cluster_id 자연 순
-    5. 챕터 panel 어셈블 (publication-map.md §7 명명):
+    2. select only clusters whose deliverable_targets include deliverable_type
+    3. § section mapping per deliverable_type:
+         - D2          → extract cluster §1 panel block
+         - D3          → extract cluster §2 panel block
+         - Da_api      → extract cluster §α (api) panel block
+         - Da_db       → extract cluster §α (db) panel block
+         - Da_migration→ extract cluster §α (migration) panel block
+    4. sort (deterministic): capability alphabetical → cluster_id natural order
+    5. chapter panel assembly (publication-map.md §7 naming):
          ::: {.panel section="§{N} {Capability} / {ClusterName} ({cluster_id})"}
          ## §{N} {Capability} / {ClusterName} ({cluster_id})
-         {원본 §1/§2/§α 본문 — 패널 wrapper 제거 후 채워넣음}
+         {original §1/§2/§α body — inserted after removing the panel wrapper}
          :::
-    6. D3 만: common_shell_clusters 의 §2 들을 별도 `§부록 A — 공통 셸` panel
-    7. Frontmatter 어셈블 (target_template 이 있으면 그 frontmatter + 갱신,
-       없으면 deliverable_type 기반 기본 frontmatter)
-    8. 단일 MD 문자열 반환 — caller (예: render skill) 가 md_to_storage.py 로
-       XML 변환
+    6. D3 only: the §2 sections of common_shell_clusters go into a separate
+       `§Appendix A — Common Shell` panel
+    7. frontmatter assembly (target_template's frontmatter + refresh when given,
+       otherwise a deliverable_type based default frontmatter)
+    8. returns a single MD string — the caller (e.g. render skill) converts to
+       XML via md_to_storage.py
 
 CLI:
     python render_transpose.py \\
@@ -60,13 +62,13 @@ CLI:
         --deliverable D2 \\
         --output reports/render/D2_policy.assembled.md \\
         [--template orange-pm-plugin/templates/standard/D2_policy.md] \\
-        [--common-shell drafts/cluster_common_*.draft.md]   # D3 만
+        [--common-shell drafts/cluster_common_*.draft.md]   # D3 only
 
 exit code:
-    0 = 성공
-    1 = 파싱 오류 (cluster_draft frontmatter / panel 구조 위반)
-    2 = 적합한 cluster 없음 (deliverable_targets 매칭 0건)
-    3 = IO 오류
+    0 = success
+    1 = parse error (cluster_draft frontmatter / panel structure violation)
+    2 = no eligible clusters (deliverable_targets matched 0 items)
+    3 = IO error
 """
 from __future__ import annotations
 
@@ -78,16 +80,16 @@ from pathlib import Path
 from typing import Any
 
 try:
-    import yaml  # PyYAML 6.0.x — stdlib 외 (md_to_storage.py 와 동일 정책)
+    import yaml  # PyYAML 6.0.x — non-stdlib (same policy as md_to_storage.py)
 except Exception:  # pragma: no cover
     yaml = None  # type: ignore[assignment]
 
 
-# ── 상수 ─────────────────────────────────────────────────────────────────────
+# ── constants ────────────────────────────────────────────────────────────────
 
-# 사양 §2 / §4 — deliverable_type 별 추출 대상 § 키워드
-# 추출은 cluster panel section 속성 텍스트의 부분 매칭으로 수행
-# (cluster-draft.md 의 panel section 라벨 참조)
+# spec §2 / §4 — § keywords to extract per deliverable_type
+# extraction is a partial match on the cluster panel section attribute text
+# (see the panel section labels of cluster-draft.md)
 DELIVERABLE_SECTION_MAP: dict[str, str] = {
     "D2": "§1",
     "D3": "§2",
@@ -96,20 +98,21 @@ DELIVERABLE_SECTION_MAP: dict[str, str] = {
     "Da_migration": "§α",
 }
 
-# Da_* 추가 키워드 (§α 안에서 api / db / migration 분리)
-# cluster-draft.md 에 §α-API / §α-DB / §α-MIG panel 이 type 별로 존재(선택적).
-# section 이 "§α" 로 시작하고 아래 키워드를 포함하는 panel 을 deliverable 별로 추출.
+# Da_* extra keywords (separates api / db / migration within §α)
+# cluster-draft.md has optional §α-API / §α-DB / §α-MIG panels per type.
+# Panels whose section starts with "§α" and contains a keyword below are
+# extracted per deliverable.
 DA_TYPE_KEYWORDS: dict[str, list[str]] = {
     "Da_api": ["api", "API"],
-    "Da_db": ["db", "DB", "데이터"],
-    "Da_migration": ["migration", "마이그레이션"],
+    "Da_db": ["db", "DB", "data"],
+    "Da_migration": ["migration", "mig"],
 }
 
 VALID_DELIVERABLES = set(DELIVERABLE_SECTION_MAP.keys())
 
-# 정규식
+# regexes
 FRONTMATTER_RE = re.compile(r"\A---\s*\n(.*?)\n---\s*\n", re.DOTALL)
-# panel 블록 — section 속성 캡처 + 본문
+# panel block — capture section attribute + body
 # fenced div: ::: {.panel section="..." style="..."}
 #             ...
 #             :::
@@ -118,7 +121,7 @@ PANEL_OPEN_RE = re.compile(
 )
 PANEL_SECTION_ATTR_RE = re.compile(r'section\s*=\s*"([^"]*)"')
 
-# cluster_id 자연 순 정렬용 — 영문/숫자 분할
+# for cluster_id natural sort — split letters/digits
 NATSORT_RE = re.compile(r"(\d+)|(\D+)")
 
 
@@ -126,10 +129,10 @@ NATSORT_RE = re.compile(r"(\d+)|(\D+)")
 
 
 def _parse_frontmatter(text: str) -> tuple[dict, str]:
-    """YAML frontmatter 파싱 → (dict, body).
+    """Parse YAML frontmatter → (dict, body).
 
-    PyYAML 부재 시 매우 한정적 fallback (top-level scalar only) — cluster
-    구조는 nested 이므로 yaml 필수. 부재 시 빈 dict 반환.
+    Very limited fallback without PyYAML (top-level scalars only) — cluster
+    structure is nested so yaml is required. Returns an empty dict when absent.
     """
     m = FRONTMATTER_RE.match(text)
     if not m:
@@ -148,9 +151,9 @@ def _parse_frontmatter(text: str) -> tuple[dict, str]:
 
 
 def _render_frontmatter(fm: dict) -> str:
-    """dict → YAML frontmatter MD 블록.
+    """dict → YAML frontmatter MD block.
 
-    PyYAML 사용 (allow_unicode, sort_keys=False).
+    Uses PyYAML (allow_unicode, sort_keys=False).
     """
     if yaml is None:
         # naive fallback — top-level scalars only
@@ -166,21 +169,21 @@ def _render_frontmatter(fm: dict) -> str:
     return f"---\n{body}---\n"
 
 
-# ── Cluster 메타 로드 / 검증 ─────────────────────────────────────────────────
+# ── cluster metadata load / validation ───────────────────────────────────────
 
 
 class TransposeError(Exception):
-    """transpose 단계의 파싱·구조 오류."""
+    """Parse/structure error at the transpose stage."""
 
 
 def _load_cluster_meta(path: Path) -> dict:
-    """cluster_draft 파일 → 메타 dict.
+    """cluster_draft file → metadata dict.
 
     Returns:
         {
             "path": Path,
-            "text": str,              # 전체 본문 (frontmatter 제외)
-            "frontmatter": dict,      # 파싱된 frontmatter
+            "text": str,              # full body (frontmatter excluded)
+            "frontmatter": dict,      # parsed frontmatter
             "capability": str,
             "cluster_id": str,
             "cluster_name": str,
@@ -191,26 +194,26 @@ def _load_cluster_meta(path: Path) -> dict:
         }
 
     Raises:
-        TransposeError — frontmatter 또는 cluster 메타 누락 / 형식 오류
+        TransposeError — frontmatter or cluster metadata missing / malformed
     """
     if not path.exists():
-        raise TransposeError(f"cluster_draft 파일 없음: {path}")
+        raise TransposeError(f"cluster_draft file not found: {path}")
     try:
         raw = path.read_text(encoding="utf-8", errors="replace")
     except OSError as exc:
-        raise TransposeError(f"cluster_draft 읽기 실패: {path} — {exc}")
+        raise TransposeError(f"failed to read cluster_draft: {path} — {exc}")
 
     fm, body = _parse_frontmatter(raw)
     if not fm:
         raise TransposeError(
-            f"cluster_draft frontmatter 파싱 실패: {path} — "
-            "YAML 형식이거나 PyYAML 미설치"
+            f"failed to parse cluster_draft frontmatter: {path} — "
+            "malformed YAML or PyYAML not installed"
         )
 
     cluster = fm.get("cluster")
     if not isinstance(cluster, dict):
         raise TransposeError(
-            f"cluster_draft frontmatter 에 'cluster:' 블록 누락: {path}"
+            f"'cluster:' block missing in cluster_draft frontmatter: {path}"
         )
 
     capability = str(cluster.get("capability", "")).strip()
@@ -218,12 +221,12 @@ def _load_cluster_meta(path: Path) -> dict:
     cluster_name = str(cluster.get("cluster_name", "")).strip()
     if not capability or not cluster_id:
         raise TransposeError(
-            f"cluster.capability / cluster.cluster_id 누락: {path}"
+            f"cluster.capability / cluster.cluster_id missing: {path}"
         )
 
     targets_raw = fm.get("deliverable_targets") or []
     if isinstance(targets_raw, str):
-        # 한 줄 표현 fallback
+        # single-line expression fallback
         targets = [t.strip() for t in targets_raw.strip("[]").split(",") if t.strip()]
     elif isinstance(targets_raw, list):
         targets = [str(t).strip() for t in targets_raw]
@@ -232,8 +235,8 @@ def _load_cluster_meta(path: Path) -> dict:
 
     is_common_shell = bool(fm.get("is_common_shell", False))
 
-    # related_screens — D3 화면 단위 챕터(split-deliverable) 어셈블용.
-    # list 또는 한 줄 "[a, b]" 표현 fallback 모두 지원.
+    # related_screens — for D3 screen-level chapter (split-deliverable) assembly.
+    # supports both a list and the single-line "[a, b]" expression fallback.
     rs_raw = fm.get("related_screens") or []
     if isinstance(rs_raw, str):
         related_screens = [
@@ -262,23 +265,23 @@ def _load_cluster_meta(path: Path) -> dict:
     }
 
 
-# ── panel block 추출 ────────────────────────────────────────────────────────
+# ── panel block extraction ──────────────────────────────────────────────────
 
 
 def _iter_panel_blocks(body: str) -> list[tuple[str, str, str, int, int]]:
-    """body 에서 모든 panel block 을 추출.
+    """Extract every panel block from the body.
 
     Returns: list of (section_attr_text, attr_inner, inner_body, start, end)
-        - section_attr_text: panel section 속성 값 (예: "§1 정책 결정 (D2 ...)")
-        - attr_inner: panel `{...}` 내부 전체 (디버깅용)
-        - inner_body: panel 내부 본문 (h2/하위 콘텐츠 — `:::` 제외)
-        - start, end: body 내 raw 위치 (panel 전체 — `:::` 라인 포함)
+        - section_attr_text: panel section attribute value (e.g. "§1 Policy Decisions (D2 ...)")
+        - attr_inner: full inside of the panel `{...}` (for debugging)
+        - inner_body: panel inner body (h2/sub-content — `:::` excluded)
+        - start, end: raw positions in the body (whole panel — `:::` lines included)
 
-    nested fenced div (예: panel 안 .info / .expand) 지원 — depth 카운터.
+    Supports nested fenced divs (e.g. .info / .expand inside a panel) — depth counter.
     """
     out: list[tuple[str, str, str, int, int]] = []
     lines = body.splitlines(keepends=True)
-    # 라인 시작 오프셋 사전 계산
+    # precompute line start offsets
     offsets = [0]
     for ln in lines:
         offsets.append(offsets[-1] + len(ln))
@@ -291,25 +294,25 @@ def _iter_panel_blocks(body: str) -> list[tuple[str, str, str, int, int]]:
             attr_inner = m.group(1)
             sec_m = PANEL_SECTION_ATTR_RE.search(attr_inner)
             if not sec_m:
-                # panel 인데 section 속성 없음 — skip (TBD 항목 등)
+                # panel without a section attribute — skip (TBD items etc.)
                 i += 1
                 continue
             section_attr = sec_m.group(1)
-            # 닫는 ::: 찾기 — depth 카운터
+            # find the closing ::: — depth counter
             depth = 1
             j = i + 1
             body_lines: list[str] = []
             while j < len(lines):
                 lj = lines[j].rstrip("\n")
                 if lj.startswith(":::"):
-                    # 여는 ::: { ... } 또는 닫는 :::
+                    # opening ::: { ... } or closing :::
                     if re.match(r"^:::\s*\{", lj):
                         depth += 1
                         body_lines.append(lines[j])
                     elif re.match(r"^:::\s*$", lj):
                         depth -= 1
                         if depth == 0:
-                            # 닫는 panel
+                            # closing panel
                             inner = "".join(body_lines)
                             out.append(
                                 (
@@ -329,9 +332,9 @@ def _iter_panel_blocks(body: str) -> list[tuple[str, str, str, int, int]]:
                     body_lines.append(lines[j])
                 j += 1
             else:
-                # 닫히지 않음 — 형식 위반
+                # unclosed — structure violation
                 raise TransposeError(
-                    f"닫히지 않은 panel block (section={section_attr!r})"
+                    f"unclosed panel block (section={section_attr!r})"
                 )
             continue
         i += 1
@@ -341,36 +344,36 @@ def _iter_panel_blocks(body: str) -> list[tuple[str, str, str, int, int]]:
 def _extract_panel_section(
     body: str, section_keyword: str, *, type_keywords: list[str] | None = None
 ) -> tuple[str, str] | None:
-    """body 에서 section 속성이 `section_keyword` 로 시작하는 첫 panel 의 본문 반환.
+    """Return the body of the first panel whose section attribute starts with `section_keyword`.
 
     Args:
-        body: cluster_draft 의 frontmatter 제외 본문
-        section_keyword: 부분 매칭 키 (예: "§1", "§2", "§α")
-        type_keywords: Da_* 의 경우 §α 안에서 type 분리용 부가 키 (예: ["api"])
+        body: cluster_draft body without frontmatter
+        section_keyword: partial-match key (e.g. "§1", "§2", "§α")
+        type_keywords: for Da_*, extra keys separating types within §α (e.g. ["api"])
 
     Returns:
-        (section_attr_text, inner_body) 또는 None (해당 섹션 없음)
+        (section_attr_text, inner_body) or None (section absent)
     """
     blocks = _iter_panel_blocks(body)
     for sec, _attr, inner, _s, _e in blocks:
         if not sec.startswith(section_keyword):
-            # 일부 panel 은 "§1 정책 결정 (D2 → ...)" 형태이므로 startswith 매칭
+            # some panels look like "§1 Policy Decisions (D2 → ...)" so match with startswith
             continue
         if type_keywords:
-            # §α 의 경우 type 별 추가 키워드 매칭
+            # for §α, additional per-type keyword matching
             if not any(kw.lower() in sec.lower() for kw in type_keywords):
                 continue
         return (sec, inner.rstrip() + "\n")
     return None
 
 
-# ── 정렬 ────────────────────────────────────────────────────────────────────
+# ── sorting ─────────────────────────────────────────────────────────────────
 
 
 def _natural_key(s: str) -> tuple:
-    """자연 정렬 key — 'PR-01' < 'PR-02' < 'PR-10'.
+    """Natural sort key — 'PR-01' < 'PR-02' < 'PR-10'.
 
-    예: "PR-01" → (("PR-",), (1,))
+    e.g. "PR-01" → (("PR-",), (1,))
     """
     out: list[Any] = []
     for m in NATSORT_RE.finditer(s):
@@ -383,10 +386,10 @@ def _natural_key(s: str) -> tuple:
 
 
 def _sort_clusters(clusters: list[dict]) -> list[dict]:
-    """publication-map.md §2 결정적 정렬:
+    """publication-map.md §2 deterministic sort:
 
-        1차: capability 알파벳 순 (대소문자 무관)
-        2차: cluster_id 자연 순 (PR-01 < PR-02 < PR-10)
+        1st: capability alphabetical (case-insensitive)
+        2nd: cluster_id natural order (PR-01 < PR-02 < PR-10)
     """
     return sorted(
         clusters,
@@ -394,48 +397,50 @@ def _sort_clusters(clusters: list[dict]) -> list[dict]:
     )
 
 
-# ── P3 파생 뷰 (cluster_map.json 인덱스 → markdown 패널) ─────────────────────
-# DEC-C / DEC-F: cluster_map.json 의 fr_index / module_index 를 SSoT 로 받아
-# 결정적·순수(부수효과 없음)하게 markdown 패널을 합성한다. 산문 고정 TOC 없음 —
-# 재군집(threshold 조절) 시 인덱스만 바뀌면 뷰가 자동 추종(수기 0).
-# 어떤 모듈에도 일반적으로 동작(이메일/로깅/인증…) — 이메일 특화 하드코딩 없음.
+# ── P3 derived views (cluster_map.json indexes → markdown panels) ─────────────
+# DEC-C / DEC-F: takes cluster_map.json's fr_index / module_index as SSoT and
+# synthesizes markdown panels deterministically and purely (no side effects).
+# No fixed prose TOC — on re-clustering (threshold changes) only the index
+# changes and the views follow automatically (zero manual edits).
+# Works generically for any module (email/logging/auth…) — no email-specific hardcoding.
 
 
 def render_fr_capability_view(fr_index: dict[str, dict]) -> str:
-    """D1 capability group-by 파생 뷰 (DEC-C).
+    """D1 capability group-by derived view (DEC-C).
 
-    `cluster_map.json` 의 `fr_index` ({FR-id: {capability, cluster_id}}) 를
-    capability 별로 묶어 각 capability 아래 FR 목록 + 해당 기능정의서
-    (cluster_id) 앵커 링크를 나열하는 패널 markdown 을 반환한다.
+    Groups `cluster_map.json`'s `fr_index` ({FR-id: {capability, cluster_id}})
+    by capability and returns a panel markdown listing the FRs under each
+    capability plus an anchor link to the corresponding feature definition
+    (cluster_id).
 
-    결정적 정렬:
-        - capability 알파벳 순 (대소문자 무관)
-        - 같은 capability 내 FR 은 자연 순 (FR-1 < FR-2 < FR-10)
+    Deterministic sort:
+        - capability alphabetical (case-insensitive)
+        - FRs within a capability in natural order (FR-1 < FR-2 < FR-10)
 
     Args:
-        fr_index: FR → {capability, cluster_id} 권위 인덱스 (SSoT).
+        fr_index: FR → {capability, cluster_id} authoritative index (SSoT).
 
     Returns:
-        `::: {.panel section="..."}` 패널 markdown 문자열. 빈 입력이면
-        안내 문구만 담긴 패널을 반환한다(결정적).
+        `::: {.panel section="..."}` panel markdown string. For empty input,
+        returns a panel with only a notice (deterministic).
     """
-    section = "§D1 capability별 FR 묶음 (cluster_map.fr_index 파생)"
+    section = "§D1 FR groups by capability (derived from cluster_map.fr_index)"
     parts: list[str] = [
         f'::: {{.panel section="{section}"}}\n',
         f"## {section}\n\n",
-        "> 본 뷰는 `cluster_map.json` `fr_index` 에서 자동 합성된다"
-        "(수기 작성 금지 · 재군집 시 자동 추종).\n\n",
+        "> This view is auto-synthesized from `cluster_map.json` `fr_index` "
+        "(no manual edits · follows re-clustering automatically).\n\n",
     ]
 
-    # capability 별 group-by
+    # group-by capability
     groups: dict[str, list[tuple[str, str]]] = {}
     for fr, meta in (fr_index or {}).items():
-        cap = str((meta or {}).get("capability", "")).strip() or "(미지정)"
+        cap = str((meta or {}).get("capability", "")).strip() or "(unassigned)"
         cid = str((meta or {}).get("cluster_id", "")).strip()
         groups.setdefault(cap, []).append((str(fr), cid))
 
     if not groups:
-        parts.append("_매핑된 FR 없음._\n")
+        parts.append("_No FRs mapped._\n")
         parts.append(":::\n")
         return "".join(parts)
 
@@ -444,10 +449,10 @@ def render_fr_capability_view(fr_index: dict[str, dict]) -> str:
         parts.append(f"### {cap}\n\n")
         for fr, cid in frs:
             if cid:
-                # 기능정의서(cluster) 앵커 — cluster_id 로 cross-link
-                parts.append(f"- **{fr}** → [기능정의서 {cid}](#{cid})\n")
+                # feature-definition (cluster) anchor — cross-link via cluster_id
+                parts.append(f"- **{fr}** → [feature definition {cid}](#{cid})\n")
             else:
-                parts.append(f"- **{fr}** → (cluster 미매핑)\n")
+                parts.append(f"- **{fr}** → (cluster unmapped)\n")
         parts.append("\n")
 
     parts.append(":::\n")
@@ -458,40 +463,40 @@ def render_cross_cutting_matrix(
     module_index: dict[str, list[dict]],
     node_titles: dict[str, str] | None = None,
 ) -> str:
-    """횡단 관심사 매트릭스 파생 뷰 (DEC-F).
+    """Cross-cutting concern matrix derived view (DEC-F).
 
-    `cluster_map.json` 의 `module_index`
-    ({모듈DocId: [{cluster_id, capability, source, via, section}, ...]}) 에서
-    공유 모듈마다 "어느 기능(cluster)이 이 모듈을 참조하나"를 한눈에 보는
-    매트릭스 패널을 합성한다. 어떤 모듈에도 일반적으로 동작한다
-    (이메일·로깅·인증 등 — 특정 모듈 하드코딩 없음).
+    From `cluster_map.json`'s `module_index`
+    ({moduleDocId: [{cluster_id, capability, source, via, section}, ...]}),
+    synthesizes a matrix panel showing at a glance "which features (clusters)
+    reference this module" for every shared module. Works generically for any
+    module (email, logging, auth etc. — no module-specific hardcoding).
 
-    각 모듈마다 1개의 markdown 테이블:
+    One markdown table per module:
         | capability | cluster_id | source | via | section |
-    행은 결정적으로 정렬(capability → cluster_id 자연 순 → source → via).
-    모듈 자체는 docId 알파벳 순.
+    Rows are sorted deterministically (capability → cluster_id natural → source → via).
+    Modules themselves in docId alphabetical order.
 
     Args:
-        module_index: 모듈 → 참조 cluster 레코드 목록 (역인덱스, SSoT).
-        node_titles: (선택) 모듈 docId → 사람이 읽는 제목 매핑. 있으면
-            "제목 (docId)" 헤더로 표기, 없으면 docId 만 표기.
+        module_index: module → referencing cluster record list (reverse index, SSoT).
+        node_titles: (optional) module docId → human-readable title mapping. If
+            present, headers read "title (docId)", otherwise docId only.
 
     Returns:
-        `::: {.panel section="..."}` 패널 markdown 문자열. 빈 입력이면
-        안내 문구만 담긴 패널을 반환한다(결정적).
+        `::: {.panel section="..."}` panel markdown string. For empty input,
+        returns a panel with only a notice (deterministic).
     """
-    section = "§횡단 관심사 매트릭스 (cluster_map.module_index 파생)"
+    section = "§Cross-cutting concern matrix (derived from cluster_map.module_index)"
     titles = node_titles or {}
     parts: list[str] = [
         f'::: {{.panel section="{section}"}}\n',
         f"## {section}\n\n",
-        "> 공유 모듈을 참조하는 기능(cluster) 역인덱스. "
-        "`cluster_map.json` `module_index` 에서 자동 합성된다(SSoT · 수기 금지).\n\n",
+        "> Reverse index of features (clusters) referencing shared modules. "
+        "Auto-synthesized from `cluster_map.json` `module_index` (SSoT · no manual edits).\n\n",
     ]
 
     modules = module_index or {}
     if not modules:
-        parts.append("_횡단 참조 모듈 없음._\n")
+        parts.append("_No cross-cutting modules._\n")
         parts.append(":::\n")
         return "".join(parts)
 
@@ -502,7 +507,7 @@ def render_cross_cutting_matrix(
         parts.append(f"### {heading}\n\n")
 
         if not rows:
-            parts.append("_참조 기능 없음._\n\n")
+            parts.append("_No referencing features._\n\n")
             continue
 
         parts.append("| capability | cluster_id | source | via | section |\n")
@@ -529,21 +534,22 @@ def render_cross_cutting_matrix(
     return "".join(parts).rstrip("\n") + "\n"
 
 
-# ── 챕터 어셈블 ─────────────────────────────────────────────────────────────
+# ── chapter assembly ────────────────────────────────────────────────────────
 
 
 def _strip_first_h2(body: str) -> str:
-    """추출된 panel 본문 첫 줄이 `## §...` 이면 제거.
+    """Remove the first line of an extracted panel body if it is `## §...`.
 
-    원본 §1 본문이 `## §1 정책 결정` h2 로 시작 — 챕터 panel 의 새 h2 가
-    들어가므로 원본 h2 는 중복 회피.
+    The original §1 body starts with an `## §1 Policy Decisions` h2 — the
+    chapter panel adds its own h2, so the original h2 is dropped to avoid
+    duplication.
     """
     lines = body.lstrip("\n").splitlines(keepends=True)
     if not lines:
         return body
     first = lines[0].rstrip("\n").strip()
     if re.match(r"^##\s+§", first):
-        # h2 줄 + 직후 빈 줄도 함께 제거
+        # remove the h2 line plus the blank line right after it
         rest = lines[1:]
         while rest and rest[0].strip() == "":
             rest = rest[1:]
@@ -554,9 +560,9 @@ def _strip_first_h2(body: str) -> str:
 def _assemble_chapter(
     cluster: dict, section_body: str, chapter_num: int
 ) -> str:
-    """단일 cluster 의 추출된 § 본문 → 챕터 panel MD.
+    """Extracted § body of a single cluster → chapter panel MD.
 
-    publication-map.md §7 명명:
+    publication-map.md §7 naming:
         §{N} {Capability} / {ClusterName} ({cluster_id})
     """
     cap = cluster["capability"]
@@ -577,31 +583,31 @@ def _assemble_chapter(
 def _assemble_common_shell_appendix(
     common_clusters: list[dict], section_keyword: str
 ) -> str:
-    """D3 공통 셸 부록 panel 어셈블.
+    """Assemble the D3 common-shell appendix panel.
 
-    각 common_cluster 의 §2 추출 → 하위 §α / §α-1 형식으로 모음.
+    Extracts each common_cluster's §2 → collected in sub §α / §α-1 form.
     """
     if not common_clusters:
         return ""
 
-    parts = ['::: {.panel section="§부록 A — 공통 셸"}\n']
-    parts.append("## §부록 A — 공통 셸\n\n")
+    parts = ['::: {.panel section="§Appendix A — Common Shell"}\n']
+    parts.append("## §Appendix A — Common Shell\n\n")
     parts.append(
-        "> 본 부록은 모든 cluster 가 공유하는 공통 화면 셸 "
-        "(NavShell / AuthFlow 등) 의 화면 설계.\n\n"
+        "> This appendix holds the screen design of the common screen shells "
+        "(NavShell / AuthFlow etc.) shared by all clusters.\n\n"
     )
     sorted_common = _sort_clusters(common_clusters)
     for i, cluster in enumerate(sorted_common, start=1):
         extracted = _extract_panel_section(cluster["text"], section_keyword)
         if not extracted:
             sys.stderr.write(
-                f"[render_transpose] WARN: 공통 셸 cluster "
-                f"{cluster['cluster_id']} 에 {section_keyword} 섹션 없음 — 건너뜀\n"
+                f"[render_transpose] WARN: common-shell cluster "
+                f"{cluster['cluster_id']} has no {section_keyword} section — skipped\n"
             )
             continue
         _sec, inner = extracted
         title = (
-            f"부록 A.{i} {cluster['cluster_name']} ({cluster['cluster_id']})"
+            f"Appendix A.{i} {cluster['cluster_name']} ({cluster['cluster_id']})"
         )
         inner = _strip_first_h2(inner).rstrip() + "\n\n"
         parts.append(f"### {title}\n\n")
@@ -610,15 +616,15 @@ def _assemble_common_shell_appendix(
     return "".join(parts)
 
 
-# ── D3 화면 단위 챕터 (split-deliverable — fix-plan-dossier-publish-split) ────
+# ── D3 screen-level chapters (split-deliverable — fix-plan-dossier-publish-split) ─
 
-# 화면 ID 토큰 — related_screens 가 비어도 §2 헤딩에서 화면 태깅을 감지하는 보조 패턴.
+# screen ID token — auxiliary pattern detecting screen tagging in §2 headings even when related_screens is empty.
 SCREEN_ID_RE = re.compile(r"\bSCR-[A-Za-z0-9]+\b")
 HEADING_RE = re.compile(r"^(#{2,6})\s+(.*)$")
 
 
 def _strip_first_heading(body: str) -> str:
-    """본문 첫 줄이 임의 레벨 헤딩(## ~ ######)이면 제거(직후 빈 줄 포함)."""
+    """Remove the first line if it is a heading of any level (## ~ ######), plus the blank line after."""
     lines = body.lstrip("\n").splitlines(keepends=True)
     if lines and HEADING_RE.match(lines[0].rstrip("\n")):
         rest = lines[1:]
@@ -629,8 +635,8 @@ def _strip_first_heading(body: str) -> str:
 
 
 def _screen_name_from_heading(heading_text: str, sid: str) -> str:
-    """헤딩 텍스트에서 화면명 추출 — 앞 §x-y 토큰·화면 ID·괄호 제거."""
-    t = re.sub(r"^§\S+\s*", "", heading_text)  # 선행 §2-1 등 제거
+    """Extract the screen name from heading text — strips the leading §x-y token, screen ID, parens."""
+    t = re.sub(r"^§\S+\s*", "", heading_text)  # strip leading §2-1 etc.
     t = t.replace(f"({sid})", "").replace(sid, "")
     t = t.strip(" ()[]—-:·\t")
     return t or sid
@@ -639,12 +645,13 @@ def _screen_name_from_heading(heading_text: str, sid: str) -> str:
 def _split_by_screen_headings(
     body: str, screen_ids: list[str]
 ) -> list[tuple[str, str, str]]:
-    """§2 본문에서 화면 ID 로 태깅된 헤딩 구간을 추출.
+    """Extract heading ranges tagged with screen IDs from the §2 body.
 
-    헤딩(## ~ ######) 텍스트가 screen_ids(또는 SCR-패턴)를 포함하면 그 헤딩부터
-    같은/상위 레벨 헤딩 직전까지를 한 화면 구간으로 본다.
+    If a heading (## ~ ######) text contains one of screen_ids (or the SCR-
+    pattern), the range from that heading up to just before the next same/upper
+    level heading is one screen section.
 
-    Returns: [(screen_id, heading_text, section_md), ...] (등장 순서)
+    Returns: [(screen_id, heading_text, section_md), ...] (order of appearance)
     """
     lines = body.splitlines(keepends=True)
     idset = [s for s in screen_ids if s]
@@ -682,13 +689,13 @@ def _split_by_screen_headings(
 def _render_screen_index(
     screen_to_clusters: dict[str, list[dict]], screen_names: dict[str, str]
 ) -> str:
-    """화면 인덱스 패널 — related_screens 합집합을 화면 ID 자연순으로 나열."""
+    """Screen index panel — lists the related_screens union in screen-ID natural order."""
     parts = [
-        '::: {.panel section="§화면 인덱스"}\n',
-        "## §화면 인덱스\n\n",
-        "> 본 인덱스는 cluster_*.draft.md frontmatter 의 `related_screens` "
-        "합집합에서 자동 합성된다(수기 작성 금지).\n\n",
-        "| Screen ID | 화면명 | 출처 cluster |\n",
+        '::: {.panel section="§Screen Index"}\n',
+        "## §Screen Index\n\n",
+        "> This index is auto-synthesized from the union of `related_screens` "
+        "in cluster_*.draft.md frontmatter (no manual edits).\n\n",
+        "| Screen ID | Screen Name | Source cluster |\n",
         "|---|---|---|\n",
     ]
     for sid in sorted(screen_to_clusters, key=_natural_key):
@@ -705,25 +712,25 @@ def _render_screen_index(
 def _assemble_d3_screen_chapters(
     eligible: list[dict],
 ) -> tuple[str, list[str]] | None:
-    """split-deliverable D3 — 화면 단위 챕터 어셈블.
+    """split-deliverable D3 — screen-level chapter assembly.
 
-    각 cluster 의 §2 본문에서 화면 ID 태깅 헤딩을 찾아 화면 단위로 재편한다.
-    화면 태깅이 하나도 없으면 None 을 반환해 호출부가 cluster 단위 fallback 으로
-    내려가게 한다(+WARN).
+    Finds screen-ID tagged headings in each cluster's §2 body and reorganizes
+    by screen. If no screen tagging exists at all, returns None so the caller
+    falls back to cluster-level chapters (+WARN).
 
     Returns:
-        (screen_index_md, [chapter_md, ...]) 또는 None(fallback 신호)
+        (screen_index_md, [chapter_md, ...]) or None (fallback signal)
     """
     section_keyword = DELIVERABLE_SECTION_MAP["D3"]
 
-    # 1. cluster 별 §2 추출
+    # 1. extract §2 per cluster
     per_cluster: list[tuple[dict, str]] = []
     for meta in eligible:
         extracted = _extract_panel_section(meta["text"], section_keyword)
         if not extracted:
             sys.stderr.write(
-                f"[render_transpose] WARN: {meta['cluster_id']} 에 "
-                f"{section_keyword} 섹션 없음 — 건너뜀\n"
+                f"[render_transpose] WARN: {meta['cluster_id']} has no "
+                f"{section_keyword} section — skipped\n"
             )
             continue
         per_cluster.append((meta, _strip_first_h2(extracted[1])))
@@ -731,13 +738,13 @@ def _assemble_d3_screen_chapters(
     if not per_cluster:
         return None
 
-    # 2. related_screens 합집합 → 출처 매핑
+    # 2. related_screens union → source mapping
     screen_to_clusters: dict[str, list[dict]] = {}
     for meta in eligible:
         for s in meta["related_screens"]:
             screen_to_clusters.setdefault(s, []).append(meta)
 
-    # 3. §2 화면 태깅 헤딩 수집
+    # 3. collect §2 screen-tagged headings
     universe = sorted(
         {s for meta in eligible for s in meta["related_screens"]},
         key=_natural_key,
@@ -755,10 +762,10 @@ def _assemble_d3_screen_chapters(
                 screen_to_clusters[sid].append(meta)
 
     if not by_screen:
-        # 화면 태깅 전무 — cluster 단위 fallback (WARN 은 호출부에서)
+        # no screen tagging at all — cluster-level fallback (WARN at the call site)
         return None
 
-    # 4. 화면 단위 챕터 emit (Screen ID 자연순)
+    # 4. emit screen-level chapters (Screen ID natural order)
     chapters: list[str] = []
     for n, sid in enumerate(sorted(by_screen, key=_natural_key), start=1):
         name = screen_names.get(sid) or sid
@@ -784,21 +791,21 @@ def _assemble_d3_screen_chapters(
     return screen_index_md, chapters
 
 
-# ── target_template / 기본 frontmatter ──────────────────────────────────────
+# ── target_template / default frontmatter ───────────────────────────────────
 
 
 def _default_frontmatter(deliverable_type: str) -> dict:
-    """target_template 없을 때 deliverable_type 기반 기본 frontmatter 생성.
+    """Generate a deliverable_type based default frontmatter when there is no target_template.
 
-    D2_policy.md / D3_screen.md / Dα_*.md 양식 따라 최소 골격.
+    Minimal skeleton following the D2_policy.md / D3_screen.md / Dα_*.md formats.
     """
     today = datetime.now().strftime("%Y-%m-%d")
     title_map = {
-        "D2": "[정책정의서] {{PRODUCT_NAME}}",
-        "D3": "[화면설계서] {{PRODUCT_NAME}}",
-        "Da_api": "[API 스펙] {{PRODUCT_NAME}}",
-        "Da_db": "[DB 스키마] {{PRODUCT_NAME}}",
-        "Da_migration": "[마이그레이션 플랜] {{PRODUCT_NAME}}",
+        "D2": "[Policy Definition] {{PRODUCT_NAME}}",
+        "D3": "[Screen Design Spec] {{PRODUCT_NAME}}",
+        "Da_api": "[API Spec] {{PRODUCT_NAME}}",
+        "Da_db": "[DB Schema] {{PRODUCT_NAME}}",
+        "Da_migration": "[Migration Plan] {{PRODUCT_NAME}}",
     }
     type_map = {
         "D2": "policy",
@@ -809,31 +816,31 @@ def _default_frontmatter(deliverable_type: str) -> dict:
     }
     related_links_map = {
         "D2": [
-            "[[page:[요구사항 정의서] {{PRODUCT_NAME}}]]",
-            "[[page:[화면설계서] {{PRODUCT_NAME}}]]",
+            "[[page:[Requirements Definition] {{PRODUCT_NAME}}]]",
+            "[[page:[Screen Design Spec] {{PRODUCT_NAME}}]]",
         ],
         "D3": [
-            "[[page:[요구사항 정의서] {{PRODUCT_NAME}}]]",
-            "[[page:[정책정의서] {{PRODUCT_NAME}}]]",
+            "[[page:[Requirements Definition] {{PRODUCT_NAME}}]]",
+            "[[page:[Policy Definition] {{PRODUCT_NAME}}]]",
         ],
         "Da_api": [
-            "[[page:[정책정의서] {{PRODUCT_NAME}}]]",
-            "[[page:[화면설계서] {{PRODUCT_NAME}}]]",
+            "[[page:[Policy Definition] {{PRODUCT_NAME}}]]",
+            "[[page:[Screen Design Spec] {{PRODUCT_NAME}}]]",
         ],
         "Da_db": [
-            "[[page:[정책정의서] {{PRODUCT_NAME}}]]",
+            "[[page:[Policy Definition] {{PRODUCT_NAME}}]]",
         ],
         "Da_migration": [
-            "[[page:[정책정의서] {{PRODUCT_NAME}}]]",
+            "[[page:[Policy Definition] {{PRODUCT_NAME}}]]",
         ],
     }
     related_block = "\n".join(
         f"            - {link}" for link in related_links_map[deliverable_type]
     )
     header_body = (
-        f"**본 문서는 {{{{PRODUCT_NAME}}}}의 "
-        f"{title_map[deliverable_type].split(']')[0][1:]} 정본이다.**\n\n"
-        f"doc_id: {{{{DOC_ID}}}} 버전: {{{{VERSION}}}} 최종 수정: {{{{DATE}}}}"
+        f"**This document is the canonical "
+        f"{title_map[deliverable_type].split(']')[0][1:]} of {{{{PRODUCT_NAME}}}}.**\n\n"
+        f"doc_id: {{{{DOC_ID}}}} version: {{{{VERSION}}}} last modified: {{{{DATE}}}}"
     )
     return {
         "title": title_map[deliverable_type],
@@ -848,9 +855,9 @@ def _default_frontmatter(deliverable_type: str) -> dict:
                 "cells": [
                     {
                         "panel": {
-                            "title": "참고 자료",
+                            "title": "References",
                             "body": (
-                                "**관련 문서**\n\n"
+                                "**Related documents**\n\n"
                                 + "\n".join(
                                     f"- {l}"
                                     for l in related_links_map[deliverable_type]
@@ -870,25 +877,25 @@ def _default_frontmatter(deliverable_type: str) -> dict:
 def _apply_template_frontmatter(
     template_path: Path, deliverable_type: str
 ) -> dict:
-    """target_template 의 frontmatter 를 로드 + 갱신.
+    """Load + refresh the target_template's frontmatter.
 
-    - last_updated 를 오늘로 교체
-    - transposed_from / transposed_at 메타 추가
+    - replace last_updated with today
+    - add transposed_from / transposed_at metadata
     """
     if not template_path.exists():
-        raise TransposeError(f"target_template 없음: {template_path}")
+        raise TransposeError(f"target_template not found: {template_path}")
     try:
         raw = template_path.read_text(encoding="utf-8", errors="replace")
     except OSError as exc:
         raise TransposeError(
-            f"target_template 읽기 실패: {template_path} — {exc}"
+            f"failed to read target_template: {template_path} — {exc}"
         )
     fm, _body = _parse_frontmatter(raw)
     if not fm:
-        # template frontmatter 가 없으면 기본 사용
+        # fall back to the default when the template has no frontmatter
         sys.stderr.write(
-            f"[render_transpose] WARN: target_template frontmatter 없음 — "
-            f"기본값 사용: {template_path}\n"
+            f"[render_transpose] WARN: target_template has no frontmatter — "
+            f"using defaults: {template_path}\n"
         )
         return _default_frontmatter(deliverable_type)
     fm["last_updated"] = datetime.now().strftime("%Y-%m-%d")
@@ -897,7 +904,7 @@ def _apply_template_frontmatter(
     return fm
 
 
-# ── 메인 transpose 함수 ─────────────────────────────────────────────────────
+# ── main transpose function ─────────────────────────────────────────────────
 
 
 def transpose(
@@ -907,28 +914,28 @@ def transpose(
     common_shell_clusters: list[Path] | None = None,
     target_template: Path | None = None,
 ) -> str:
-    """cluster_draft 들에서 deliverable_type 섹션을 추출·어셈블 → MD source.
+    """Extract and assemble the deliverable_type sections from cluster_drafts → MD source.
 
     Args:
-        cluster_drafts: cluster_draft 파일 경로 목록
+        cluster_drafts: list of cluster_draft file paths
         deliverable_type: "D2" | "D3" | "Da_api" | "Da_db" | "Da_migration"
-        common_shell_clusters: G2-COMMON-* cluster (D3 전용 — 다른 type 은 무시)
-        target_template: 골격 frontmatter 출처 (선택)
+        common_shell_clusters: G2-COMMON-* clusters (D3 only — ignored for other types)
+        target_template: skeleton frontmatter source (optional)
 
     Returns:
-        MD 문자열 (frontmatter + 챕터들 + 공통 셸 부록 D3 만)
+        MD string (frontmatter + chapters + common-shell appendix for D3 only)
 
     Raises:
-        TransposeError — 파싱 / 매칭 / 구조 오류
-        ValueError — deliverable_type 무효
+        TransposeError — parse / match / structure error
+        ValueError — invalid deliverable_type
     """
     if deliverable_type not in VALID_DELIVERABLES:
         raise ValueError(
-            f"무효한 deliverable_type: {deliverable_type!r}. "
-            f"허용: {sorted(VALID_DELIVERABLES)}"
+            f"invalid deliverable_type: {deliverable_type!r}. "
+            f"allowed: {sorted(VALID_DELIVERABLES)}"
         )
 
-    # 1. cluster_draft 로드 + 필터링
+    # 1. load + filter cluster_drafts
     section_keyword = DELIVERABLE_SECTION_MAP[deliverable_type]
     type_keywords = DA_TYPE_KEYWORDS.get(deliverable_type)
 
@@ -944,28 +951,29 @@ def transpose(
         if deliverable_type not in meta["deliverable_targets"]:
             continue
         if meta["is_common_shell"]:
-            # is_common_shell 플래그가 켜진 cluster 는 일반 챕터에서 제외
-            # (D3 부록은 별도 common_shell_clusters 인자로 받음)
+            # clusters with is_common_shell set are excluded from normal chapters
+            # (the D3 appendix comes via the separate common_shell_clusters argument)
             continue
         eligible.append(meta)
 
-    # 2. 정렬
+    # 2. sort
     eligible = _sort_clusters(eligible)
 
-    # 3. 챕터 어셈블
+    # 3. chapter assembly
     chapter_md: list[str] = []
     screen_index_md = ""
 
-    # D3 는 화면 단위 챕터를 우선 시도(split-deliverable). 화면 태깅이 없으면
-    # None 을 받아 cluster 단위 fallback 으로 내려간다(+WARN).
+    # D3 tries screen-level chapters first (split-deliverable). Without screen
+    # tagging it receives None and falls back to cluster-level chapters (+WARN).
     if deliverable_type == "D3":
         screen_result = _assemble_d3_screen_chapters(eligible)
         if screen_result is not None:
             screen_index_md, chapter_md = screen_result
         else:
             sys.stderr.write(
-                "[render_transpose] WARN: D3 §2 에 화면 ID 태깅 헤딩이 없어 "
-                "화면 단위 분해 불가 — cluster 단위 챕터로 fallback\n"
+                "[render_transpose] WARN: D3 §2 has no screen-ID tagged "
+                "headings, cannot split into screen-level chapters — falling "
+                "back to cluster-level chapters\n"
             )
 
     if not chapter_md:
@@ -976,14 +984,14 @@ def transpose(
             )
             if not extracted:
                 sys.stderr.write(
-                    f"[render_transpose] WARN: {meta['cluster_id']} 에 "
+                    f"[render_transpose] WARN: {meta['cluster_id']} has no "
                     f"{section_keyword}"
                     + (
                         f" ({'/'.join(type_keywords)})"
                         if type_keywords
                         else ""
                     )
-                    + " 섹션 없음 — 건너뜀\n"
+                    + " section — skipped\n"
                 )
                 continue
             _sec, inner = extracted
@@ -992,11 +1000,11 @@ def transpose(
 
     if not chapter_md:
         raise TransposeError(
-            f"deliverable_type={deliverable_type} 에 해당하는 cluster 0건 "
-            f"(또는 모든 cluster 에 섹션 누락)"
+            f"0 items: no cluster matches deliverable_type={deliverable_type} "
+            f"(or the section is missing in every cluster)"
         )
 
-    # 4. 공통 셸 부록 (D3 만)
+    # 4. common-shell appendix (D3 only)
     appendix_md = ""
     common_metas: list[dict] = []
     if deliverable_type == "D3" and common_shell_clusters:
@@ -1014,18 +1022,19 @@ def transpose(
             common_metas, section_keyword
         )
 
-    # 5. Frontmatter
+    # 5. frontmatter
     if target_template is not None:
         fm = _apply_template_frontmatter(target_template, deliverable_type)
     else:
         fm = _default_frontmatter(deliverable_type)
-    # 기여 cluster 기록 — render_sync_check 가 deliverable 최신성을
-    # 기여분 한정으로 판별한다(전체 draft max 비교의 false OUTDATED 방지).
+    # record contributing clusters — render_sync_check judges deliverable
+    # freshness against contributors only (prevents false OUTDATED from
+    # comparing against the max of all drafts).
     fm["source_clusters"] = [m["cluster_id"] for m in eligible + common_metas]
 
     fm_md = _render_frontmatter(fm)
 
-    # 6. 최종 어셈블
+    # 6. final assembly
     parts: list[str] = [fm_md, "\n"]
     if screen_index_md:
         parts.append(screen_index_md)
@@ -1048,40 +1057,40 @@ def main(argv: list[str] | None = None) -> int:
         nargs="+",
         required=True,
         type=Path,
-        help="drafts/cluster_*.draft.md 목록 (1개 이상)",
+        help="drafts/cluster_*.draft.md list (1 or more)",
     )
     ap.add_argument(
         "--deliverable",
         required=True,
         choices=sorted(VALID_DELIVERABLES),
-        help="목적 deliverable_type",
+        help="target deliverable_type",
     )
     ap.add_argument(
         "--output",
         required=True,
         type=Path,
-        help="어셈블된 MD 출력 경로",
+        help="assembled MD output path",
     )
     ap.add_argument(
         "--template",
         type=Path,
         default=None,
-        help="목적 deliverable 양식 파일 (선택)",
+        help="target deliverable template file (optional)",
     )
     ap.add_argument(
         "--common-shell",
         nargs="*",
         type=Path,
         default=None,
-        help="D3 공통 셸 cluster draft 목록 (D3 전용)",
+        help="D3 common-shell cluster draft list (D3 only)",
     )
     args = ap.parse_args(argv)
 
-    # 입력 검증
+    # input validation
     missing = [p for p in args.cluster_drafts if not p.exists()]
     if missing:
         sys.stderr.write(
-            f"[render_transpose] ERROR: cluster_draft 없음: "
+            f"[render_transpose] ERROR: cluster_draft not found: "
             f"{[str(p) for p in missing]}\n"
         )
         return 3
@@ -1090,14 +1099,14 @@ def main(argv: list[str] | None = None) -> int:
         missing_cs = [p for p in args.common_shell if not p.exists()]
         if missing_cs:
             sys.stderr.write(
-                f"[render_transpose] ERROR: common_shell cluster 없음: "
+                f"[render_transpose] ERROR: common_shell cluster not found: "
                 f"{[str(p) for p in missing_cs]}\n"
             )
             return 3
 
     if args.template is not None and not args.template.exists():
         sys.stderr.write(
-            f"[render_transpose] ERROR: template 없음: {args.template}\n"
+            f"[render_transpose] ERROR: template not found: {args.template}\n"
         )
         return 3
 
@@ -1113,27 +1122,27 @@ def main(argv: list[str] | None = None) -> int:
         )
     except TransposeError as exc:
         msg = str(exc)
-        if "0건" in msg or "없음" in msg and "cluster" in msg.lower():
+        if "0 items" in msg or "none" in msg and "cluster" in msg.lower():
             sys.stderr.write(f"[render_transpose] {msg}\n")
             return 2
-        sys.stderr.write(f"[render_transpose] 파싱 오류: {msg}\n")
+        sys.stderr.write(f"[render_transpose] parse error: {msg}\n")
         return 1
     except ValueError as exc:
-        sys.stderr.write(f"[render_transpose] 인자 오류: {exc}\n")
+        sys.stderr.write(f"[render_transpose] argument error: {exc}\n")
         return 1
 
-    # 출력
+    # output
     try:
         args.output.parent.mkdir(parents=True, exist_ok=True)
         args.output.write_text(result, encoding="utf-8")
     except OSError as exc:
-        sys.stderr.write(f"[render_transpose] IO 오류: {exc}\n")
+        sys.stderr.write(f"[render_transpose] IO error: {exc}\n")
         return 3
 
     n_chapters = result.count("::: {.panel section=")
     print(
         f"[render_transpose] {args.deliverable} → {args.output} "
-        f"(panel 수={n_chapters})"
+        f"(panels={n_chapters})"
     )
     return 0
 

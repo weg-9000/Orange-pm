@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""fr_cluster_check.py 테스트 (P4, docs/fr-cluster-alignment.md).
+"""Tests for fr_cluster_check.py (P4, docs/fr-cluster-alignment.md).
 
-stdlib unittest. clean pass / orphan WARN / unmapped WARN /
-mismatch BLOCK(양방향) / 종료 코드 / 손상 입력 graceful 커버.
-씨앗은 사이드카 requirements.seeds.yml 에서 읽는다(인라인 태그 아님).
+stdlib unittest. Covers clean pass / orphan WARN / unmapped WARN /
+mismatch BLOCK (both directions) / exit codes / graceful handling of
+corrupt input. Seeds are read from the sidecar requirements.seeds.yml
+(not inline tags).
 """
 from __future__ import annotations
 
@@ -30,16 +31,16 @@ from fr_cluster_check import (  # type: ignore
 )
 
 
-# ── 1. requirements FR universe 파싱 (씨앗 정보 없음) ─────────────────────
+# ── 1. Parse requirements FR universe (no seed info) ──────────────────────
 class TestParseFrIds(unittest.TestCase):
     def test_parses_leading_fr_universe(self):
         md = (
-            "| **FR-101** | 명칭 | 내용 | P0 |\n"
-            "| **FR-102** | 명칭 | 내용 | P1 |\n"
-            "본문에서 FR-999 언급은 행 주체가 아님\n"
+            "| **FR-101** | name | desc | P0 |\n"
+            "| **FR-102** | name | desc | P1 |\n"
+            "A mention of FR-999 in body text is not a row subject\n"
         )
         ids = parse_fr_ids(md)
-        self.assertEqual(ids, ["FR-101", "FR-102"])  # 순서 보존, 중복 제거
+        self.assertEqual(ids, ["FR-101", "FR-102"])  # order preserved, deduped
 
     def test_dedupes_repeated_fr(self):
         md = (
@@ -52,7 +53,7 @@ class TestParseFrIds(unittest.TestCase):
         self.assertEqual(parse_fr_ids(None), [])  # type: ignore[arg-type]
 
 
-# ── 1b. 사이드카 seeds yml 파싱 ───────────────────────────────────────────
+# ── 1b. Parse sidecar seeds yml ───────────────────────────────────────────
 class TestReadSeeds(unittest.TestCase):
     def _write(self, tmp: Path, text: str) -> Path:
         p = tmp / "requirements.seeds.yml"
@@ -68,9 +69,9 @@ class TestReadSeeds(unittest.TestCase):
                 "  capability: Provisioning\n"
                 "  cluster_hint: PR\n"
                 "FR-102:\n"
-                "  capability: ''\n"      # 빈 capability → 씨앗 아님
+                "  capability: ''\n"      # empty capability → not a seed
                 "FR-103:\n"
-                "  cluster_hint: X\n",    # capability 키 없음 → 씨앗 아님
+                "  cluster_hint: X\n",    # no capability key → not a seed
             )
             seeds = read_seeds(p)
             self.assertEqual(seeds["FR-101"]["capability"], "Provisioning")
@@ -96,7 +97,7 @@ class TestReadSeeds(unittest.TestCase):
         self.assertEqual(seeded_set(None), set())  # type: ignore[arg-type]
 
 
-# ── 2. cluster draft fr_refs 파싱 ────────────────────────────────────────
+# ── 2. Parse cluster draft fr_refs ────────────────────────────────────────
 class TestParseClusterFrRefs(unittest.TestCase):
     def test_block_list(self):
         text = (
@@ -107,7 +108,7 @@ class TestParseClusterFrRefs(unittest.TestCase):
             '  - "FR-103"\n'
             "domain_objects: [\"Instance\"]\n"
             "---\n"
-            "본문\n"
+            "body\n"
         )
         cid, refs = parse_cluster_fr_refs(text)
         self.assertEqual(cid, "PR-01")
@@ -125,7 +126,7 @@ class TestParseClusterFrRefs(unittest.TestCase):
         self.assertEqual(refs, [])
 
 
-# ── 3. read_fr_index graceful ────────────────────────────────────────────
+# ── 3. read_fr_index graceful handling ────────────────────────────────────
 class TestReadFrIndex(unittest.TestCase):
     def test_valid(self):
         cm = {"fr_index": {"FR-101": {"capability": "Prov", "cluster_id": "PR-01"}}}
@@ -138,7 +139,7 @@ class TestReadFrIndex(unittest.TestCase):
         self.assertEqual(read_fr_index([]), {})  # type: ignore[arg-type]
 
 
-# ── 4. clean pass ────────────────────────────────────────────────────────
+# ── 4. Clean pass ──────────────────────────────────────────────────────────
 class TestCleanPass(unittest.TestCase):
     def test_consistent_no_findings(self):
         fr_ids = ["FR-101", "FR-102"]
@@ -153,21 +154,21 @@ class TestCleanPass(unittest.TestCase):
         self.assertEqual(exit_code_for(findings), 0)
 
 
-# ── 5. orphan WARN ───────────────────────────────────────────────────────
+# ── 5. orphan WARN ─────────────────────────────────────────────────────────
 class TestOrphan(unittest.TestCase):
     def test_orphan_is_warn_not_block(self):
-        fr_ids = ["FR-900"]            # 씨앗 없음 + fr_index 부재
+        fr_ids = ["FR-900"]            # no seed + not in fr_index
         findings = check_traceability(fr_ids, set(), {}, {})
         self.assertEqual(len(findings), 1)
         self.assertEqual(findings[0].level, "WARN")
         self.assertIn("orphan", findings[0].reason)
-        self.assertEqual(exit_code_for(findings), 0)  # WARN 비차단
+        self.assertEqual(exit_code_for(findings), 0)  # WARN is non-blocking
 
 
-# ── 6. unmapped WARN ─────────────────────────────────────────────────────
+# ── 6. unmapped WARN ───────────────────────────────────────────────────────
 class TestUnmapped(unittest.TestCase):
     def test_seed_but_not_in_index_is_warn(self):
-        fr_ids = ["FR-500"]           # 씨앗 있으나 fr_index 부재
+        fr_ids = ["FR-500"]           # has seed but not in fr_index
         findings = check_traceability(fr_ids, {"FR-500"}, {}, {})
         self.assertEqual(len(findings), 1)
         self.assertEqual(findings[0].level, "WARN")
@@ -175,30 +176,31 @@ class TestUnmapped(unittest.TestCase):
         self.assertEqual(exit_code_for(findings), 0)
 
 
-# ── 7. mismatch BLOCK — 방향 (a): fr_index → draft 누락 ──────────────────
+# ── 7. mismatch BLOCK — direction (a): fr_index → draft missing ref ───────
 class TestMismatchIndexToDraft(unittest.TestCase):
     def test_index_maps_but_draft_missing_ref(self):
         fr_ids = ["FR-101"]
         fr_index = {"FR-101": {"capability": "Prov", "cluster_id": "PR-01"}}
-        drafts = {"PR-01": ["FR-999"]}  # PR-01 draft 가 FR-101 누락
+        drafts = {"PR-01": ["FR-999"]}  # PR-01 draft is missing FR-101
         findings = check_traceability(fr_ids, {"FR-101"}, fr_index, drafts)
         blocks = [f for f in findings if f.level == "BLOCK"]
         self.assertTrue(any("FR-101" in f.fr and "PR-01" in f.reason for f in blocks))
         self.assertEqual(exit_code_for(findings), 2)
 
     def test_no_draft_for_cluster_is_not_block(self):
-        # 매핑된 cluster 의 draft 자체가 없으면 부분 검증 — BLOCK 아님
+        # if the mapped cluster's draft itself is missing, that's a partial
+        # check — not a BLOCK
         fr_ids = ["FR-101"]
         fr_index = {"FR-101": {"capability": "Prov", "cluster_id": "PR-01"}}
         findings = check_traceability(fr_ids, {"FR-101"}, fr_index, {})
         self.assertFalse(any(f.level == "BLOCK" for f in findings))
 
 
-# ── 8. mismatch BLOCK — 방향 (b): draft → index 불일치 ───────────────────
+# ── 8. mismatch BLOCK — direction (b): draft → index mismatch ─────────────
 class TestMismatchDraftToIndex(unittest.TestCase):
     def test_draft_ref_maps_to_other_cluster(self):
         fr_index = {"FR-101": {"capability": "Prov", "cluster_id": "PR-01"}}
-        drafts = {"PR-02": ["FR-101"]}  # draft PR-02 가 FR-101 실음, index 는 PR-01
+        drafts = {"PR-02": ["FR-101"]}  # draft PR-02 carries FR-101, index says PR-01
         findings = check_traceability([], set(), fr_index, drafts)
         blocks = [f for f in findings if f.level == "BLOCK"]
         self.assertTrue(blocks)
@@ -206,14 +208,14 @@ class TestMismatchDraftToIndex(unittest.TestCase):
         self.assertEqual(exit_code_for(findings), 2)
 
     def test_draft_ref_maps_nowhere(self):
-        drafts = {"PR-01": ["FR-777"]}  # fr_index 에 FR-777 없음
+        drafts = {"PR-01": ["FR-777"]}  # FR-777 not in fr_index
         findings = check_traceability([], set(), {}, drafts)
         blocks = [f for f in findings if f.level == "BLOCK"]
         self.assertTrue(any(f.fr == "FR-777" for f in blocks))
         self.assertEqual(exit_code_for(findings), 2)
 
 
-# ── 9. graceful — 빈/손상 입력 ───────────────────────────────────────────
+# ── 9. graceful — empty/corrupt input ──────────────────────────────────────
 class TestGraceful(unittest.TestCase):
     def test_all_empty_no_crash(self):
         self.assertEqual(check_traceability([], set(), {}, {}), [])
@@ -229,7 +231,7 @@ class TestGraceful(unittest.TestCase):
         self.assertIn("FR-1", out)
 
 
-# ── 10. End-to-end run_check (파일 I/O + 종료 코드) ──────────────────────
+# ── 10. End-to-end run_check (file I/O + exit code) ────────────────────────
 class TestRunCheck(unittest.TestCase):
     def _setup(self, tmp: Path, *, fr_index: dict, draft_refs: dict,
                req_lines: list[str], seeds: dict | None = None) -> tuple[Path, Path, Path]:
@@ -266,7 +268,7 @@ class TestRunCheck(unittest.TestCase):
                 seeds={"FR-101": {"capability": "P"}},
             )
             report = tmp / "out.md"
-            # seeds_path 생략 → requirements 형제 requirements.seeds.yml 자동 사용
+            # seeds_path omitted → automatically uses the sibling requirements.seeds.yml
             code, findings = run_check(req, cmap, drafts, report_path=report)
             self.assertEqual(code, 0)
             self.assertEqual(findings, [])
@@ -281,7 +283,7 @@ class TestRunCheck(unittest.TestCase):
                 draft_refs={},
                 req_lines=["| **FR-500** | n | c | P0 |"],
             )
-            # 별도 위치의 seeds 파일을 명시 전달 → unmapped WARN
+            # explicitly pass a seeds file at a separate location → unmapped WARN
             seeds_p = tmp / "custom.seeds.yml"
             seeds_p.write_text("FR-500:\n  capability: Billing\n", encoding="utf-8")
             code, findings = run_check(req, cmap, drafts, seeds_path=seeds_p)
@@ -305,7 +307,7 @@ class TestRunCheck(unittest.TestCase):
     def test_orphan_exit_0(self):
         with tempfile.TemporaryDirectory() as t:
             tmp = Path(t)
-            # seeds 파일 없음 → FR-900 씨앗 없음 + fr_index 부재 → orphan WARN
+            # no seeds file → FR-900 has no seed + not in fr_index → orphan WARN
             req, cmap, drafts = self._setup(
                 tmp, fr_index={}, draft_refs={},
                 req_lines=["| **FR-900** | n | c | P0 |"],
@@ -334,7 +336,7 @@ class TestRunCheck(unittest.TestCase):
             cmap.write_text("{ this is not json", encoding="utf-8")
             drafts = tmp / "drafts"
             drafts.mkdir()
-            # 손상 cluster_map → exit 1 아님(graceful), orphan WARN 산출 → exit 0
+            # corrupt cluster_map → not exit 1 (graceful), yields orphan WARN → exit 0
             code, findings = run_check(req, cmap, drafts)
             self.assertEqual(code, 0)
             self.assertTrue(any(f.level == "WARN" for f in findings))
@@ -346,7 +348,7 @@ class TestRunCheck(unittest.TestCase):
                 tmp, fr_index={}, draft_refs={},
                 req_lines=["| **FR-1** | n | c | P0 |"],
             )
-            # 손상 seeds yml → 빈 seeds 로 흡수, FR-1 은 orphan WARN
+            # corrupt seeds yml → absorbed as empty seeds, FR-1 becomes orphan WARN
             (tmp / "requirements.seeds.yml").write_text(
                 "FR-1: [unclosed\n : : :", encoding="utf-8")
             code, findings = run_check(req, cmap, drafts)
@@ -354,9 +356,10 @@ class TestRunCheck(unittest.TestCase):
             self.assertTrue(any("orphan" in f.reason for f in findings))
 
 
-# ── 11. 큐 출력 — ssot_emit 파서 호환성 ───────────────────────────────────
+# ── 11. Queue output — ssot_emit parser compatibility ─────────────────────
 class TestQueueSsotCompatible(unittest.TestCase):
-    """--queue/render_report 헤더가 ssot_emit(_emit_common) 파서로 집계 가능한지."""
+    """Whether the --queue/render_report header can be aggregated by the
+    ssot_emit (_emit_common) parser."""
 
     def test_render_header_parses_block_warn(self):
         import _emit_common as C  # type: ignore
@@ -388,7 +391,7 @@ class TestQueueSsotCompatible(unittest.TestCase):
             ), encoding="utf-8")
             drafts = tmp / "drafts"
             drafts.mkdir()
-            # PR-01 draft 가 FR-101 누락 → mismatch BLOCK
+            # PR-01 draft is missing FR-101 → mismatch BLOCK
             (drafts / "cluster_PR-01.draft.md").write_text(
                 '---\ncluster_id: "PR-01"\nfr_refs:\n  - "FR-999"\n---\n',
                 encoding="utf-8")
@@ -402,7 +405,7 @@ class TestQueueSsotCompatible(unittest.TestCase):
             self.assertGreaterEqual(counts.get("BLOCK", 0), 1)
 
 
-# ── 실행기 ───────────────────────────────────────────────────────────────
+# ── Runner ──────────────────────────────────────────────────────────────
 def _run() -> int:
     loader = unittest.TestLoader()
     suite = unittest.TestSuite()
@@ -424,7 +427,7 @@ def _run() -> int:
     result = unittest.TextTestRunner(verbosity=2).run(suite)
     total = result.testsRun
     failed = len(result.failures) + len(result.errors)
-    print(f"\n총 {total}개 — PASS {total - failed} / FAIL {failed}")
+    print(f"\nTotal {total} — PASS {total - failed} / FAIL {failed}")
     return 0 if failed == 0 else 1
 
 

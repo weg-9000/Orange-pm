@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Tests for storage_to_md (사양: publication-syntax.md).
+"""Tests for storage_to_md (spec: publication-syntax.md).
 
-각 매크로/요소 변환 케이스 + 1개 round-trip 케이스.
-실행:
+Per-macro/element conversion cases + 1 round-trip case.
+Run:
     python -m pytest storage_to_md_test.py -q
-    python storage_to_md_test.py   # 내장 러너
+    python storage_to_md_test.py   # built-in runner
 """
 from __future__ import annotations
 
@@ -23,7 +23,7 @@ from storage_to_md import (  # noqa: E402
 )
 
 
-# ── Panel (사양 §3.1) ─────────────────────────────────────────────────────
+# ── Panel (spec §3.1) ────────────────────────────────────────────────────
 def test_panel_with_section_default_style_emits_panel_div():
     xml = (
         '<ac:structured-macro ac:name="panel" ac:schema-version="1">'
@@ -31,15 +31,15 @@ def test_panel_with_section_default_style_emits_panel_div():
         '<ac:parameter ac:name="titleColor">#002FD5</ac:parameter>'
         '<ac:parameter ac:name="titleBGColor">24FE00</ac:parameter>'
         '<ac:parameter ac:name="borderStyle">none</ac:parameter>'
-        '<ac:parameter ac:name="title">§1 정책 개요</ac:parameter>'
-        "<ac:rich-text-body><h2>§1 정책 개요</h2><p>본문</p></ac:rich-text-body>"
+        '<ac:parameter ac:name="title">§1 Policy Overview</ac:parameter>'
+        "<ac:rich-text-body><h2>§1 Policy Overview</h2><p>Body text</p></ac:rich-text-body>"
         "</ac:structured-macro>"
     )
     md, _ = convert_storage(xml, extract_frontmatter=False)
-    assert '::: {.panel section="§1 정책 개요"}' in md, md
-    assert "style=" not in md, "common(기본) style 은 round-trip 시 생략"
-    assert "## §1 정책 개요" in md
-    assert "본문" in md
+    assert '::: {.panel section="§1 Policy Overview"}' in md, md
+    assert "style=" not in md, "the common (default) style is omitted on round-trip"
+    assert "## §1 Policy Overview" in md
+    assert "Body text" in md
     assert ":::" in md
 
 
@@ -47,53 +47,53 @@ def test_panel_with_product_style():
     xml = (
         '<ac:structured-macro ac:name="panel" ac:schema-version="1">'
         '<ac:parameter ac:name="borderColor">#0050E5</ac:parameter>'
-        '<ac:parameter ac:name="title">제품 영역</ac:parameter>'
-        "<ac:rich-text-body><p>내용</p></ac:rich-text-body>"
+        '<ac:parameter ac:name="title">Product Area</ac:parameter>'
+        "<ac:rich-text-body><p>Content</p></ac:rich-text-body>"
         "</ac:structured-macro>"
     )
     md, _ = convert_storage(xml, extract_frontmatter=False)
     assert 'style="product"' in md, md
-    assert 'section="제품 영역"' in md
+    assert 'section="Product Area"' in md
 
 
-# ── Info / Warning / Note / Tip (사양 §3.2) ────────────────────────────────
+# ── Info / Warning / Note / Tip (spec §3.2) ───────────────────────────────
 def test_info_macro():
     xml = (
         '<ac:structured-macro ac:name="info" ac:schema-version="1">'
-        "<ac:rich-text-body><p>일반 정보성 메시지</p></ac:rich-text-body>"
+        "<ac:rich-text-body><p>General informational message</p></ac:rich-text-body>"
         "</ac:structured-macro>"
     )
     md, _ = convert_storage(xml, extract_frontmatter=False)
     assert "::: {.info}" in md
-    assert "일반 정보성 메시지" in md
+    assert "General informational message" in md
 
 
 def test_warning_macro():
     xml = (
         '<ac:structured-macro ac:name="warning" ac:schema-version="1">'
-        "<ac:rich-text-body><p>주의</p></ac:rich-text-body>"
+        "<ac:rich-text-body><p>Caution</p></ac:rich-text-body>"
         "</ac:structured-macro>"
     )
     md, _ = convert_storage(xml, extract_frontmatter=False)
     assert "::: {.warning}" in md
-    assert "주의" in md
+    assert "Caution" in md
 
 
-# ── Expand (사양 §3.3) ───────────────────────────────────────────────────
+# ── Expand (spec §3.3) ──────────────────────────────────────────────────
 def test_expand_with_title():
     xml = (
         '<ac:structured-macro ac:name="expand" ac:schema-version="1">'
-        '<ac:parameter ac:name="title">상세 변경 이력</ac:parameter>'
-        "<ac:rich-text-body><ul><li>v1: 초안</li><li>v2: 보강</li></ul></ac:rich-text-body>"
+        '<ac:parameter ac:name="title">Detailed Change History</ac:parameter>'
+        "<ac:rich-text-body><ul><li>v1: draft</li><li>v2: refined</li></ul></ac:rich-text-body>"
         "</ac:structured-macro>"
     )
     md, _ = convert_storage(xml, extract_frontmatter=False)
-    assert '::: {.expand title="상세 변경 이력"}' in md
-    assert "- v1: 초안" in md
-    assert "- v2: 보강" in md
+    assert '::: {.expand title="Detailed Change History"}' in md
+    assert "- v1: draft" in md
+    assert "- v2: refined" in md
 
 
-# ── Code Block (사양 §3.5) ────────────────────────────────────────────────
+# ── Code Block (spec §3.5) ───────────────────────────────────────────────
 def test_code_macro_with_language():
     xml = (
         '<ac:structured-macro ac:name="code" ac:schema-version="1">'
@@ -104,7 +104,7 @@ def test_code_macro_with_language():
     md, _ = convert_storage(xml, extract_frontmatter=False)
     assert "```python" in md
     assert "def foo():" in md
-    assert "    pass" in md  # 들여쓰기 보존
+    assert "    pass" in md  # indentation preserved
 
 
 def test_code_macro_no_language():
@@ -117,27 +117,27 @@ def test_code_macro_no_language():
     assert "```\nplain code\n```" in md
 
 
-# ── Table (사양 §5.1) ─────────────────────────────────────────────────────
+# ── Table (spec §5.1) ────────────────────────────────────────────────────
 def test_simple_table_even_columns_no_directive():
     xml = (
         '<table class="relative-table wrapped">'
         '<colgroup><col style="width: 50%;"/><col style="width: 50%;"/></colgroup>'
-        "<thead><tr><th>항목</th><th>내용</th></tr></thead>"
-        "<tbody><tr><td>목적</td><td>본 정책서의 목적</td></tr></tbody>"
+        "<thead><tr><th>Item</th><th>Content</th></tr></thead>"
+        "<tbody><tr><td>Purpose</td><td>The purpose of this policy document</td></tr></tbody>"
         "</table>"
     )
     md, _ = convert_storage(xml, extract_frontmatter=False)
-    assert "| 항목 | 내용 |" in md
-    assert "| 목적 | 본 정책서의 목적 |" in md
-    assert "col-widths" not in md, "균등 분배는 directive 미생성"
+    assert "| Item | Content |" in md
+    assert "| Purpose | The purpose of this policy document |" in md
+    assert "col-widths" not in md, "even distribution does not emit a directive"
 
 
 def test_table_uneven_columns_emits_directive():
     xml = (
         '<table class="relative-table wrapped">'
         '<colgroup><col style="width: 15%;"/><col style="width: 85%;"/></colgroup>'
-        "<thead><tr><th>항목</th><th>내용</th></tr></thead>"
-        "<tbody><tr><td>목적</td><td>본문</td></tr></tbody>"
+        "<thead><tr><th>Item</th><th>Content</th></tr></thead>"
+        "<tbody><tr><td>Purpose</td><td>Body text</td></tr></tbody>"
         "</table>"
     )
     md, _ = convert_storage(xml, extract_frontmatter=False)
@@ -159,16 +159,16 @@ def test_table_no_thead_first_row_is_header():
     assert "| 1 | 2 |" in md
 
 
-# ── 페이지 링크 (사양 §4.1) ──────────────────────────────────────────────
+# ── Page link (spec §4.1) ─────────────────────────────────────────────────
 def test_page_link():
     xml = (
-        '<p><ac:link><ri:page ri:content-title="[요구사항 정의서] DBaaS"/></ac:link></p>'
+        '<p><ac:link><ri:page ri:content-title="[Requirements Definition] DBaaS"/></ac:link></p>'
     )
     md, _ = convert_storage(xml, extract_frontmatter=False)
-    assert "[[page:[요구사항 정의서] DBaaS]]" in md
+    assert "[[page:[Requirements Definition] DBaaS]]" in md
 
 
-# ── 자동 매크로 (사양 §4.3) ──────────────────────────────────────────────
+# ── Automatic macros (spec §4.3) ──────────────────────────────────────────
 def test_toc_macro():
     xml = '<p><ac:structured-macro ac:name="toc" ac:schema-version="1"/></p>'
     md, _ = convert_storage(xml, extract_frontmatter=False)
@@ -185,7 +185,7 @@ def test_change_history_macro():
     assert "{{change_history 5}}" in md
 
 
-# ── 표준 요소 (사양 §5) ──────────────────────────────────────────────────
+# ── Standard elements (spec §5) ───────────────────────────────────────────
 def test_headings():
     xml = "<h1>H1</h1><h2>H2</h2><h3>H3</h3>"
     md, _ = convert_storage(xml, extract_frontmatter=False)
@@ -195,52 +195,52 @@ def test_headings():
 
 
 def test_strong_em_inline():
-    xml = "<p>이것은 <strong>강조</strong>와 <em>이탤릭</em></p>"
+    xml = "<p>This is <strong>emphasis</strong> and <em>italics</em></p>"
     md, _ = convert_storage(xml, extract_frontmatter=False)
-    assert "**강조**" in md
-    assert "*이탤릭*" in md
+    assert "**emphasis**" in md
+    assert "*italics*" in md
 
 
 def test_unordered_list():
-    xml = "<ul><li>첫째</li><li>둘째</li></ul>"
+    xml = "<ul><li>First</li><li>Second</li></ul>"
     md, _ = convert_storage(xml, extract_frontmatter=False)
-    assert "- 첫째" in md
-    assert "- 둘째" in md
+    assert "- First" in md
+    assert "- Second" in md
 
 
 def test_ordered_list():
-    xml = "<ol><li>하나</li><li>둘</li></ol>"
+    xml = "<ol><li>One</li><li>Two</li></ol>"
     md, _ = convert_storage(xml, extract_frontmatter=False)
-    assert "1. 하나" in md
-    assert "2. 둘" in md
+    assert "1. One" in md
+    assert "2. Two" in md
 
 
 def test_external_link():
-    xml = '<p><a href="https://example.com">예시</a></p>'
+    xml = '<p><a href="https://example.com">Example</a></p>'
     md, _ = convert_storage(xml, extract_frontmatter=False)
-    assert "[예시](https://example.com)" in md
+    assert "[Example](https://example.com)" in md
 
 
 def test_hr_and_blockquote():
-    xml = "<hr/><blockquote><p>인용문</p></blockquote>"
+    xml = "<hr/><blockquote><p>Quote</p></blockquote>"
     md, _ = convert_storage(xml, extract_frontmatter=False)
     assert "---" in md
-    assert "> 인용문" in md
+    assert "> Quote" in md
 
 
-# ── Layout 자동 stripping (사양 §7 역방향) ───────────────────────────────
+# ── Automatic layout stripping (spec §7 reverse direction) ─────────────────
 def test_layout_section_single_with_panel_is_stripped():
     xml = (
         '<ac:layout-section ac:type="single"><ac:layout-cell>'
         '<ac:structured-macro ac:name="panel" ac:schema-version="1">'
         '<ac:parameter ac:name="title">§1</ac:parameter>'
-        "<ac:rich-text-body><p>본문</p></ac:rich-text-body>"
+        "<ac:rich-text-body><p>Body text</p></ac:rich-text-body>"
         "</ac:structured-macro>"
         "</ac:layout-cell></ac:layout-section>"
     )
     md, _ = convert_storage(xml, extract_frontmatter=False)
     assert '::: {.panel section="§1"}' in md
-    # layout 래퍼는 사라져야 함
+    # the layout wrapper should disappear
     assert "layout-section" not in md
     assert "layout-cell" not in md
 
@@ -252,17 +252,17 @@ def test_spacer_layout_section_ignored():
         "</ac:layout-cell></ac:layout-section>"
     )
     md, _ = convert_storage(xml, extract_frontmatter=False)
-    # 본문은 없어야 함 (spacer)
-    assert md.strip() == "", f"spacer 가 비어있어야 함, got: {md!r}"
+    # body should be empty (spacer)
+    assert md.strip() == "", f"spacer should be empty, got: {md!r}"
 
 
-# ── Frontmatter 재구성 (사양 §2) ─────────────────────────────────────────
+# ── Frontmatter reconstruction (spec §2) ──────────────────────────────────
 def test_frontmatter_header_extracted_from_first_info_section():
     xml = (
         '<ac:layout>'
         '<ac:layout-section ac:type="single"><ac:layout-cell>'
         '<ac:structured-macro ac:name="info" ac:schema-version="1">'
-        "<ac:rich-text-body><p>doc 안내</p></ac:rich-text-body>"
+        "<ac:rich-text-body><p>doc notice</p></ac:rich-text-body>"
         "</ac:structured-macro>"
         "</ac:layout-cell></ac:layout-section>"
         "</ac:layout>"
@@ -272,21 +272,22 @@ def test_frontmatter_header_extracted_from_first_info_section():
     assert "publication:" in md
     assert "header:" in md
     assert "style: info" in md
-    # 중복 emit 차단: 본문에 ::: {.info} 가 다시 나오면 안 됨
-    assert md.count("doc 안내") == 1, f"중복 emit 발견:\n{md}"
-    assert "::: {.info}" not in md, f"frontmatter 흡수된 info 가 본문에도 emit됨:\n{md}"
+    # prevent duplicate emit: ::: {.info} should not reappear in the body
+    assert md.count("doc notice") == 1, f"duplicate emit found:\n{md}"
+    assert "::: {.info}" not in md, f"info absorbed into frontmatter was also emitted in the body:\n{md}"
 
 
 def test_frontmatter_meta_extracted_skips_body_duplication():
-    # meta layout (two_equal) 의 panel/change-history 가 frontmatter 로 흡수되면
-    # 본문에 ::: {.panel section="참고"} 가 다시 emit 되면 안 된다.
+    # If the panel/change-history in the meta layout (two_equal) is absorbed into
+    # frontmatter, ::: {.panel section="Reference Material"} should not be emitted
+    # again in the body.
     xml = (
         '<ac:layout>'
         '<ac:layout-section ac:type="two_equal">'
         '<ac:layout-cell>'
         '<ac:structured-macro ac:name="panel" ac:schema-version="1">'
-        '<ac:parameter ac:name="title">참고 자료</ac:parameter>'
-        '<ac:rich-text-body><p>관련 링크</p></ac:rich-text-body>'
+        '<ac:parameter ac:name="title">Reference Material</ac:parameter>'
+        '<ac:rich-text-body><p>Related link</p></ac:rich-text-body>'
         '</ac:structured-macro>'
         '</ac:layout-cell>'
         '<ac:layout-cell>'
@@ -298,12 +299,12 @@ def test_frontmatter_meta_extracted_skips_body_duplication():
         '</ac:layout>'
     )
     md, _ = convert_storage(xml, extract_frontmatter=True)
-    assert "참고 자료" in md  # frontmatter title
-    assert md.count("관련 링크") == 1
-    assert "::: {.panel" not in md, f"meta 흡수된 panel 이 본문에도 emit됨:\n{md}"
+    assert "Reference Material" in md  # frontmatter title
+    assert md.count("Related link") == 1
+    assert "::: {.panel" not in md, f"panel absorbed into meta was also emitted in the body:\n{md}"
 
 
-# ── 미지원 매크로 경고 (CLI 종료 코드 2 트리거) ─────────────────────────
+# ── Unsupported macro warning (triggers CLI exit code 2) ──────────────────
 def test_unsupported_macro_records_warning():
     xml = (
         '<ac:structured-macro ac:name="jira" ac:schema-version="1">'
@@ -314,65 +315,65 @@ def test_unsupported_macro_records_warning():
     assert "jira" in state.unsupported_macros
 
 
-# ── 색상 처리 (Phase 3 예약) ─────────────────────────────────────────────
+# ── Color handling (Phase 3 reserved) ─────────────────────────────────────
 def test_strip_colors_removes_fenced_spans():
-    text = "이것은 [변경됨]{.color-green} 텍스트"
+    text = "This is [changed]{.color-green} text"
     stripped = _strip_color_spans(text)
-    assert stripped == "이것은 변경됨 텍스트"
+    assert stripped == "This is changed text"
 
 
 def test_color_spans_to_md_converts_rgb_green():
-    text = '<span style="color: rgb(0,176,80)">신규</span> 텍스트'
+    text = '<span style="color: rgb(0,176,80)">new</span> text'
     md = _color_spans_to_md(text)
-    assert "[신규]{.color-green}" in md
+    assert "[new]{.color-green}" in md
 
 
 def test_color_spans_to_md_converts_rgb_blue():
-    text = '<span style="color: rgb(0,80,229)">직전</span>'
+    text = '<span style="color: rgb(0,80,229)">previous</span>'
     md = _color_spans_to_md(text)
-    assert "[직전]{.color-blue}" in md
+    assert "[previous]{.color-blue}" in md
 
 
-# ── 색상 span 통합 (Phase 3D — convert_storage 기본 동작) ────────────────
+# ── Color span integration (Phase 3D — convert_storage default behavior) ──
 def test_convert_storage_default_converts_xml_span_to_md_fenced_span():
-    """기본 모드: XML 의 <span style="color: rgb(...)"> → MD [..]{.color-XXX}"""
+    """Default mode: XML's <span style="color: rgb(...)"> → MD [..]{.color-XXX}"""
     xml = (
-        '<p>이전: <span style="color: rgb(0,176,80)">신규 텍스트</span> 이후</p>'
+        '<p>Before: <span style="color: rgb(0,176,80)">new text</span> after</p>'
     )
     md, _ = convert_storage(xml, extract_frontmatter=False, strip_colors=False)
-    assert "[신규 텍스트]{.color-green}" in md
-    # raw XML span 이 남아 있으면 안 됨
+    assert "[new text]{.color-green}" in md
+    # raw XML span should not remain
     assert "<span" not in md
 
 
 def test_convert_storage_strip_colors_removes_all_color_markup():
-    """strip_colors=True: 색상 정보 완전 제거 (clean MD, diff 비교용)"""
+    """strip_colors=True: completely remove color info (clean MD, for diff comparison)"""
     xml = (
-        '<p>이전: <span style="color: rgb(0,176,80)">신규</span> 다음 '
-        '<span style="color: rgb(0,80,229)">직전</span> 끝</p>'
+        '<p>Before: <span style="color: rgb(0,176,80)">new</span> next '
+        '<span style="color: rgb(0,80,229)">previous</span> end</p>'
     )
     md, _ = convert_storage(xml, extract_frontmatter=False, strip_colors=True)
-    assert "신규" in md and "직전" in md
+    assert "new" in md and "previous" in md
     assert "color-green" not in md and "color-blue" not in md
     assert "<span" not in md
 
 
 def test_convert_storage_color_span_round_trip_via_md_fenced():
-    """XML span → MD fenced span → XML span round-trip 가능 여부"""
-    xml = '<p><span style="color: rgb(0,176,80)">변경</span> 텍스트</p>'
+    """Whether XML span → MD fenced span → XML span round-trip is possible"""
+    xml = '<p><span style="color: rgb(0,176,80)">changed</span> text</p>'
     md, _ = convert_storage(xml, extract_frontmatter=False, strip_colors=False)
-    # MD 에 fenced span 이 들어 있어야 round-trip 다음 단계(md_to_storage)에서 다시 XML span 으로
+    # the MD must contain a fenced span so the next round-trip step (md_to_storage) can turn it back into an XML span
     assert "{.color-green}" in md
 
 
-# ── parse_storage 견고성 ─────────────────────────────────────────────────
+# ── parse_storage robustness ──────────────────────────────────────────────
 def test_parse_empty_string_returns_root():
     root = parse_storage("")
     assert root is not None
 
 
 def test_parse_nbsp_entity():
-    # &nbsp; 는 XML 표준 아님 — 사전 치환되어야 함
+    # &nbsp; is not valid XML — it must be pre-substituted
     root = parse_storage("<p>A&nbsp;B</p>")
     assert root is not None
 
@@ -382,50 +383,50 @@ def test_parse_invalid_xml_raises():
         parse_storage("<unclosed>")
     except ValueError:
         return
-    raise AssertionError("ValueError 발생해야 함")
+    raise AssertionError("expected a ValueError to be raised")
 
 
-# ── Round-trip (사양 §8/§9) ───────────────────────────────────────────────
+# ── Round-trip (spec §8/§9) ──────────────────────────────────────────────
 def test_round_trip_simple_panel():
-    """md_to_storage(storage_to_md(X)) ≈ X (정규화 후) — 사양 §9.
+    """md_to_storage(storage_to_md(X)) ≈ X (after normalization) — spec §9.
 
-    완전 동치 비교는 frontmatter/layout 자동화로 까다로움 → 핵심 요소
-    (panel/heading/table/text) 유지 검증.
+    Full equivalence comparison is tricky due to frontmatter/layout automation →
+    verify that core elements (panel/heading/table/text) are preserved.
     """
-    # md_to_storage 가 같은 디렉터리에 있어야 함
+    # md_to_storage must be in the same directory
     try:
         from md_to_storage import convert as md_to_storage_convert
     except ImportError:
-        # 환경에 따라 import 실패 가능 — skip
-        print("  (skip) md_to_storage import 불가")
+        # import may fail depending on the environment — skip
+        print("  (skip) md_to_storage import unavailable")
         return
 
     original_md = (
-        "::: {.panel section=\"§1 정책 개요\"}\n"
-        "## §1 정책 개요\n"
+        "::: {.panel section=\"§1 Policy Overview\"}\n"
+        "## §1 Policy Overview\n"
         "\n"
-        "본문 단락.\n"
+        "Body paragraph.\n"
         "\n"
-        "| 항목 | 내용 |\n"
+        "| Item | Content |\n"
         "|---|---|\n"
-        "| 목적 | 본 정책서의 목적 |\n"
+        "| Purpose | The purpose of this policy document |\n"
         ":::\n"
     )
     # MD → XML → MD
     xml = md_to_storage_convert(original_md)
     md2, _ = convert_storage(xml, extract_frontmatter=False)
 
-    # 핵심 요소 보존 검증 (공백/줄바꿈 정규화 후)
+    # verify core elements are preserved (after whitespace/newline normalization)
     def norm(s: str) -> str:
         return re.sub(r"\s+", " ", s).strip()
 
     n = norm(md2)
-    assert "§1 정책 개요" in n
-    assert "본문 단락" in n
-    assert "목적" in n
-    assert "본 정책서의 목적" in n
+    assert "§1 Policy Overview" in n
+    assert "Body paragraph" in n
+    assert "Purpose" in n
+    assert "The purpose of this policy document" in n
     assert ".panel" in n
-    # heading 보존
+    # heading preserved
     assert "## §1" in md2 or "##" in md2
 
 
@@ -460,7 +461,7 @@ def test_cli_main_from_snapshot_json():
             "id": "1",
             "version": {"number": 1},
             "title": "t",
-            "body": {"storage": {"value": "<p>안녕</p>"}},
+            "body": {"storage": {"value": "<p>hello</p>"}},
         }
         snap_path.write_text(_json.dumps(snap), encoding="utf-8")
         rc = cli_main([
@@ -469,7 +470,7 @@ def test_cli_main_from_snapshot_json():
             "--output", str(out_path),
         ])
         assert rc == 0
-        assert "안녕" in out_path.read_text(encoding="utf-8")
+        assert "hello" in out_path.read_text(encoding="utf-8")
 
 
 def test_cli_unsupported_macro_returns_2():
@@ -484,10 +485,10 @@ def test_cli_unsupported_macro_returns_2():
             encoding="utf-8",
         )
         rc = cli_main(["--input", str(xml_path), "--output", str(out_path)])
-        assert rc == 2  # 미지원 매크로
+        assert rc == 2  # unsupported macro
 
 
-# ── 내장 러너 ───────────────────────────────────────────────────────────
+# ── Built-in runner ───────────────────────────────────────────────────────
 def _run_all() -> int:
     g = globals()
     tests = sorted(k for k in g if k.startswith("test_") and callable(g[k]))
@@ -505,7 +506,7 @@ def _run_all() -> int:
             failed.append((name, f"{type(e).__name__}: {e}"))
             print(f"  ERROR {name} — {type(e).__name__}: {e}")
     print()
-    print(f"총 {len(tests)}개 — PASS {passed} / FAIL {len(failed)}")
+    print(f"total {len(tests)} — PASS {passed} / FAIL {len(failed)}")
     if failed:
         for name, msg in failed:
             print(f"  - {name}: {msg}")

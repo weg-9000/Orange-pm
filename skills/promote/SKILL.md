@@ -1,194 +1,200 @@
 ---
 name: promote
-description: sketches/{screen_id}.sketch.md를 정식 draft로 전환한다. graph.json에서 해당 화면과 연결되는 WO를 찾아 매핑하고 drafts/{WO_ID}.draft.md로 변환한다. 스케치 내용을 4-state 구조로 재구성하며, PM이 각 항목을 확인한다.
+description: Converts sketches/{screen_id}.sketch.md into a formal draft. Finds the WO connected to that screen in graph.json, maps it, and converts it into drafts/{WO_ID}.draft.md. Restructures the sketch content into the 4-state structure, with PM confirmation of each item.
 triggers:
   - "promote"
-  - "스케치 확정"
+  - "finalize sketch"
   - "sketch to draft"
-  - "스케치 전환"
+  - "convert sketch"
 phase: any
 effort: medium
 user-invocable: true
 ---
 
-## Bootstrap 캐시 가드 (개선안 F — CONTEXT_OPTIMIZATION.md)
+## Bootstrap Cache Guard (Improvement F — CONTEXT_OPTIMIZATION.md)
 
-세션 첫 진입 시 `CONTEXT/_session-bootstrap.md` 를 1회만 로드한다.
-이미 같은 세션에서 본 파일을 읽었다면 재독을 금지한다.
-캐시가 없거나 stale 이면 다음 명령으로 갱신한 뒤 진행한다:
+Load `CONTEXT/_session-bootstrap.md` once at the start of the session.
+If a file has already been read in the same session, do not re-read it.
+If the cache is missing or stale, refresh it with the following command before proceeding:
 
 ```bash
 python ${CLAUDE_PLUGIN_ROOT}/scripts/build_bootstrap.py --hub-root .
 ```
 
-본 가드는 layer-config / about-pm / project-rules / brand-voice /
-doc-layer-schema / team-members 6개 원본 파일 재로드를 대체한다.
-원본 파일 직접 Read 는 본 skill 의 핵심 작업에 필수인 경우에만 허용된다.
+This guard replaces re-loading the 6 source files layer-config / about-pm / project-rules /
+brand-voice / doc-layer-schema / team-members.
+Reading the source files directly is only permitted when essential to this skill's core work.
 
 
-## 공통 참조 가드 (C0·C-PIN — gates/master-derivation-gate.md SSoT)
+## Common reference guard (C0·C-PIN — gates/master-derivation-gate.md SSoT)
 
-스케치 → draft 전환 시 적용. 상세는 `CONTEXT/gates/master-derivation-gate.md`.
+Applies during sketch → draft conversion. See `CONTEXT/gates/master-derivation-gate.md` for
+details.
 
-1. 공통 대조: 전환 결과 draft 가 G2-A/B 정책을 재작성하지 않는지 확인 —
-   재작성분은 `[{doc_id} §X] 참조` 링크로 대체(B-headings-index 후보 §만).
-2. 전환 self-check: 스케치의 placeholder 링크를 실제 POL §앵커 /
-   `[[spec-catalog 변수ID]]` 로 해소한다(미해소 placeholder 잔존 금지).
-3. C-PIN: 전환 draft frontmatter `referenced_master: [{핀ID}@{version}]` 를
-   채운다(master-id-map.yml 권위 ID). 비우면 opt-out → decisions.md 근거 필수.
-4. PM 확인은 기존 항목 확인 단계에 통합(직렬 프롬프트 추가 금지).
-
-
-## 전제조건 검사
-
-1. `sketches/{screen_id}.sketch.md` 가 존재하는지 확인한다.
-   없으면 유효한 sketch 파일 목록을 출력하고 중단한다.
-
-2. 파일 헤더의 `promoted: false` 여부를 확인한다.
-   이미 `promoted: true` 이면 "이미 전환된 스케치입니다" 를 출력하고 중단한다.
-
-3. `PROJECTS/{product}/graph/graph.json` 이 존재하는지 확인한다.
-   없으면 정식 전환에 필요한 graph.json 생성을 안내하고 중단한다.
-   (`/graph-gen {product}` 실행 또는 graph.json 없이 WO를 직접 지정하는 방법 안내)
-
-4. `PROJECTS/{product}/work-orders/index.md` 가 존재하는지 확인한다.
-   없으면 `/fanout {product}` 실행을 안내하고 중단한다.
+1. Common cross-check: verify the converted draft doesn't rewrite G2-A/B policy — rewritten
+   portions are replaced with `[{doc_id} §X] reference` links (B-headings-index candidate §
+   only).
+2. Conversion self-check: resolve the sketch's placeholder links to actual POL §anchors /
+   `[[spec-catalog variableID]]` (no unresolved placeholders may remain).
+3. C-PIN: fill in `referenced_master: [{pinID}@{version}]` in the converted draft's frontmatter
+   (master-id-map.yml authority ID). If left blank → opt-out → requires a decisions.md
+   rationale.
+4. Integrate PM confirmation into the existing item-confirmation step (do not add a separate
+   serial prompt).
 
 
-## 실행 단계
+## Precondition check
 
-### 단계 1 — WO 매핑
+1. Verify `sketches/{screen_id}.sketch.md` exists.
+   If not, output the list of valid sketch files and stop.
 
-`{screen_id}` 가 `SCR-NNN` 형식이면 graph.json의 screen 노드에서 직접 찾는다.
-`SKT-NNN` 형식(임시 ID)이면 PM에게 연결할 SCR-NNN 또는 WO ID를 입력받는다.
+2. Check the `promoted: false` status in the file header.
+   If already `promoted: true`, output "this sketch has already been converted" and stop.
 
-매핑 결과를 출력한다:
+3. Verify `PROJECTS/{product}/graph/graph.json` exists.
+   If not, guide creating the graph.json needed for formal conversion, and stop.
+   (Guide running `/graph-gen {product}` or the method of specifying a WO directly without
+   graph.json)
+
+4. Verify `PROJECTS/{product}/work-orders/index.md` exists.
+   If not, guide running `/fanout {product}`, and stop.
+
+
+## Execution steps
+
+### Step 1 — WO mapping
+
+If `{screen_id}` is in `SCR-NNN` format, find it directly among the screen nodes in graph.json.
+If it's in `SKT-NNN` format (temporary ID), have the PM enter the SCR-NNN or WO ID to connect.
+
+Output the mapping result:
 ```
-스케치 → WO 매핑
-  스케치 ID:  {screen_id}
-  연결 WO:    {WO_ID} ({화면명})
-  연결 REQ:   {REQ-NNN}
+Sketch → WO mapping
+  Sketch ID:    {screen_id}
+  Connected WO: {WO_ID} ({screen name})
+  Connected REQ: {REQ-NNN}
 
-이 WO로 전환하시겠습니까? (Y / 다른 WO 지정)
+Convert to this WO? (Y / specify a different WO)
 ```
 
-PM 확인 없이 다음 단계로 진행하지 않는다.
+Do not proceed to the next step without PM confirmation.
 
 
-### 단계 2 — 스케치 내용 분석 및 구조 매핑 제안
+### Step 2 — Analyze sketch content and propose structure mapping
 
-`sketches/{screen_id}.sketch.md` 내용을 읽고
-4-state(idle / loading / success / error) 구조로 분류를 시도한다.
+Read the content of `sketches/{screen_id}.sketch.md` and attempt to classify it into the
+4-state (idle / loading / success / error) structure.
 
-분류 제안 표를 출력한다:
+Output a classification proposal table:
 ```
-스케치 내용 → 4-state 매핑 제안
+Sketch content → 4-state mapping proposal
 
 ┌─────────────────────────────────────────────────────┐
-│ idle 상태로 분류된 내용:                              │
-│  · (스케치에서 추출한 항목)                           │
-│  · [미분류] 항목 있으면 표시                          │
+│ Content classified as idle state:                    │
+│  · (item extracted from sketch)                      │
+│  · [unclassified] items shown if present              │
 ├─────────────────────────────────────────────────────┤
-│ loading 상태로 분류된 내용:                           │
-│  · (스케치에서 추출한 항목)                           │
+│ Content classified as loading state:                  │
+│  · (item extracted from sketch)                      │
 ├─────────────────────────────────────────────────────┤
-│ success 상태로 분류된 내용:                           │
-│  · (스케치에서 추출한 항목)                           │
+│ Content classified as success state:                  │
+│  · (item extracted from sketch)                      │
 ├─────────────────────────────────────────────────────┤
-│ error 상태로 분류된 내용:                             │
-│  · (스케치에서 추출한 항목)                           │
+│ Content classified as error state:                    │
+│  · (item extracted from sketch)                      │
 ├─────────────────────────────────────────────────────┤
-│ [미분류] — 어느 상태에도 해당하지 않는 내용:          │
-│  · (항목 목록)                                       │
-│  → 삭제 / idle / 별도 open-issue 중 선택 필요        │
+│ [Unclassified] — content that doesn't fit any state:  │
+│  · (item list)                                        │
+│  → needs a choice: delete / idle / separate open-issue │
 └─────────────────────────────────────────────────────┘
 ```
 
-PM이 분류를 수정하거나 미분류 항목을 처리한 후 확인하면 단계 3으로 진행한다.
+Proceed to Step 3 once the PM revises the classification or handles unclassified items and
+confirms.
 
 
-### 단계 3 — 정식 draft 파일 생성
+### Step 3 — Generate the formal draft file
 
-`work-orders/{WO_ID}.md` 템플릿 구조를 기반으로
-`drafts/{WO_ID}.draft.md` 를 생성한다.
+Based on the `work-orders/{WO_ID}.md` template structure, generate
+`drafts/{WO_ID}.draft.md`.
 
-파일 헤더:
+File header:
 ```markdown
 ---
 doc_id: {WO_ID}
 type: screen
 version: draft
-written_at: {UTC 타임스탬프}
+written_at: {UTC timestamp}
 screen_id: {SCR-NNN}
 promoted_from: sketches/{screen_id}.sketch.md
-promoted_at: {UTC 타임스탬프}
+promoted_at: {UTC timestamp}
 reviewed: false
 ---
 ```
 
-내용 구성:
-- 단계 2에서 확정된 4-state 분류 내용을 각 상태 섹션에 배치한다.
-- B-정책 참조 항목은 `[{PREFIX}-B-NNN] §N.N 참조` 형식의 플레이스홀더로 표기한다.
-  (정식 B-정책 로드는 `/flow` 정상 실행 또는 PM이 직접 수행)
-- 미확정 항목은 `[TBD]` 태그로 표기하고 open-issues.md에 P1 등록한다.
+Content composition:
+- Place the 4-state classification finalized in Step 2 into each state section.
+- Mark B-policy reference items with the placeholder format `[{PREFIX}-B-NNN] §N.N reference`.
+  (Formal B-policy loading happens via a normal `/flow` run, or the PM does it directly)
+- Mark unconfirmed items with a `[TBD]` tag and register them in open-issues.md as P1.
 
-자기 검증 체크리스트를 미완성 상태로 생성한다:
+Generate the self-verification checklist in an incomplete state:
 ```markdown
-## 자기 검증 체크리스트
-- [ ] 4-state 전체 정의 완료 (스케치 전환 — 보완 필요 항목 있을 수 있음)
-- [ ] {PREFIX}-B 공통 정책 검토 및 참조 링크 정비 필요
-- [ ] {PREFIX}-A 어휘 기준 검토 필요
-- [ ] decisions.md 위반 항목 없음
-- [ ] TBD 항목 open-issues.md 등록 완료
+## Self-verification checklist
+- [ ] Full 4-state definition complete (sketch conversion — some items may need supplementing)
+- [ ] {PREFIX}-B common policy review and reference-link maintenance needed
+- [ ] {PREFIX}-A vocabulary standard review needed
+- [ ] No decisions.md violations
+- [ ] TBD items registered in open-issues.md
 ```
 
 
-### 단계 4 — 스케치 파일 상태 갱신
+### Step 4 — Update sketch file status
 
-`sketches/{screen_id}.sketch.md` 헤더를 업데이트한다:
+Update the `sketches/{screen_id}.sketch.md` header:
 ```markdown
 promoted: true
 promoted_to: drafts/{WO_ID}.draft.md
-promoted_at: {UTC 타임스탬프}
+promoted_at: {UTC timestamp}
 ```
 
-파일 내용은 보존한다 (삭제하지 않음).
+Preserve the file content (do not delete it).
 
 
-### 단계 5 — 완료 보고 및 session-log 기록
+### Step 5 — Completion report and session-log record
 
 ```
-/promote 완료 — {screen_id}
+/promote complete — {screen_id}
 
-  스케치:    sketches/{screen_id}.sketch.md
-  draft:     drafts/{WO_ID}.draft.md
-  TBD 항목:  {N}건 (open-issues.md P1 등록)
-  보완 필요: B-정책 참조 링크 {N}건
+  Sketch:            sketches/{screen_id}.sketch.md
+  draft:             drafts/{WO_ID}.draft.md
+  TBD items:         {N} (registered in open-issues.md as P1)
+  Needs supplement:  B-policy reference links {N}
 
-권장 다음 단계:
-  /flow {product} {SCR-NNN}  — B-정책 참조 링크 정비 및 마이크로카피 보완
-  /review drafts/{WO_ID}.draft.md  — 현재 상태 검증 (보완 전 미리 확인)
+Recommended next steps:
+  /flow {product} {SCR-NNN}  — maintain B-policy reference links and supplement microcopy
+  /review drafts/{WO_ID}.draft.md  — verify the current state (pre-check before supplementing)
 ```
 
-session-log.md에 추가한다:
+Add to session-log.md:
 ```markdown
-- {날짜} /promote {screen_id}: sketches → drafts/{WO_ID}.draft.md 전환 / TBD {N}건
+- {date} /promote {screen_id}: sketches → drafts/{WO_ID}.draft.md conversion / TBD {N} items
 ```
 
 
-## 결과 파일 목록
+## Result file list
 
-| 파일 | 내용 |
+| File | Content |
 |---|---|
-| `drafts/{WO_ID}.draft.md` | 스케치 기반 정식 draft (보완 필요 항목 포함) |
-| `sketches/{screen_id}.sketch.md` | promoted: true 로 상태 갱신 |
-| `open-issues.md` | TBD 항목 P1 등록 |
-| `session-log.md` | promote 완료 기록 |
+| `drafts/{WO_ID}.draft.md` | sketch-based formal draft (includes items needing supplementing) |
+| `sketches/{screen_id}.sketch.md` | status updated to promoted: true |
+| `open-issues.md` | TBD items registered as P1 |
+| `session-log.md` | promote completion record |
 
 
-## 다음 단계
+## Next step
 
 ```
-B-정책 정비:  /flow {product} {SCR-NNN}
-draft 검증:   /review drafts/{WO_ID}.draft.md
+B-policy maintenance:  /flow {product} {SCR-NNN}
+draft verification:    /review drafts/{WO_ID}.draft.md
 ```

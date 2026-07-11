@@ -1,26 +1,28 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""임의 마크다운 frontmatter 자동 감지·정규화 (멀티테넌트 SaaS Phase 2).
+"""Auto-detect and normalize frontmatter in arbitrary markdown (multi-tenant SaaS Phase 2).
 
-목적:
-    외부(Confluence/GitLab/Notion)에서 임포트한 임의 마크다운은 frontmatter 가
-    없거나 비표준일 수 있다. 본 모듈은 frontmatter 유무를 감지하고, 임포트
-    문서용 *reference* 스키마로 정규화한다(본문은 무수정 — 메타만 부착).
+Purpose:
+    Arbitrary markdown imported from external sources (Confluence/GitLab/Notion)
+    may have missing or non-standard frontmatter. This module detects whether
+    frontmatter is present, and normalizes it to a *reference* schema for
+    imported documents (the body is left unmodified — only metadata is attached).
 
-    draft 9필드(migrate_draft_frontmatter)와 달리, 임포트 문서는 다음 스키마:
+    Unlike the draft's 9 fields (migrate_draft_frontmatter), imported documents
+    use this schema:
         doc_id, title, layer(A|B|C|unknown), version, status, source, source_url,
         imported_at, original_metadata
 
-    status: ingested(수집) → normalized(메타정규화) → analyzed(분류완료)
+    status: ingested -> normalized (metadata normalized) -> analyzed (classification done)
 
-사용법:
+Usage:
     python frontmatter_detect.py --input X.md [--source confluence] [--source-url URL]
         [--doc-id ID] [--in-place] [--report]
 
 exit code:
-    0 = 성공
-    1 = 입력 파일 없음
-    2 = 인자 오류
+    0 = success
+    1 = input file not found
+    2 = argument error
 """
 from __future__ import annotations
 
@@ -45,19 +47,19 @@ REFERENCE_FIELDS = [
     "original_metadata",
 ]
 
-# 다포맷 메타 추출(drift_scan 패턴과 동형): YAML / bold inline / table.
+# Multi-format meta extraction (mirrors the drift_scan pattern): YAML / bold inline / table.
 _DOC_ID_BOLD = re.compile(
-    r"\*\*\s*(?:문서\s*ID|doc_id)\s*[:：]?\s*\*\*\s*[:：]?\s*`?([A-Za-z0-9._-]+)`?", re.I
+    r"\*\*\s*(?:doc\s*id|문서\s*ID|doc_id)\s*[:：]?\s*\*\*\s*[:：]?\s*`?([A-Za-z0-9._-]+)`?", re.I
 )
 _DOC_ID_TABLE = re.compile(r"\|\s*\*\*\s*doc_id\s*\*\*\s*\|\s*`?([A-Za-z0-9._-]+)`?", re.I)
 _VER_BOLD = re.compile(
-    r"\*\*\s*(?:버전|version)\s*[:：]?\s*\*\*\s*[:：]?\s*`?([0-9]+(?:\.[0-9]+)*)`?", re.I
+    r"\*\*\s*(?:version|버전)\s*[:：]?\s*\*\*\s*[:：]?\s*`?([0-9]+(?:\.[0-9]+)*)`?", re.I
 )
 _H1 = re.compile(r"^#\s+(.+?)\s*$", re.MULTILINE)
 
 
 def detect_frontmatter(text: str) -> tuple[dict, str, bool]:
-    """(frontmatter dict, body, had_frontmatter) 반환. 없으면 ({}, text, False)."""
+    """Return (frontmatter dict, body, had_frontmatter). If absent, return ({}, text, False)."""
     m = FRONTMATTER.match(text)
     if not m:
         return {}, text, False
@@ -71,7 +73,7 @@ def detect_frontmatter(text: str) -> tuple[dict, str, bool]:
 
 
 def _extract_meta_from_body(head: str) -> dict:
-    """frontmatter 가 없을 때 본문 상단에서 doc_id/version/title 휴리스틱 추출."""
+    """When there's no frontmatter, heuristically extract doc_id/version/title from the top of the body."""
     out: dict = {}
     dm = _DOC_ID_BOLD.search(head) or _DOC_ID_TABLE.search(head)
     if dm:
@@ -94,9 +96,9 @@ def normalize(
     layer: str = "unknown",
     imported_at: str = "",
 ) -> tuple[str, dict]:
-    """임포트 MD 를 reference frontmatter 로 정규화한다. 본문은 무수정.
+    """Normalize an imported MD file to reference frontmatter. The body is left unmodified.
 
-    반환: (정규화된 전체 텍스트, 추론 리포트 dict).
+    Returns: (normalized full text, inference report dict).
     """
     fm, body, had_fm = detect_frontmatter(text)
     body_meta = _extract_meta_from_body(body[:4000])
@@ -112,20 +114,20 @@ def normalize(
 
     out["doc_id"] = pick(doc_id, fm.get("doc_id", ""), body_meta.get("doc_id", ""))
     if not out["doc_id"]:
-        inferred.append("doc_id(미상 — 플레이스홀더)")
+        inferred.append("doc_id(unknown — placeholder)")
         out["doc_id"] = "UNCLASSIFIED"
     out["title"] = pick(fm.get("title", ""), body_meta.get("title", ""), out["doc_id"])
     out["layer"] = pick(layer if layer != "unknown" else "", fm.get("layer", ""), "unknown")
     out["version"] = pick(fm.get("version", ""), body_meta.get("version", ""))
     if not out["version"]:
-        inferred.append("version(미상)")
+        inferred.append("version(unknown)")
         out["version"] = "0.0.0"
     out["status"] = "normalized"
     out["source"] = pick(source, fm.get("source", ""))
     out["source_url"] = pick(source_url, fm.get("source_url", ""))
     out["imported_at"] = pick(imported_at, fm.get("imported_at", ""), date.today().isoformat())
 
-    # 원본 frontmatter 의 비표준 필드는 손실 없이 original_metadata 로 보존.
+    # Non-standard fields from the original frontmatter are preserved losslessly in original_metadata.
     extra = {k: v for k, v in fm.items() if k not in REFERENCE_FIELDS}
     out["original_metadata"] = json.dumps(extra, ensure_ascii=False) if extra else "{}"
 
@@ -144,14 +146,14 @@ def normalize(
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description="임의 MD frontmatter 감지·정규화")
+    ap = argparse.ArgumentParser(description="Detect and normalize frontmatter in an arbitrary MD file")
     ap.add_argument("--input", required=True, type=Path)
     ap.add_argument("--source", default="")
     ap.add_argument("--source-url", default="")
     ap.add_argument("--doc-id", default="")
     ap.add_argument("--layer", default="unknown")
-    ap.add_argument("--in-place", action="store_true", help="입력 파일을 정규화 결과로 덮어쓴다")
-    ap.add_argument("--report", action="store_true", help="추론 리포트를 JSON 으로 출력")
+    ap.add_argument("--in-place", action="store_true", help="Overwrite the input file with the normalized result")
+    ap.add_argument("--report", action="store_true", help="Print the inference report as JSON")
     args = ap.parse_args()
     if not args.input.is_file():
         sys.stderr.write(f"input not found: {args.input}\n")

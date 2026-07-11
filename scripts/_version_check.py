@@ -1,14 +1,14 @@
 # -*- coding: utf-8 -*-
 """
-SessionStart 훅 전용 경량 버전 체크 (git 기반).
+Lightweight git-based version check for the SessionStart hook.
 
-동작:
-  - ~/.claude/orange-pm-update-check.json 캐시의 checked_at 확인
-  - TTL(기본 24h) 이내면 캐시된 new_commits 값으로 판단 (git 미호출)
-  - TTL 초과 시 git fetch + 커밋 수 체크 후 캐시 갱신
-  - 새 커밋 있으면 1줄 알림 출력, 없으면 무음
+Behavior:
+  - Check the checked_at field in the ~/.claude/orange-pm-update-check.json cache
+  - If within TTL (default 24h), decide using the cached new_commits value (no git call)
+  - If TTL exceeded, run git fetch + count commits, then refresh the cache
+  - Print a one-line notice if new commits exist, otherwise stay silent
 
-모든 예외는 조용히 무시한다 — 훅 오류가 세션을 방해하지 않도록.
+All exceptions are silently ignored — so hook errors never disrupt the session.
 """
 
 import json
@@ -32,7 +32,7 @@ TTL_SEC = int(os.environ.get("ORANGE_PM_UPDATE_TTL_HOURS", "24")) * 3600
 
 
 def _cache_new_commits() -> int | None:
-    """TTL 이내면 캐시된 new_commits 반환, 아니면 None."""
+    """Return the cached new_commits value if within TTL, otherwise None."""
     if not UPDATE_CACHE.exists():
         return None
     try:
@@ -50,15 +50,15 @@ def main() -> None:
     if not source_dir or not source_dir.exists():
         return
 
-    # 캐시 TTL 확인
+    # Check the cache TTL
     cached = _cache_new_commits()
     if cached is not None:
         if cached > 0:
             ver = get_local_version(source_dir)
-            print(f"[orange-pm] {cached}개 업데이트 대기 중 (현재 v{ver}) → /orange-pm:update")
+            print(f"[orange-pm] {cached} update(s) pending (current v{ver}) -> /orange-pm:update")
         return
 
-    # TTL 초과 → git 확인
+    # TTL exceeded -> check git
     git_root = find_git_root(source_dir)
     if not git_root:
         return
@@ -73,7 +73,7 @@ def main() -> None:
 
     if new_count > 0:
         ver = get_local_version(source_dir)
-        print(f"[orange-pm] {new_count}개 업데이트 대기 중 (현재 v{ver}) → /orange-pm:update")
+        print(f"[orange-pm] {new_count} update(s) pending (current v{ver}) -> /orange-pm:update")
 
 
 if __name__ == "__main__":

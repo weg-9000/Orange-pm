@@ -1,47 +1,48 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Block-level diff 라이브러리 — Phase 3 색상 cycling 의 토대.
+"""Block-level diff library — foundation for Phase 3 color cycling.
 
-본 모듈은 publication-targeted MD 두 버전 간 변경된 region 을 *block 단위* 로
-식별한다. 사양 SSoT는 ``orange-pm-plugin/skills/render/publication-syntax.md``
-§6 "색상 Span (Phase 3 예약)" 이며, 본 모듈이 출력하는 region 정보는
-``md_to_storage`` 의 색상 span 삽입 단계에서 소비된다.
+This module identifies changed regions between two versions of a publication-targeted
+MD document, at *block granularity*. The spec SSoT is
+``orange-pm-plugin/skills/render/publication-syntax.md``
+§6 "Color Span (Phase 3 reserved)", and the region info this module outputs is
+consumed by the color-span insertion step of ``md_to_storage``.
 
-설계 결정 (이전 phase 토론에서 확정된 사양):
+Design decisions (spec finalized in earlier phase discussions):
 
-* **Region 정의**: ``(논리 경로, block_hash)`` 튜플.
-* **Block 단위**:
-    - paragraph     : 문단 1개
-    - heading       : 제목 1개 (텍스트 변경 시)
-    - list_item     : 리스트 항목 1개 (중첩 시 nested path)
-    - table_cell    : 표 셀 단위 (행 단위가 아님)
-    - code          : 코드블록 전체 (내부 span 불가 — 사양 §6 금지)
-    - panel_inner_para : panel/info/warning 내부의 paragraph
-* **Region 식별자 예시**: ``§3 정책/§3.1/<p[2]>``
+* **Region definition**: a ``(logical path, block_hash)`` tuple.
+* **Block granularity**:
+    - paragraph     : one paragraph
+    - heading       : one heading (when its text changes)
+    - list_item     : one list item (nested path when nested)
+    - table_cell    : per table cell (not per row)
+    - code          : entire code block (no inner span — forbidden by spec §6)
+    - panel_inner_para : a paragraph inside a panel/info/warning
+* **Region identifier example**: ``§3 Policy/§3.1/<p[2]>``
 * **2-cycle decay**::
 
-    N=1: G_1 = ∅ (모두 검정 — 첫 작성)
-    N=2: G_2 = diff(v1, v2) → 초록; B_2 = ∅
-    N=3: G_3 = diff(v2, v3) → 초록; B_3 = G_2 \\ G_3 → 파랑
-    N=k: G_k = diff(v_{k-1}, v_k) → 초록; B_k = G_{k-1} \\ G_k → 파랑
+    N=1: G_1 = ∅ (all black — first draft)
+    N=2: G_2 = diff(v1, v2) → green; B_2 = ∅
+    N=3: G_3 = diff(v2, v3) → green; B_3 = G_2 \\ G_3 → blue
+    N=k: G_k = diff(v_{k-1}, v_k) → green; B_k = G_{k-1} \\ G_k → blue
 
-  같은 path 가 ``previous_green`` 에도 있고 이번에 또 변경됐으면 → 초록 only
-  (파랑이 되지 않음; "decay" 가 redundant 한 변경에서 발생하지 않도록).
+  If the same path is also in ``previous_green`` and changed again this time →
+  green only (does not become blue; so "decay" doesn't occur on redundant changes).
 
-* **frontmatter**: 무시 (publication.* 변경은 cycling 대상 아님).
+* **frontmatter**: ignored (publication.* changes are not subject to cycling).
 
-본 모듈은 ``stdlib only`` 다 (re, hashlib, dataclasses, json, argparse).
-``md_to_storage`` 가 사용하는 정규식 일부를 동일하게 재현하나, 그쪽 모듈을
-임포트하지 않는다 — 두 모듈이 독립적으로 발전 가능해야 하므로.
+This module is ``stdlib only`` (re, hashlib, dataclasses, json, argparse).
+It reproduces some of the same regexes used by ``md_to_storage``, but does not
+import that module — the two modules should be able to evolve independently.
 
-CLI (디버그용):
+CLI (for debugging):
     python diff_blocks.py --old v1.md --new v2.md \\
         [--previous-green file.json] [--format json|md]
 
 exit code:
-    0 = 성공
-    1 = I/O 오류
-    2 = 인자 오류
+    0 = success
+    1 = I/O error
+    2 = argument error
 """
 from __future__ import annotations
 
@@ -55,7 +56,7 @@ from pathlib import Path
 from typing import Iterable
 
 
-# ── 정규식 (md_to_storage 와 동일 패턴) ──────────────────────────────────────
+# ── Regexes (same patterns as md_to_storage) ────────────────────────────────
 
 FRONTMATTER_RE = re.compile(r"\A---\s*\n(.*?)\n---\s*\n", re.DOTALL)
 FENCED_DIV_OPEN_RE = re.compile(r"^:::\s*\{([^}]+)\}\s*$")
@@ -71,12 +72,13 @@ COLWIDTHS_DIRECTIVE_RE = re.compile(r"^\s*<!--\s*col-widths\s*:\s*([^>]+?)\s*-->
 ATTR_CLASS_RE = re.compile(r"\.([\w\-]+)")
 ATTR_KV_RE = re.compile(r'(\w+)\s*=\s*"([^"]*)"')
 
-# Inline 코드 (`...`) 및 strong/em 등은 path 와 무관 — content 정규화에만 영향.
+# Inline code (`...`) and strong/em etc. are unrelated to path — they only affect
+# content normalization.
 MULTI_SPACE_RE = re.compile(r"\s+")
 
 CALLOUT_CLASSES = {"info", "warning", "note", "tip"}
 
-# Block kind 열거 — 외부에서 참조 가능한 문자열 상수.
+# Block kind enumeration — string constants that can be referenced externally.
 KIND_PARAGRAPH = "paragraph"
 KIND_HEADING = "heading"
 KIND_LIST_ITEM = "list_item"
@@ -91,19 +93,20 @@ KIND_BLOCKQUOTE_PARA = "blockquote_para"
 
 @dataclass(frozen=True)
 class Block:
-    """단일 region 의 표현 — (path, content, hash) 트리플 + 위치 메타.
+    """Representation of a single region — a (path, content, hash) triple + position metadata.
 
     Attributes:
-        kind: 블록 종류 (KIND_* 상수 중 하나).
-        path: 논리 경로 — heading hierarchy + 블록 위치 인덱스.
-              예: ``"§3 정책/§3.1 표준요금/<p[2]>"``.
-        content: 정규화된 블록 본문 텍스트 (양끝 공백 제거, 다중 공백 단일화,
-                 inline 마커는 그대로 유지하여 변경 감지에 사용).
-        block_hash: sha256(content) 처음 16자 (64-bit equivalent — 충분히 유일).
-        line_start: source 의 1-based 시작 라인 (-1 = unknown, deserialize 시).
-        line_end: source 의 1-based 끝 라인 inclusive (-1 = unknown).
-        raw_content: source 의 원본 텍스트 (정규화 전, color span 주입용).
-                     -1 라인 정보가 있을 때만 의미 있음.
+        kind: block kind (one of the KIND_* constants).
+        path: logical path — heading hierarchy + block position index.
+              e.g. ``"§3 Policy/§3.1 Standard Pricing/<p[2]>"``.
+        content: normalized block body text (leading/trailing whitespace stripped,
+                 multiple spaces collapsed to one; inline markers are kept as-is
+                 and used for change detection).
+        block_hash: first 16 chars of sha256(content) (64-bit equivalent — unique enough).
+        line_start: 1-based start line in the source (-1 = unknown, e.g. on deserialize).
+        line_end: 1-based inclusive end line in the source (-1 = unknown).
+        raw_content: original source text (pre-normalization, for color span injection).
+                     Only meaningful when line info is present (not -1).
     """
 
     kind: str
@@ -129,9 +132,9 @@ class Block:
 
 @dataclass
 class DiffResult:
-    """``diff_blocks(old, new)`` 결과.
+    """Result of ``diff_blocks(old, new)``.
 
-    매칭 기준은 ``path`` 정확 일치 → ``block_hash`` 비교.
+    Matching criterion: exact ``path`` match → compare ``block_hash``.
     """
 
     added: list[Block] = field(default_factory=list)
@@ -150,26 +153,26 @@ class DiffResult:
 
 @dataclass
 class ColorRegions:
-    """2-cycle decay 모델 산출물.
+    """Output of the 2-cycle decay model.
 
     Attributes:
-        green: 이번 publish 에서 변경된 block (added + modified.new 측).
-        blue: 직전 publish 의 green 영역 중 이번엔 변경되지 않은 것.
+        green: blocks changed in this publish (added + the new side of modified).
+        blue: previous publish's green region that was not changed again this time.
     """
 
     green: list[Block] = field(default_factory=list)
     blue: list[Block] = field(default_factory=list)
 
 
-# ── 내부 유틸 ────────────────────────────────────────────────────────────────
+# ── Internal utilities ───────────────────────────────────────────────────────
 
 
 def _normalize_content(text: str) -> str:
-    """블록 본문 정규화 — 비교 안정성 확보.
+    """Normalize block body text — for comparison stability.
 
-    - 양끝 공백 제거
-    - 모든 whitespace (탭/줄바꿈 포함) → 단일 space
-    - 빈 줄로만 구성된 경우 빈 문자열
+    - Strip leading/trailing whitespace
+    - Collapse all whitespace (including tabs/newlines) to a single space
+    - Empty string if the block consists only of blank lines
     """
     if not text:
         return ""
@@ -177,14 +180,14 @@ def _normalize_content(text: str) -> str:
 
 
 def _block_hash(content: str) -> str:
-    """SHA-256(content) 의 hex digest 첫 16자 (64-bit space)."""
+    """First 16 chars of the SHA-256(content) hex digest (64-bit space)."""
     return hashlib.sha256(content.encode("utf-8")).hexdigest()[:16]
 
 
 def _strip_frontmatter(md_text: str) -> str:
-    """frontmatter 영역 제거 (publication.* 는 cycling 대상 아님 — 사양 §6 정신).
+    """Strip the frontmatter region (publication.* is not subject to cycling — per spec §6).
 
-    frontmatter 부재 시 원문 그대로 반환.
+    Returns the text unchanged if there is no frontmatter.
     """
     m = FRONTMATTER_RE.match(md_text)
     if not m:
@@ -200,7 +203,7 @@ def _parse_div_attrs(attr_text: str) -> tuple[list[str], dict[str, str]]:
 
 
 def _split_table_row(line: str) -> list[str]:
-    """| a | b | → ['a', 'b'] (전후 공백·외곽 | 제거)."""
+    """| a | b | → ['a', 'b'] (strips surrounding whitespace and the outer |)."""
     s = line.strip()
     if s.startswith("|"):
         s = s[1:]
@@ -210,29 +213,29 @@ def _split_table_row(line: str) -> list[str]:
 
 
 def _heading_path_join(parts: list[str]) -> str:
-    """heading hierarchy 를 ``/`` 로 join. 빈 stack 은 ``""``."""
+    """Join heading hierarchy with ``/``. Empty stack → ``""``."""
     return "/".join(p for p in parts if p)
 
 
-# ── 헤딩 경로 추적 ───────────────────────────────────────────────────────────
+# ── Heading path tracking ────────────────────────────────────────────────────
 
 
 class _HeadingStack:
-    """h1~h6 헤딩 hierarchy 를 stack 으로 관리.
+    """Manages the h1-h6 heading hierarchy as a stack.
 
-    h_k 등장 시 stack 을 길이 k 로 잘라내고 (`stack[:k-1]`) 마지막에 text push.
-    ``current_path()`` 는 모든 레벨 join 결과 반환.
+    When h_k appears, truncate the stack to length k (`stack[:k-1]`) then push
+    the text. ``current_path()`` returns the join of all levels.
     """
 
     def __init__(self) -> None:
-        # 인덱스 = level-1 (0-based). 빈 슬롯은 빈 문자열.
+        # index = level-1 (0-based). Empty slots are the empty string.
         self._levels: list[str] = []
 
     def push(self, level: int, text: str) -> None:
-        # 더 깊은 레벨 제거
+        # drop deeper levels
         if len(self._levels) >= level:
             self._levels = self._levels[: level - 1]
-        # 빈 슬롯 패딩
+        # pad empty slots
         while len(self._levels) < level - 1:
             self._levels.append("")
         self._levels.append(text)
@@ -241,23 +244,24 @@ class _HeadingStack:
         return _heading_path_join(self._levels)
 
 
-# ── Block 파서 (메인) ────────────────────────────────────────────────────────
+# ── Block parser (main) ──────────────────────────────────────────────────────
 
 
 def parse_blocks(md_text: str) -> list[Block]:
-    """MD 텍스트 → ``list[Block]``.
+    """MD text → ``list[Block]``.
 
-    상태 머신:
-        1. frontmatter 제거
-        2. 라인 순회하며 panel 컨테이너 stack + heading hierarchy stack 관리
-        3. 각 블록(paragraph/heading/list_item/table_cell/code) 식별 → Block emit
+    State machine:
+        1. Strip frontmatter
+        2. Walk lines, maintaining the panel container stack + heading hierarchy stack
+        3. Identify each block (paragraph/heading/list_item/table_cell/code) → emit Block
 
     Notes:
-        - panel 안의 paragraph 는 ``kind=panel_inner_para`` 로 표기 (사양:
-          panel/info 등 macro body 는 내부 paragraph 단위).
-        - 본 함수는 inline 매크로(``[[page:...]]`` 등)를 *해석하지 않는다* —
-          텍스트 그대로 hash 입력에 포함하여 변경 감지 신호로 사용.
-        - 다중 줄로 이어지는 paragraph 는 단일 space 로 join 후 hash.
+        - A paragraph inside a panel is tagged ``kind=panel_inner_para`` (per spec:
+          macro bodies like panel/info are tracked at inner-paragraph granularity).
+        - This function does *not* interpret inline macros (e.g. ``[[page:...]]``) —
+          it includes the raw text as-is in the hash input, used as a change-detection
+          signal.
+        - A paragraph spanning multiple lines is joined with a single space before hashing.
     """
     body = _strip_frontmatter(md_text)
     lines = body.splitlines()
@@ -265,11 +269,11 @@ def parse_blocks(md_text: str) -> list[Block]:
     blocks: list[Block] = []
     heading_stack = _HeadingStack()
 
-    # panel 컨테이너 stack — fenced div ``.panel`` 이 활성일 때 path prefix 에 포함.
-    # 각 항목: (kind, path_segment, inner_para_counter)
+    # panel container stack — included in the path prefix while a fenced div
+    # ``.panel`` is active. Each entry: (kind, path_segment, inner_para_counter)
     container_stack: list[dict] = []
 
-    # 블록 위치 인덱스 — heading 변경 시 reset.
+    # block position index — reset when the heading changes.
     # key = path prefix, value = dict(kind -> next_index)
     position_counters: dict[str, dict[str, int]] = {}
 
@@ -287,7 +291,7 @@ def parse_blocks(md_text: str) -> list[Block]:
         return "/".join(c["path_segment"] for c in container_stack)
 
     def _full_prefix() -> str:
-        """heading + container 경로 결합."""
+        """Join heading + container path."""
         h = heading_stack.current_path()
         c = _container_prefix()
         if h and c:
@@ -297,12 +301,12 @@ def parse_blocks(md_text: str) -> list[Block]:
     def _emit(kind: str, marker: str, content: str) -> None:
         """Block emit helper.
 
-        marker: path 의 마지막 segment 에 들어갈 표기 (예: ``<p>``, ``<h2>``).
-                인덱스가 부여되어 ``<p[2]>`` 형태로 확장됨.
+        marker: the notation for the last path segment (e.g. ``<p>``, ``<h2>``).
+                Gets an index appended, expanding to e.g. ``<p[2]>``.
         """
         norm = _normalize_content(content)
         if not norm:
-            return  # 빈 블록은 region 으로 의미 없음
+            return  # an empty block is meaningless as a region
         prefix = _full_prefix()
         idx = _next_idx(prefix, marker)
         leaf = f"{marker[:-1]}[{idx}]>"  # <p> → <p[1]>
@@ -341,7 +345,7 @@ def parse_blocks(md_text: str) -> list[Block]:
                 container_stack.append(
                     {"kind": primary or "div", "path_segment": f"<div:{primary}>"}
                 )
-            # 컨테이너 진입 — 해당 prefix 인덱스 리셋
+            # entering a container — reset the index for this prefix
             _reset_indices_for(_full_prefix())
             i += 1
             continue
@@ -353,7 +357,7 @@ def parse_blocks(md_text: str) -> list[Block]:
             i += 1
             continue
 
-        # code fence — 전체를 1개 code block 으로
+        # code fence — treat the whole thing as one code block
         m_code = CODE_FENCE_RE.match(line)
         if m_code:
             lang = m_code.group(1) or ""
@@ -364,14 +368,14 @@ def parse_blocks(md_text: str) -> list[Block]:
                 i += 1
             if i < n:
                 i += 1  # consume closing fence
-            # 코드는 normalize 하지 않고 그대로 hash (들여쓰기 의미 있음)
+            # code is hashed as-is without normalization (indentation is significant)
             raw = "\n".join(buf)
             prefix = _full_prefix()
             marker = f"<code:{lang}>" if lang else "<code>"
             idx = _next_idx(prefix, marker)
             leaf = f"{marker[:-1]}[{idx}]>"
             path = f"{prefix}/{leaf}" if prefix else leaf
-            # 빈 코드블록도 region 으로 유지 (변경 추적)
+            # keep even an empty code block as a region (for change tracking)
             blocks.append(
                 Block(
                     kind=KIND_CODE,
@@ -382,7 +386,7 @@ def parse_blocks(md_text: str) -> list[Block]:
             )
             continue
 
-        # col-widths directive — 무시 (path/region 영향 없음)
+        # col-widths directive — ignored (no effect on path/region)
         if COLWIDTHS_DIRECTIVE_RE.match(line):
             i += 1
             continue
@@ -392,13 +396,13 @@ def parse_blocks(md_text: str) -> list[Block]:
         if m_h:
             level = len(m_h.group(1))
             text = m_h.group(2).strip()
-            # heading text 자체를 block 으로 — 변경 시 region 발생
-            # heading_stack 갱신 *후* path 계산 시 자신이 leaf 가 되도록 처리
+            # the heading text itself is a block — a region occurs when it changes
+            # update heading_stack *then* compute path, so it becomes its own leaf
             heading_stack.push(level, text)
-            # 새 heading 경로 진입 — 해당 prefix 인덱스 리셋
+            # entering a new heading path — reset the index for this prefix
             new_prefix = _full_prefix()
             _reset_indices_for(new_prefix)
-            # heading block 의 path 는 자신을 leaf 로 표기
+            # a heading block's path shows itself as the leaf
             marker = f"<h{level}>"
             idx = _next_idx(new_prefix, marker)
             leaf = f"{marker[:-1]}[{idx}]>"
@@ -415,23 +419,23 @@ def parse_blocks(md_text: str) -> list[Block]:
             i += 1
             continue
 
-        # hr — region 아님 (스타일 요소)
+        # hr — not a region (a style element)
         if HR_RE.match(line):
             i += 1
             continue
 
-        # 빈 줄
+        # blank line
         if not stripped:
             i += 1
             continue
 
-        # 표 — header 행 + separator 다음부터 행/셀 parse
+        # table — header row + parse rows/cells starting after the separator
         if "|" in line and i + 1 < n and TABLE_SEPARATOR_RE.match(lines[i + 1]):
             header_cells = _split_table_row(line)
             prefix = _full_prefix()
             tbl_idx = _next_idx(prefix, "<table>")
             tbl_marker = f"<table[{tbl_idx}]>"
-            # 헤더 셀
+            # header cells
             for ci, cell in enumerate(header_cells, start=1):
                 norm = _normalize_content(cell)
                 if not norm:
@@ -475,16 +479,16 @@ def parse_blocks(md_text: str) -> list[Block]:
                 i += 1
             continue
 
-        # 리스트 (ul / ol) — 각 item 별로 list_item block
+        # list (ul / ol) — one list_item block per item
         m_ul = UL_RE.match(line)
         m_ol = OL_RE.match(line)
         if m_ul or m_ol:
             prefix = _full_prefix()
             list_idx = _next_idx(prefix, "<list>")
             list_marker = f"<list[{list_idx}]>"
-            # depth 별 item 카운터 (path 안에 depth chain 포함)
+            # per-depth item counter (depth chain included in the path)
             depth_counters: dict[int, int] = {}
-            depth_stack: list[int] = []  # 현재까지 본 depth level 순서
+            depth_stack: list[int] = []  # order of depth levels seen so far
             while i < n:
                 cur = lines[i]
                 if not cur.strip():
@@ -494,18 +498,18 @@ def parse_blocks(md_text: str) -> list[Block]:
                     break
                 indent_ws = m.group(1)
                 depth = len(indent_ws) // 2
-                # 더 얕은 depth 진입 시 그보다 깊은 카운터 reset
+                # reset deeper counters when entering a shallower depth
                 for d in list(depth_counters.keys()):
                     if d > depth:
                         depth_counters[d] = 0
-                # depth_stack 보정
+                # adjust depth_stack
                 while depth_stack and depth_stack[-1] > depth:
                     depth_stack.pop()
                 if not depth_stack or depth_stack[-1] < depth:
                     depth_stack.append(depth)
-                # 카운터 증가
+                # increment counter
                 depth_counters[depth] = depth_counters.get(depth, 0) + 1
-                # path 의 list_item chain 표기 — depth 별 인덱스
+                # list_item chain notation in the path — per-depth index
                 chain_parts = []
                 for d in sorted(set(depth_stack)):
                     chain_parts.append(f"<li[{depth_counters.get(d, 1)}]>")
@@ -528,7 +532,7 @@ def parse_blocks(md_text: str) -> list[Block]:
                 i += 1
             continue
 
-        # blockquote — 각 내부 단락을 blockquote_para 로
+        # blockquote — each inner paragraph becomes blockquote_para
         m_bq = BLOCKQUOTE_RE.match(line)
         if m_bq:
             bq_lines: list[str] = [m_bq.group(1)]
@@ -543,7 +547,7 @@ def parse_blocks(md_text: str) -> list[Block]:
             _emit(KIND_BLOCKQUOTE_PARA, "<bq>", text)
             continue
 
-        # paragraph — 빈 줄 / 다른 블록 시작까지 누적
+        # paragraph — accumulate until a blank line / another block starts
         para_lines = [stripped]
         i += 1
         while i < n:
@@ -571,7 +575,7 @@ def parse_blocks(md_text: str) -> list[Block]:
             para_lines.append(nxt.strip())
             i += 1
         para = " ".join(para_lines)
-        # 컨테이너 (panel/info/...) 안의 paragraph 는 별도 kind
+        # a paragraph inside a container (panel/info/...) gets a distinct kind
         if container_stack:
             kind = KIND_PANEL_INNER_PARA
         else:
@@ -585,19 +589,19 @@ def parse_blocks(md_text: str) -> list[Block]:
 
 
 def diff_blocks(old: list[Block], new: list[Block]) -> DiffResult:
-    """두 block 리스트 비교 → DiffResult.
+    """Compare two block lists → DiffResult.
 
-    매칭 기준:
-        - ``path`` 정확 일치 → 동일 region.
-        - 동일 path 에서 ``block_hash`` 다르면 modified.
-        - new 에만 있는 path → added.
-        - old 에만 있는 path → removed.
-        - 양쪽 동일 path + 동일 hash → unchanged.
+    Matching criteria:
+        - exact ``path`` match → same region.
+        - if ``block_hash`` differs for the same path → modified.
+        - path only in new → added.
+        - path only in old → removed.
+        - same path + same hash on both sides → unchanged.
 
     Notes:
-        - 같은 path 가 한쪽에 2개 이상 등장하는 경우는 parse_blocks 에서
-          인덱스 부여로 방지됨 (path 는 unique).
-        - 그래도 안전을 위해 dict 변환 시 첫 등장 우선.
+        - The case of the same path appearing twice on one side is prevented by
+          the indexing done in parse_blocks (path is unique).
+        - Still, the dict conversion prefers the first occurrence for safety.
     """
     old_map = {b.path: b for b in old}
     new_map = {b.path: b for b in new}
@@ -617,7 +621,7 @@ def diff_blocks(old: list[Block], new: list[Block]) -> DiffResult:
     return result
 
 
-# ── 색상 region 계산 (2-cycle decay) ─────────────────────────────────────────
+# ── Color region computation (2-cycle decay) ─────────────────────────────────
 
 
 def compute_color_regions(
@@ -625,73 +629,74 @@ def compute_color_regions(
     new_blocks: list[Block],
     previous_green_regions: Iterable[dict] | None = None,
 ) -> ColorRegions:
-    """2-cycle decay 모델로 green/blue region 계산.
+    """Compute green/blue regions using the 2-cycle decay model.
 
-    G_N = added + modified.new 측.
-    B_N = previous_green - 이번에 변경된 path.
-          (즉, 직전 publish 에서 green 이었으나 이번 publish 에서 또 변경되지
-          않은 region — 이번 발행에서 1단계 decay.)
+    G_N = added + the new side of modified.
+    B_N = previous_green - paths changed this time.
+          (i.e. regions that were green in the previous publish but were not
+          changed again in this publish — one step of decay in this publish.)
 
     Args:
-        old_blocks: 직전 publish 의 block list (v_{N-1}).
-        new_blocks: 이번 publish 의 block list (v_N).
-        previous_green_regions: 직전 publish 의 ``ColorRegions.green`` 을
-            ``serialize_state`` 로 직렬화한 list[dict].
-            각 항목: ``{"path": ..., "block_hash": ...}``.
-            None 이면 빈 list 로 간주 (예: 첫 publish 또는 N=2).
+        old_blocks: block list of the previous publish (v_{N-1}).
+        new_blocks: block list of this publish (v_N).
+        previous_green_regions: the previous publish's ``ColorRegions.green``
+            serialized via ``serialize_state``, as list[dict].
+            Each entry: ``{"path": ..., "block_hash": ...}``.
+            If None, treated as an empty list (e.g. first publish or N=2).
 
     Returns:
         ColorRegions(green=..., blue=...).
 
     Notes:
-        - 첫 작성(old_blocks 가 빈 경우) 은 사양상 G_1 = ∅ (모두 검정).
-          이는 caller 의 책임 — 본 함수는 added 가 있으면 모두 green 으로
-          간주하므로, 첫 발행 시 caller 가 ``compute_color_regions`` 를
-          호출하지 않거나 결과를 폐기해야 한다.
-        - 같은 path 가 previous_green 에도 있고 이번에 또 변경됐으면 green only.
-          (modified 로 감지 → green; previous 의 동일 path 는 blue 후보지만
-           green 에 이미 포함되어 있으므로 blue 에서 제외.)
+        - For the first draft (old_blocks empty), the spec says G_1 = ∅ (all black).
+          This is the caller's responsibility — this function treats any `added`
+          entries as all green, so on the first publish the caller must either not
+          call ``compute_color_regions`` or discard its result.
+        - If the same path is also in previous_green and changed again this time,
+          it is green only. (Detected as modified → green; the same path from
+          previous is a blue candidate but is excluded from blue since it's
+          already in green.)
     """
     diff = diff_blocks(old_blocks, new_blocks)
 
-    # G_N — 이번 변경
+    # G_N — this publish's changes
     green: list[Block] = []
     green.extend(diff.added)
     green.extend(b_new for (_, b_new) in diff.modified)
 
     green_paths = {b.path for b in green}
 
-    # B_N — previous_green 에서 이번에 변경 안 된 것
+    # B_N — previous_green entries not changed this time
     blue: list[Block] = []
     if previous_green_regions:
-        # new_blocks 의 path → Block lookup
+        # path → Block lookup for new_blocks
         new_map = {b.path: b for b in new_blocks}
         for entry in previous_green_regions:
             if not isinstance(entry, dict):
                 continue
             path = entry.get("path")
             if not path or path in green_paths:
-                # 이번에 또 변경됐으면 green only — blue 에서 제외
+                # changed again this time → green only, excluded from blue
                 continue
-            # 현재 발행에 그 path 가 살아있어야 표시 가능
+            # the path must still exist in the current publish to be displayable
             b_cur = new_map.get(path)
             if b_cur is None:
-                # 영역이 삭제됨 — 표시할 수 없음
+                # the region was removed — cannot be displayed
                 continue
             blue.append(b_cur)
 
     return ColorRegions(green=green, blue=blue)
 
 
-# ── State 직렬화 ─────────────────────────────────────────────────────────────
+# ── State serialization ──────────────────────────────────────────────────────
 
 
 def serialize_state(regions: ColorRegions) -> list[dict]:
-    """meta.json ``_color_state.previous_green_regions`` 에 저장할 형태로 직렬화.
+    """Serialize to the form stored in meta.json's ``_color_state.previous_green_regions``.
 
     Returns:
-        ``[{"path": ..., "block_hash": ...}, ...]`` — green 만 직렬화.
-        (blue 는 다음 publish 에서 자동으로 재계산되므로 저장 불필요.)
+        ``[{"path": ..., "block_hash": ...}, ...]`` — only green is serialized.
+        (blue is recomputed automatically on the next publish, so it needn't be stored.)
     """
     return [
         {"path": b.path, "block_hash": b.block_hash}
@@ -703,7 +708,7 @@ def serialize_state(regions: ColorRegions) -> list[dict]:
 
 
 def _format_blocks_md(blocks: list[Block], heading: str) -> list[str]:
-    """디버그용 MD 포맷 — 짧은 path + hash."""
+    """Debug MD format — short path + hash."""
     lines = [f"### {heading} ({len(blocks)})"]
     for b in blocks:
         lines.append(f"- [{b.kind}] `{b.path}` (hash={b.block_hash})")

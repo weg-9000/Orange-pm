@@ -1,7 +1,10 @@
 ---
 name: explore
 description: >-
-  query를 파싱해 로컬 파일과 사용자가 연결한 커넥터(chat·design·tasks — 예: Mattermost·Figma·Jira 등)에서 맥락을 수집하고 교차 검증된 구조화 보고서를 생성한다. Discovery, draft 작성, 검토 단계 어디서든 독립적으로 호출 가능하다.
+  Parses the query and gathers context from local files and connectors the
+  user has connected (chat, design, tasks — e.g. Mattermost, Figma, Jira),
+  producing a cross-validated structured report. Can be called
+  independently at any stage — Discovery, draft authoring, or review.
 triggers:
   - "explore"
   - "search context"
@@ -12,55 +15,57 @@ effort: medium
 user-invocable: true
 ---
 
-## Bootstrap 캐시 가드 (개선안 F — CONTEXT_OPTIMIZATION.md)
+## Bootstrap Cache Guard (Improvement F — CONTEXT_OPTIMIZATION.md)
 
-세션 첫 진입 시 `CONTEXT/_session-bootstrap.md` 를 1회만 로드한다.
-이미 같은 세션에서 본 파일을 읽었다면 재독을 금지한다.
-캐시가 없거나 stale 이면 다음 명령으로 갱신한 뒤 진행한다:
+Load `CONTEXT/_session-bootstrap.md` once on first entry to the session.
+If this file has already been read in the same session, re-reading it is forbidden.
+If the cache is missing or stale, refresh it with the following command before proceeding:
 
 ```bash
 python ${CLAUDE_PLUGIN_ROOT}/scripts/build_bootstrap.py --hub-root .
 ```
 
-본 가드는 layer-config / about-pm / project-rules / brand-voice /
-doc-layer-schema / team-members 6개 원본 파일 재로드를 대체한다.
-원본 파일 직접 Read 는 본 skill 의 핵심 작업에 필수인 경우에만 허용된다.
+This guard replaces re-loading the 6 source files: layer-config / about-pm /
+project-rules / brand-voice / doc-layer-schema / team-members.
+Directly reading the source files is allowed only when strictly necessary
+for this skill's core work.
 
-## 전제조건 검사
+## Precondition Checks
 
-1. `{query}`가 비어 있으면 탐색 목적을 PM에게 질문한다.
-   예시 형식을 제시한다:
-   - 기능 관련: `/explore 결제 취소 정책 범위`
-   - 정책 관련: `/explore {PREFIX}-B 환불 기준`
-   - UI 관련: `/explore 주문 목록 화면 레이아웃`
-   - 이슈 관련: `/explore WO-07 미결 사유`
+1. If `{query}` is empty, ask the PM about the purpose of the search.
+   Present example formats:
+   - Feature-related: `/explore payment cancellation policy scope`
+   - Policy-related: `/explore {PREFIX}-B refund criteria`
+   - UI-related: `/explore order list screen layout`
+   - Issue-related: `/explore WO-07 reason for pending status`
 
-2. 현재 프로젝트 컨텍스트를 확인한다.
-   `CONTEXT/layer-config.md`에서 활성 프로젝트 PREFIX를 읽는다.
-   확인 불가 시 전체 스코프 탐색으로 진행한다.
+2. Check the current project context.
+   Read the active project PREFIX from `CONTEXT/layer-config.md`.
+   If it cannot be determined, proceed with a full-scope search.
 
 
-## 실행 단계
+## Execution Steps
 
-### 단계 1 — 쿼리 분류
+### Step 1 — Classify the query
 
-`{query}` 텍스트를 분석해 탐색 의도를 분류한다:
+Analyze the `{query}` text and classify the search intent:
 
-| 의도 유형 | 판단 기준 | 우선 탐색 소스 |
+| Intent type | Judgment criteria | Preferred search sources |
 |---|---|---|
-| 기능 요구사항 | 기능명, 동작, 사용자 행동 포함 | requirements.md → competitor/ → wiki |
-| 정책·규칙 | 정책, 기준, 제한, 금지 포함 | decisions.md → CONTEXT/reference-docs/{ACTIVE_PREFIX}/B/ 로컬 파일 |
-| 화면·UX | 화면, 레이아웃, 버튼, 상태 포함 | screen-list.md → design → drafts/ |
-| 이슈·의사결정 | WO ID, 이슈, 미결, 번복 포함 | open-issues.md → session-log.md → chat |
-| 일정·담당 | 일정, 마감, 담당자 포함 | tasks → chat |
-| 전체 탐색 | 분류 불가 | 전체 소스 순차 탐색 |
+| Functional requirement | Contains feature name, behavior, user action | requirements.md → competitor/ → wiki |
+| Policy/rule | Contains policy, criteria, restriction, prohibition | decisions.md → local files under CONTEXT/reference-docs/{ACTIVE_PREFIX}/B/ |
+| Screen/UX | Contains screen, layout, button, state | screen-list.md → design → drafts/ |
+| Issue/decision | Contains WO ID, issue, pending, reversal | open-issues.md → session-log.md → chat |
+| Schedule/owner | Contains schedule, deadline, owner | tasks → chat |
+| General search | Cannot be classified | sequentially search all sources |
 
-분류 결과를 탐색 시작 전 한 줄로 출력한다.
+Print the classification result in one line before starting the search.
 
 
-### 단계 2 — 로컬 파일 탐색
+### Step 2 — Search local files
 
-다음 파일을 query 키워드로 검색한다. 탐색 우선순위 순서:
+Search the following files using the query keywords, in this search
+priority order:
 
 ```
 1. PROJECTS/{product}/inputs/requirements.md
@@ -73,95 +78,105 @@ doc-layer-schema / team-members 6개 원본 파일 재로드를 대체한다.
 8. CONTEXT/layer-config.md
 ```
 
-각 파일에서 발견된 항목을 다음 태그로 분류한다:
-- `[확정]`: decisions.md에 등재되거나 v1.0-frozen draft에 있음
-- `[초안]`: draft에 있으나 미확정
-- `[번복 이력]`: 동일 키워드가 decisions.md에서 변경된 흔적 있음
+Classify items found in each file with the following tags:
+- `[confirmed]`: registered in decisions.md, or present in a v1.0-frozen draft
+- `[draft]`: present in a draft but not yet confirmed
+- `[reversal-history]`: the same keyword shows a trace of change in decisions.md
 
 
-### 단계 3 — 로컬 reference-docs 탐색
+### Step 3 — Search local reference-docs
 
-`CONTEXT/reference-docs/{ACTIVE_PREFIX}/A|B|C/` 디렉토리에서
-query와 관련된 파일을 로드한다.
-파일 미존재 시 `[해당 계층 파일 없음 — 로컬 결과만 사용]`
-안내를 표시하고 계속 진행한다.
-이 단계에서 wiki 커넥터는 호출하지 않는다.
-
-
-### 단계 4 — chat 커넥터 탐색
-
-chat 커넥터(사용자가 연결한 MCP 도구 — 예: Slack·Mattermost 등)를 CONNECTORS.md
-탐지 프로토콜로 확인하고, 프로젝트 관련 채널에서 `{query}` 키워드를 검색한다.
-검색 범위: 최근 90일 메시지.
-커넥터 부재 또는 연결 실패 시 건너뛰고 `[chat 탐색 생략]`을 기록한다.
-
-의사결정 관련 메시지 발견 시 `[팀 논의]` 태그를 부착한다.
-decisions.md에 없는 결정 사항이 발견되면 `open-issues.md` P2 등록을 권고한다.
+Load files related to the query from the
+`CONTEXT/reference-docs/{ACTIVE_PREFIX}/A|B|C/` directories.
+If no files exist, display `[no files at this layer — using local results
+only]` and continue.
+The wiki connector is not called in this step.
 
 
-### 단계 5 — design 커넥터 탐색 (의도 유형이 화면·UX인 경우만)
+### Step 4 — Search the chat connector
 
-design 커넥터(사용자가 연결한 MCP 도구 — 예: Figma·Zeplin 등)를 CONNECTORS.md
-탐지 프로토콜로 확인하고, 프로젝트 디자인 파일에서 `{query}` 관련 프레임을 검색한다.
-커넥터 부재 또는 연결 실패 시 건너뛰고 `[design 탐색 생략]`을 기록한다.
+Detect the chat connector (an MCP tool the user has connected — e.g.
+Slack, Mattermost) using the CONNECTORS.md detection protocol, and search
+for the `{query}` keyword in project-related channels.
+Search scope: messages from the last 90 days.
+If the connector is absent or the connection fails, skip and record
+`[chat skipped]`.
 
-발견된 프레임의 이름, 컴포넌트 목록, 디자인 파일 URL을 출처로 명시한다.
-
-
-### 단계 6 — tasks 커넥터 탐색 (의도 유형이 일정·담당인 경우만)
-
-tasks 커넥터(일정·업무 도구 — 예: Jira·그룹웨어 등)를 CONNECTORS.md
-탐지 프로토콜로 확인하고, 관련 프로젝트 태스크와 담당자를 검색한다.
-커넥터 부재 또는 연결 실패 시 건너뛰고 `[tasks 탐색 생략]`을 기록한다.
+Attach a `[team discussion]` tag if a decision-related message is found.
+If a decision is found that is not in decisions.md, recommend registering
+it as P2 in `open-issues.md`.
 
 
-### 단계 7 — 교차 검증 및 결과 구성
+### Step 5 — Search the design connector (only when intent type is screen/UX)
 
-소스별 발견 항목을 교차 검증한다:
+Detect the design connector (an MCP tool the user has connected — e.g.
+Figma, Zeplin) using the CONNECTORS.md detection protocol, and search
+project design files for frames related to `{query}`.
+If the connector is absent or the connection fails, skip and record
+`[design skipped]`.
 
-- 동일 항목이 여러 소스에서 일치하면 `[다중 소스 확인]` 태그 부착
-- 소스 간 내용이 상충하면 `[소스 간 충돌]` 태그 부착 + 충돌 내용 병기
-
-탐색 결과가 0건이면 "발견된 항목 없음 — 쿼리를 구체화하거나 소스를 직접 확인하세요"를
-출력하고 관련 스킬을 안내한다.
+State the name, component list, and design file URL of any found frame
+as the source.
 
 
-### 단계 8 — 보고서 출력 및 저장
+### Step 6 — Search the tasks connector (only when intent type is schedule/owner)
 
-**인라인 출력 형식:**
+Detect the tasks connector (a schedule/work management tool — e.g. Jira,
+a groupware) using the CONNECTORS.md detection protocol, and search for
+related project tasks and owners.
+If the connector is absent or the connection fails, skip and record
+`[tasks skipped]`.
+
+
+### Step 7 — Cross-validate and assemble the results
+
+Cross-validate the items found across sources:
+
+- If the same item agrees across multiple sources, attach a `[confirmed
+  across multiple sources]` tag
+- If content conflicts between sources, attach a `[cross-source conflict]`
+  tag + note the conflicting content alongside it
+
+If there are 0 search results, print "No items found — refine the query
+or check the sources directly" and direct the user to the relevant skill.
+
+
+### Step 8 — Output and save the report
+
+**Inline output format:**
 ```markdown
-## /explore 결과: {query}
+## /explore Results: {query}
 
-**탐색 의도**: {분류 결과}
-**탐색 소스**: {탐색한 소스 목록}
-**발견 항목**: {N}건
+**Search intent**: {classification result}
+**Search sources**: {list of sources searched}
+**Items found**: {N}
 
-### 주요 발견 사항
+### Key Findings
 
-1. {항목 내용} [`{태그}`] — 출처: {파일명 또는 URL}
+1. {item content} [`{tag}`] — source: {filename or URL}
 2. ...
 
-### 소스 간 충돌 항목
+### Cross-Source Conflicts
 
-{없으면 "없음"}
+{"None" if there are none}
 
-### 미발견 항목 (탐색 공백)
+### Not Found (search gaps)
 
-{query와 관련하여 어떤 소스에도 없는 정보가 있으면 명시}
+{state any information related to the query that was not found in any source}
 
-### 권고 후속 조치
+### Recommended Follow-up Actions
 
-- {예: open-issues.md에 P2 등록 권고}
-- {예: /stakeholder {product} 재실행으로 요구사항 보완 권고}
+- {e.g. recommend registering P2 in open-issues.md}
+- {e.g. recommend re-running /stakeholder {product} to supplement requirements}
 ```
 
-**파일 저장:**
-`reports/explore-{YYYYMMDD-HHMM}.md`에 위 보고서를 저장한다.
+**File save:**
+Save the above report to `reports/explore-{YYYYMMDD-HHMM}.md`.
 
 
-## 결과 파일 목록
+## Output Files
 
-| 파일 | 변경 내용 |
+| File | Change |
 |---|---|
-| `reports/explore-{YYYYMMDD-HHMM}.md` | 탐색 결과 보고서 |
-| `open-issues.md` | 충돌·미등재 결정 사항 발견 시 P1/P2 자동 등록 |
+| `reports/explore-{YYYYMMDD-HHMM}.md` | Search result report |
+| `open-issues.md` | Auto-registers P1/P2 when a conflict or unregistered decision is found |

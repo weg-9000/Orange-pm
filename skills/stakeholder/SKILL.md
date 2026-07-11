@@ -1,6 +1,6 @@
 ---
 name: stakeholder
-description: 이해관계자별 요구사항을 수집·분류하고 우선순위를 태깅한다. 입력 방식은 직접 인터뷰 / 파일 업로드 / 팀 메신저(chat 커넥터) / 위키(wiki 커넥터)를 지원한다. Discovery 3개 스트림 중 stakeholder 스트림을 완성한다.
+description: Collects and classifies requirements per stakeholder and tags priority. Supports direct interviews, file uploads, team messenger (chat connector), and wiki (wiki connector) as input methods. Completes the stakeholder stream, one of the 3 Discovery streams.
 triggers:
   - "stakeholder"
   - "collect requirements"
@@ -10,265 +10,265 @@ effort: medium
 user-invocable: true
 ---
 
-## Bootstrap 캐시 가드 (개선안 F — CONTEXT_OPTIMIZATION.md)
+## Bootstrap Cache Guard (Improvement F — CONTEXT_OPTIMIZATION.md)
 
-세션 첫 진입 시 `CONTEXT/_session-bootstrap.md` 를 1회만 로드한다.
-이미 같은 세션에서 본 파일을 읽었다면 재독을 금지한다.
-캐시가 없거나 stale 이면 다음 명령으로 갱신한 뒤 진행한다:
+On first entry into a session, load `CONTEXT/_session-bootstrap.md` only once.
+If this file has already been read in the same session, do not re-read it.
+If the cache is missing or stale, refresh it with the following command before proceeding:
 
 ```bash
 python ${CLAUDE_PLUGIN_ROOT}/scripts/build_bootstrap.py --hub-root .
 ```
 
-본 가드는 layer-config / about-pm / project-rules / brand-voice /
-doc-layer-schema / team-members 6개 원본 파일 재로드를 대체한다.
-원본 파일 직접 Read 는 본 skill 의 핵심 작업에 필수인 경우에만 허용된다.
+This guard replaces reloading the 6 source files layer-config / about-pm / project-rules /
+brand-voice / doc-layer-schema / team-members.
+Reading the source files directly is allowed only when essential to this skill's core work.
 
-## 전제조건 검사
+## Precondition Checks
 
-1. `CONTEXT/layer-config.md`에서 PREFIX를 읽는다.
-   미존재 시 `/ingest {product}` 실행을 안내한다.
+1. Read PREFIX from `CONTEXT/layer-config.md`.
+   If missing, instruct the PM to run `/ingest {product}`.
 
-2. `inputs/discovery/stakeholder/` 디렉토리가 존재하는지 확인한다.
-   없으면 생성한다.
+2. Check whether the `inputs/discovery/stakeholder/` directory exists.
+   If not, create it.
 
-3. 기존 파일이 존재하면 추가(append) 또는 전체 재수집 여부를 PM에게 확인한다.
-
-
-## 실행 단계
-
-### 단계 1 — 입력 방식 선택
-
-PM에게 수집 방식을 선택하도록 안내한다. 복수 선택 가능.
-
-```
-요구사항 수집 방식을 선택하세요 (복수 선택 가능):
-
-  [A] 직접 인터뷰  — 이해관계자별 질문지를 제시하고 PM이 직접 입력
-  [B] 파일 업로드  — 회의록, 요구사항 문서, 이메일 내용 붙여넣기
-  [C] 팀 메신저    — chat 커넥터(예: Slack·Mattermost)로 채널 메시지 자동 수집
-  [D] 위키 문서    — wiki 커넥터(예: Confluence·Notion)로 기존 요구사항 문서 로드
-```
-
-선택 후 각 방식별로 단계 2~4를 순서대로 실행한다.
+3. If existing files are present, ask the PM whether to append to them or re-collect from scratch.
 
 
-### 단계 2A — 직접 인터뷰 (선택 시)
+## Execution Steps
 
-이해관계자별로 다음 질문지를 PM에게 제시한다.
-이해관계자가 여러 명이면 반복 실행한다.
+### Step 1 — Choose input method
+
+Ask the PM to choose a collection method. Multiple selections allowed.
 
 ```
-이해관계자 정보:
-  이름 / 직책 / 팀:
-  프로젝트에서의 역할 (요청자 / 의사결정자 / 최종 사용자 / 운영자):
+Choose a requirements collection method (multiple selections allowed):
 
-요구사항 질문:
-  1. 이 제품/기능으로 해결하고 싶은 가장 중요한 문제는 무엇인가요?
-  2. 반드시 포함되어야 하는 기능 3가지는?
-  3. 없어도 되지만 있으면 좋은 기능은?
-  4. 절대로 포함되면 안 되는 사항이 있나요?
-  5. 성공 기준은 무엇인가요? (정량적 지표 포함)
-  6. 마감일 또는 제약 조건이 있나요?
+  [A] Direct interview  — present a per-stakeholder questionnaire for the PM to fill in
+  [B] File upload       — paste meeting notes, requirements docs, or email content
+  [C] Team messenger    — auto-collect channel messages via a chat connector (e.g. Slack, Mattermost)
+  [D] Wiki document     — load existing requirements docs via a wiki connector (e.g. Confluence, Notion)
 ```
 
-입력 내용을 단계 5의 분류 기준으로 처리한다.
+After selection, run Steps 2–4 in order for each chosen method.
 
 
-### 단계 2B — 파일 업로드 (선택 시)
+### Step 2A — Direct interview (if selected)
 
-PM에게 회의록, 기획서, 이메일 내용 등을 텍스트로 붙여넣도록 요청한다.
-입력된 텍스트에서 다음 항목을 자동 추출한다:
-- 발화자 이름 또는 팀 → 이해관계자로 분류
-- 요청 / 필요 / 원한다 → FR 후보
-- 성능 / 속도 / 보안 → NFR 후보
-- 안 된다 / 불가 / 제한 → 제약 후보
-- 기한 / 마감 → 일정 제약
+Present the following questionnaire to the PM for each stakeholder.
+Repeat if there are multiple stakeholders.
 
-추출 불확실 항목은 `[추정]` 태그를 붙이고 PM에게 확인을 요청한다.
+```
+Stakeholder info:
+  Name / Title / Team:
+  Role in the project (requester / decision-maker / end user / operator):
 
+Requirements questions:
+  1. What is the most important problem you want this product/feature to solve?
+  2. What are the 3 features that must be included?
+  3. What features would be nice to have but aren't required?
+  4. Are there things that must absolutely not be included?
+  5. What are the success criteria? (include quantitative metrics)
+  6. Are there any deadlines or constraints?
+```
 
-### 단계 2C — 팀 메신저 (선택 시)
-
-chat 커넥터(사용자가 연결한 MCP 도구 — 예: Slack·Mattermost 등)를 CONNECTORS.md
-탐지 프로토콜로 확인하고, 다음 채널에서 최근 90일 메시지를 검색한다:
-- 프로젝트 전용 채널
-- 기획/PM 채널
-- 관련 팀 공지 채널
-
-검색 키워드: "요구사항", "필요", "원한다", "안 된다", "개선", "불편", 제품명
-
-발화자 기준으로 이해관계자를 분류하고 단계 5에서 구조화한다.
-커넥터 부재 또는 연결 실패 시 `[chat 탐색 생략]`을 기록하고 계속 진행한다.
+Process the input using the classification criteria in Step 5.
 
 
-### 단계 2D — 위키 문서 (선택 시)
+### Step 2B — File upload (if selected)
 
-wiki 커넥터(사용자가 연결한 MCP 도구 — 예: Confluence·Notion 등)를 CONNECTORS.md
-탐지 프로토콜로 확인하고, 프로젝트 관련 요구사항 문서를 로드한다.
-Approved 문서 우선. 발견된 문서에서 FR / NFR / 제약 항목을 추출한다.
-커넥터 부재 또는 연결 실패 시 `[wiki 탐색 생략]`을 기록하고 계속 진행한다.
+Ask the PM to paste meeting notes, planning docs, email content, etc. as text.
+Automatically extract the following from the pasted text:
+- Speaker name or team → classify as stakeholder
+- "request" / "need" / "want" → FR candidate
+- "performance" / "speed" / "security" → NFR candidate
+- "must not" / "cannot" / "restricted" → constraint candidate
+- "deadline" / "due date" → schedule constraint
+
+Tag uncertain extractions with `[inferred]` and ask the PM to confirm.
 
 
-### 단계 3 — 요구사항 분류 및 우선순위 태깅
+### Step 2C — Team messenger (if selected)
 
-수집된 모든 요구사항 항목에 다음 분류를 적용한다:
+Check for a chat connector (an MCP tool the user has connected — e.g. Slack, Mattermost) via the
+CONNECTORS.md detection protocol, and search the last 90 days of messages in the following channels:
+- Project-dedicated channel
+- Planning/PM channel
+- Related team announcement channel
 
-**유형 분류:**
+Search keywords: "requirement", "need", "want", "can't", "improve", "inconvenient", product name
 
-| 유형 | 정의 |
+Classify stakeholders by speaker and structure the data in Step 5.
+If the connector is absent or the connection fails, record `[chat skipped]` and continue.
+
+
+### Step 2D — Wiki document (if selected)
+
+Check for a wiki connector (an MCP tool the user has connected — e.g. Confluence, Notion) via the
+CONNECTORS.md detection protocol, and load project-related requirements documents.
+Prefer Approved documents. Extract FR / NFR / constraint items from the documents found.
+If the connector is absent or the connection fails, record `[wiki skipped]` and continue.
+
+
+### Step 3 — Classify requirements and tag priority
+
+Apply the following classification to all collected requirement items:
+
+**Type classification:**
+
+| Type | Definition |
 |---|---|
-| FR | 사용자가 직접 수행하거나 시스템이 제공하는 기능 |
-| NFR | 성능, 보안, 가용성, 접근성 등 품질 요구사항 |
-| CON | 기술적·비즈니스적·법적 제약 |
-| OOS | 이번 범위 외 (Out of Scope) |
+| FR | A function the user performs directly, or that the system provides |
+| NFR | Quality requirements such as performance, security, availability, accessibility |
+| CON | Technical, business, or legal constraints |
+| OOS | Out of scope for this iteration |
 
-**우선순위 분류 (MoSCoW):**
+**Priority classification (MoSCoW):**
 
-| 우선순위 | 정의 |
+| Priority | Definition |
 |---|---|
-| Must | 없으면 제품 출시 불가 |
-| Should | 중요하지만 없어도 출시 가능 |
-| Could | 있으면 좋은 기능 |
-| Wont | 이번 배포에서 제외 |
+| Must | Product cannot ship without it |
+| Should | Important but can ship without it |
+| Could | Nice to have |
+| Wont | Excluded from this release |
 
-분류 불확실 항목은 `[분류 미확정]` 태그를 붙이고
-open-issues.md에 P2로 등록한다.
+Tag uncertain classifications with `[unclassified]` and register them
+in open-issues.md as P2.
 
 
-### 단계 4 — 상충 요구사항 탐지
+### Step 4 — Detect conflicting requirements
 
-동일 기능 또는 대상에 대해 이해관계자 간 상충이 있는지 탐지한다.
+Detect conflicts between stakeholders regarding the same feature or target.
 
-**상충 유형:**
+**Conflict types:**
 
-| 유형 | 정의 |
+| Type | Definition |
 |---|---|
-| 직접 충돌 | 팀 A는 X를 요구, 팀 B는 X를 반대 |
-| 우선순위 충돌 | 동일 항목에 대해 Must vs Could |
-| 자원 충돌 | 서로 배타적인 기능 요구 |
+| Direct conflict | Team A requests X, Team B opposes X |
+| Priority conflict | Must vs. Could on the same item |
+| Resource conflict | Mutually exclusive feature requests |
 
-탐지된 상충 항목은 open-issues.md에 등록한다:
-- 직접 충돌 → P1
-- 우선순위 충돌 → P2
-- 자원 충돌 → P1
+Register detected conflicts in open-issues.md:
+- Direct conflict → P1
+- Priority conflict → P2
+- Resource conflict → P1
 
-형식:
+Format:
 ```markdown
-- [ ] [STK-NN] 상충: {기능명} — {팀 A} Must vs {팀 B} Wont. 결정 필요.
+- [ ] [STK-NN] Conflict: {feature name} — {Team A} Must vs {Team B} Wont. Decision needed.
 ```
 
 
-### 단계 5 — 이해관계자별 파일 생성
+### Step 5 — Generate a file per stakeholder
 
-각 이해관계자에 대해 `inputs/discovery/stakeholder/{team-name}.md`를 생성한다:
+Generate `inputs/discovery/stakeholder/{team-name}.md` for each stakeholder:
 
 ```markdown
-# {이해관계자명 / 팀명} 요구사항
+# {Stakeholder name / team name} Requirements
 
-**역할**: {요청자 / 의사결정자 / 최종 사용자 / 운영자}
-**수집 방식**: {인터뷰 / 파일 / 팀 메신저(chat) / 위키(wiki)}
-**수집 기준일**: {날짜}
+**Role**: {requester / decision-maker / end user / operator}
+**Collection method**: {interview / file / team messenger (chat) / wiki}
+**Collected as of**: {date}
 
-## FR 요구사항
+## FR Requirements
 
-| ID | 내용 | 우선순위 | 비고 |
+| ID | Content | Priority | Notes |
 |---|---|---|---|
-| STK-{NN}-FR-01 | {내용} | Must / Should / Could | |
+| STK-{NN}-FR-01 | {content} | Must / Should / Could | |
 
-## NFR 요구사항
+## NFR Requirements
 
-| ID | 내용 | 우선순위 | 비고 |
+| ID | Content | Priority | Notes |
 |---|---|---|---|
 
-## 제약 사항
+## Constraints
 
-| ID | 내용 | 유형 (기술 / 비즈니스 / 법적) |
+| ID | Content | Type (technical / business / legal) |
 |---|---|---|
 
-## 성공 기준
+## Success Criteria
 
-{이해관계자가 정의한 성공 기준}
+{success criteria defined by the stakeholder}
 
-## Out of Scope 항목
+## Out of Scope Items
 
-{이번 배포에서 제외 명시 항목}
+{items explicitly excluded from this release}
 ```
 
 
-### 단계 6 — overview.md 작성
+### Step 6 — Write overview.md
 
-모든 이해관계자 파일을 교차 분석해 작성한다:
+Write this by cross-analyzing all stakeholder files:
 
 ```markdown
-# 이해관계자 요구사항 요약 — {product}
+# Stakeholder Requirements Summary — {product}
 
-> 수집 기준일: {날짜}
-> 이해관계자 수: {N}명 / {N}개 팀
+> Collected as of: {date}
+> Stakeholders: {N} people / {N} teams
 
-## 이해관계자 목록
+## Stakeholder List
 
-| 이름 / 팀 | 역할 | Must FR 수 | 상충 항목 |
+| Name / Team | Role | Must FR count | Conflicting items |
 |---|---|---|---|
 
-## Must 요구사항 통합 목록
+## Consolidated Must Requirements
 
-| 항목 | 요청 이해관계자 | 유형 |
+| Item | Requesting stakeholder | Type |
 |---|---|---|
 
-## 상충 요구사항 매트릭스
+## Conflicting Requirements Matrix
 
-| 항목 | {이해관계자A} | {이해관계자B} | 상충 유형 |
+| Item | {Stakeholder A} | {Stakeholder B} | Conflict type |
 |---|---|---|---|
 
-## 분류 미확정 항목
+## Unclassified Items
 
-| 항목 | 이해관계자 | 사유 |
+| Item | Stakeholder | Reason |
 |---|---|---|
 ```
 
 
-### 단계 7 — 품질 임계값 확인
+### Step 7 — Check quality thresholds
 
-| 항목 | 기준 |
+| Item | Criterion |
 |---|---|
-| 이해관계자 파일 수 | 2명 이상 |
-| FR 항목 수 (Must 포함) | 5개 이상 |
-| Must 항목 수 | 1개 이상 |
-| 분류 미확정 비율 | 전체 항목의 30% 미만 |
+| Number of stakeholder files | 2 or more |
+| Number of FR items (including Must) | 5 or more |
+| Number of Must items | 1 or more |
+| Unclassified ratio | Less than 30% of all items |
 
-미달 항목이 있으면 `[품질 미달]` 경고를 표시하고
-/draft-req에서 synthesizer가 강제 진행 여부를 판단하도록 기록한다.
+If any threshold is not met, display a `[quality not met]` warning and
+record it so the synthesizer in /draft-req can decide whether to force-proceed.
 
 
-### 단계 8 — session-log.md 및 open-issues.md 갱신
+### Step 8 — Update session-log.md and open-issues.md
 
-session-log.md에 추가한다:
+Add to session-log.md:
 ```markdown
-- {날짜} /stakeholder: 이해관계자 {N}명 / FR {N}개 / 상충 {N}건 / 미확정 {N}건
+- {date} /stakeholder: {N} stakeholders / {N} FR / {N} conflicts / {N} unclassified
 ```
 
-open-issues.md에서 `[DISC-02]` 항목을 완료 처리한다:
+Mark the `[DISC-02]` item as done in open-issues.md:
 ```markdown
-- [x] [DISC-02] ~~이해관계자 요구사항 수집 미완료~~ → /stakeholder 완료
+- [x] [DISC-02] ~~Stakeholder requirements collection incomplete~~ → /stakeholder complete
 ```
 
 
-## 결과 파일 목록
+## Result File List
 
-| 파일 | 내용 |
+| File | Content |
 |---|---|
-| `inputs/discovery/stakeholder/{team-name}.md` | 이해관계자별 요구사항 |
-| `inputs/discovery/stakeholder/overview.md` | 통합 요약 + 상충 매트릭스 |
-| `open-issues.md` | DISC-02 완료 / 상충 P1/P2 / 미확정 P2 등록 |
-| `session-log.md` | stakeholder 완료 기록 |
+| `inputs/discovery/stakeholder/{team-name}.md` | Requirements per stakeholder |
+| `inputs/discovery/stakeholder/overview.md` | Consolidated summary + conflict matrix |
+| `open-issues.md` | DISC-02 done / conflicts registered as P1/P2 / unclassified as P2 |
+| `session-log.md` | stakeholder completion recorded |
 
 
-## 다음 단계
+## Next Steps
 
-3개 Discovery 스트림 완료 후:
-- `/draft-req {product}`: requirements.md 초안 생성
+After all 3 Discovery streams are complete:
+- `/draft-req {product}`: generate the requirements.md draft
 
-병렬 실행 가능 스킬:
+Skills that can run in parallel:
 - `/research {product}`
 - `/product-audit {product}`

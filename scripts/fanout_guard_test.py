@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""fail-closed 트랙 가드 회귀 테스트 (fix-plan-track-routing P0/P1).
+"""fail-closed track guard regression tests (fix-plan-track-routing P0/P1).
 
-이번 사고(Track A/dossier 프로젝트에 legacy fanout → 빈 WO 셸 양산)의 재현
-케이스를 고정한다. 표준 라이브러리만 사용 (pytest 비의존).
+Pins the reproduction cases of the incident (legacy fanout on a Track A/dossier
+project → mass-produced empty WO shells). Uses only the standard library
+(no pytest dependency).
 """
 import json
 import os
@@ -17,7 +18,7 @@ import cluster_identify as CI  # noqa: E402
 
 
 def _layout(tmp: Path, *, nodes=None):
-    """product_dir/{graph,work-orders,drafts} 골격 + graph.json 생성."""
+    """Create the product_dir/{graph,work-orders,drafts} skeleton + graph.json."""
     (tmp / "graph").mkdir(parents=True, exist_ok=True)
     (tmp / "work-orders").mkdir(parents=True, exist_ok=True)
     (tmp / "drafts").mkdir(parents=True, exist_ok=True)
@@ -27,7 +28,7 @@ def _layout(tmp: Path, *, nodes=None):
     return gpath, tmp / "work-orders"
 
 
-# ── _detect_cluster_signals 단위 ──────────────────────────────────────────
+# ── _detect_cluster_signals unit ───────────────────────────────────────────
 
 def test_detect_signals_empty_when_clean():
     with tempfile.TemporaryDirectory() as d:
@@ -75,10 +76,10 @@ def test_detect_signals_capability_meta():
         assert any("capability" in s for s in FD._detect_cluster_signals(gpath, graph, out))
 
 
-# ── fanout fail-closed 가드 (핵심 회귀) ────────────────────────────────────
+# ── fanout fail-closed guard (core regression) ─────────────────────────────
 
 def test_fanout_aborts_on_dossier_without_flag():
-    """이번 사고 재현: dossier 존재 + legacy fanout → 반드시 중단."""
+    """Incident reproduction: dossier exists + legacy fanout → must abort."""
     with tempfile.TemporaryDirectory() as d:
         tmp = Path(d)
         gpath, out = _layout(tmp)
@@ -86,42 +87,42 @@ def test_fanout_aborts_on_dossier_without_flag():
         try:
             FD.fanout(gpath, out, "p", prefix="G2")
         except FD.FanoutError as e:
-            assert "cluster(dossier) 모델" in str(e), str(e)
+            assert "cluster(dossier) model" in str(e), str(e)
             return
-        raise AssertionError("FanoutError 가 발생하지 않음 — 가드 미작동")
+        raise AssertionError("FanoutError not raised — guard inactive")
 
 
 def test_fanout_force_legacy_bypasses_guard():
-    """--force-legacy 는 가드를 우회한다 (이후 빈 노드로 별도 에러)."""
+    """--force-legacy bypasses the guard (then fails separately on empty nodes)."""
     with tempfile.TemporaryDirectory() as d:
         tmp = Path(d)
-        gpath, out = _layout(tmp)  # nodes 비어 있음
+        gpath, out = _layout(tmp)  # nodes empty
         (tmp / "drafts" / "cluster_PR-01.draft.md").write_text("---\ntype: cluster_draft\n---\n", encoding="utf-8")
         try:
             FD.fanout(gpath, out, "p", prefix="G2", force_legacy=True)
         except FD.FanoutError as e:
-            # 가드를 통과했으므로 cluster 가드 메시지가 아니라 노드 부재 에러여야 함
-            assert "cluster(dossier) 모델" not in str(e), str(e)
-            assert "처리할 노드" in str(e), str(e)
+            # guard was passed, so the error must be no-nodes, not the cluster-guard message
+            assert "cluster(dossier) model" not in str(e), str(e)
+            assert "no nodes to process" in str(e), str(e)
             return
-        raise AssertionError("빈 노드 graph 인데 에러가 없음")
+        raise AssertionError("empty-node graph but no error")
 
 
 def test_fanout_no_signal_passes_guard():
-    """신호 없으면 가드는 통과(빈 노드 → 별도 노드 부재 에러로 통과 확인)."""
+    """Without signals the guard passes (empty nodes → verified via the separate no-nodes error)."""
     with tempfile.TemporaryDirectory() as d:
         tmp = Path(d)
         gpath, out = _layout(tmp)
         try:
             FD.fanout(gpath, out, "p", prefix="G2")
         except FD.FanoutError as e:
-            assert "cluster(dossier) 모델" not in str(e), str(e)
-            assert "처리할 노드" in str(e), str(e)
+            assert "cluster(dossier) model" not in str(e), str(e)
+            assert "no nodes to process" in str(e), str(e)
             return
-        raise AssertionError("빈 노드 graph 인데 에러가 없음")
+        raise AssertionError("empty-node graph but no error")
 
 
-# ── project-mode.json 기록 (P1) ────────────────────────────────────────────
+# ── project-mode.json recording (P1) ────────────────────────────────────────
 
 def test_write_project_mode_creates_marker():
     with tempfile.TemporaryDirectory() as d:
@@ -141,12 +142,12 @@ def test_write_project_mode_preserves_decided_by():
                         "section_wo_retired": True}), encoding="utf-8")
         CI.write_project_mode(graph_dir, 3)
         mode = json.loads((graph_dir / "project-mode.json").read_text(encoding="utf-8"))
-        assert mode["decided_by"] == "DEC-BDB-008"  # PM 결정 보존
-        assert mode["cluster_count"] == 3           # 카운트는 갱신
+        assert mode["decided_by"] == "DEC-BDB-008"  # PM decision preserved
+        assert mode["cluster_count"] == 3           # count refreshed
 
 
 def test_write_project_mode_defaults_publication_mode_dossier_page():
-    # 신규(파일 없음) → dossier-page 기본 (dbaas 등 기존 프로젝트 회귀 가드)
+    # new (no file) → dossier-page default (regression guard for existing projects like dbaas)
     with tempfile.TemporaryDirectory() as d:
         graph_dir = Path(d)
         CI.write_project_mode(graph_dir, 5)
@@ -155,7 +156,7 @@ def test_write_project_mode_defaults_publication_mode_dossier_page():
 
 
 def test_write_project_mode_preserves_publication_mode():
-    # /fanout 이 split 으로 박아둔 값을 cluster_identify 재실행이 덮어쓰지 않음
+    # a value /fanout pinned as split must not be overwritten by a cluster_identify re-run
     with tempfile.TemporaryDirectory() as d:
         graph_dir = Path(d)
         (graph_dir / "project-mode.json").write_text(
@@ -163,7 +164,7 @@ def test_write_project_mode_preserves_publication_mode():
                         "publication_mode": "split-deliverable"}), encoding="utf-8")
         CI.write_project_mode(graph_dir, 9)
         mode = json.loads((graph_dir / "project-mode.json").read_text(encoding="utf-8"))
-        assert mode["publication_mode"] == "split-deliverable"  # 보존
+        assert mode["publication_mode"] == "split-deliverable"  # preserved
 
 
 def _run():

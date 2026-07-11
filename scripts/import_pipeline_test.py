@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Phase 2 외부 임포트 + 마크다운 분석 파이프라인 회귀 테스트.
+"""Phase 2 external import + markdown analysis pipeline regression tests.
 
-대상: frontmatter_detect / layer_classify / term_extract / dependency_infer /
+Targets: frontmatter_detect / layer_classify / term_extract / dependency_infer /
       import_normalize.
 """
 from __future__ import annotations
@@ -48,8 +48,8 @@ def test_normalize_fills_and_preserves_body():
     assert out.startswith("---\n")
     assert "doc_id: P-1" in out
     assert "imported_at: 2026-01-02" in out
-    assert "version(미상)" in report["inferred"]
-    # 본문 무손실 — 원문 핵심 줄 보존
+    assert "version(unknown)" in report["inferred"]
+    # Body preserved losslessly — original key line retained
     assert "환불은 [G2-B-002 §3 참조]" in out
 
 
@@ -109,7 +109,7 @@ def test_term_extract_writes_candidates(tmp_path):
     g = te._load_glossary(hub)
     extracted = te.extract_terms(TERMS_MD, "t.md")
     d = te.diff_terms(extracted, g)
-    assert len(d["new"]) == 3  # 인스턴스/프로젝트/쿼타 전부 신규
+    assert len(d["new"]) == 3  # 인스턴스/프로젝트/쿼타 (instance/project/quota) are all new
 
 
 # ── dependency_infer ───────────────────────────────────────────────────────────
@@ -163,10 +163,10 @@ def test_write_record_meta_not_clobbered(tmp_path):
     inrm.write_record(hub, "demo", "file", "d", "# a\nbody1\n")
     meta_path = hub / "PROJECTS/demo/inputs/imports/file/d.meta.json"
     first = json.loads(meta_path.read_text(encoding="utf-8"))
-    # content 변경 후 재기록 — 기존 메타 보존 + content 변동 표시
+    # Rewritten after content changed — preserves original metadata + flags the content change
     r = inrm.write_record(hub, "demo", "file", "d", "# a\nbody2-changed\n")
     second = json.loads(meta_path.read_text(encoding="utf-8"))
-    assert second["imported_at"] == first["imported_at"]  # 최초 메타 보존
+    assert second["imported_at"] == first["imported_at"]  # original metadata preserved
     assert r["status"] == "meta-updated"
 
 

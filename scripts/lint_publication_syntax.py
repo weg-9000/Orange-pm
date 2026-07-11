@@ -1,42 +1,42 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-r"""Publication Syntax Lint — MD 발행 문법 검증 (publication-lint).
+r"""Publication Syntax Lint — MD publication syntax validation (publication-lint).
 
-목적:
-    Option A(MD-only) 토대의 발행 문법(publication-syntax.md 사양)이
-    Markdown 정본에 올바르게 적용됐는지 검증한다. md_to_storage.py 호출 전
-    빠른 피드백을 제공한다.
+Purpose:
+    Validates that the publication syntax (publication-syntax.md spec) for the
+    Option A (MD-only) foundation is correctly applied in the canonical
+    Markdown. Provides fast feedback before invoking md_to_storage.py.
 
-검증 항목 (FAIL = 차단 / WARN = 경고):
-    [FAIL] L1 — Fenced div 클래스가 허용 목록
+Checks (FAIL = blocking / WARN = warning):
+    [FAIL] L1 — fenced div class is in the allowed list
                 (panel | info | warning | note | tip | expand)
-    [FAIL] L2 — Panel 블록(.panel)은 section="..." 속성 필수
-    [FAIL] L3 — Panel style 값이 허용 매핑
+    [FAIL] L2 — panel block (.panel) requires a section="..." attribute
+    [FAIL] L3 — panel style value is in the allowed mapping
                 (common | product | tbd | warning | info)
-    [WARN] L4 — 코드블록 언어 fence 가 알려진 언어
+    [WARN] L4 — code block language fence is a known language
                 (python | bash | json | yaml | sql | javascript |
-                 typescript | markdown | xml | html | css | text 등)
-    [WARN] L5 — 자동 매크로 {{...}} 미해결 placeholder
-                (DATE/PRODUCT_NAME/DOC_ID/VERSION/toc/change_history 는 허용)
-    [FAIL] L6 — 색상 span nested 금지 (Phase 3 예약, 룰은 사전 활성)
-    [FAIL] L7 — 표 컬럼 수 일관성 (헤더 행과 본문 행 동일)
+                 typescript | markdown | xml | html | css | text, etc.)
+    [WARN] L5 — unresolved auto-macro {{...}} placeholder
+                (DATE/PRODUCT_NAME/DOC_ID/VERSION/toc/change_history are allowed)
+    [FAIL] L6 — nested color spans forbidden (reserved for Phase 3, rule active in advance)
+    [FAIL] L7 — table column count consistency (header row matches body rows)
 
-출력:
-    표준 출력 (render_verify.py 보고 형식)
-    --report <path> 지정 시 동일 내용을 md 파일로 저장
+Output:
+    Standard output (render_verify.py report format)
+    If --report <path> is given, the same content is also saved as an md file
 
-exit code:
-    0 = FAIL 없음 (WARN 비차단)
-    1 = FAIL 1건 이상
-    2 = I/O 오류
+Exit code:
+    0 = no FAIL (WARN is non-blocking)
+    1 = 1+ FAIL
+    2 = I/O error
 
-사용법:
+Usage:
     python lint_publication_syntax.py --input X.md [--report report.md]
     python lint_publication_syntax.py --hub-root <Hub> [--product <name>]
-        (--product 생략 시 PROJECTS/* 전체)
+        (if --product is omitted, checks all of PROJECTS/*)
 
-사양 SSoT:
-    orange-pm-plugin/skills/render/publication-syntax.md §10 검증 게이트
+Spec SSoT:
+    orange-pm-plugin/skills/render/publication-syntax.md §10 validation gate
 """
 from __future__ import annotations
 
@@ -53,16 +53,16 @@ for _s in (sys.stdout, sys.stderr):
     except Exception:
         pass
 
-# ── 규칙 메타 ──────────────────────────────────────────────────────────────
+# ── Rule metadata ──────────────────────────────────────────────────────────
 
 RULES: dict[str, dict[str, str]] = {
-    "L1": {"level": "FAIL", "desc": "Fenced div 클래스가 허용 목록"},
-    "L2": {"level": "FAIL", "desc": "Panel section 속성 누락"},
-    "L3": {"level": "FAIL", "desc": "Panel style 값이 허용 매핑"},
-    "L4": {"level": "WARN", "desc": "알 수 없는 코드 언어"},
-    "L5": {"level": "WARN", "desc": "미해결 placeholder"},
-    "L6": {"level": "FAIL", "desc": "색상 span nested"},
-    "L7": {"level": "FAIL", "desc": "표 컬럼 수 불일치"},
+    "L1": {"level": "FAIL", "desc": "fenced div class in allowed list"},
+    "L2": {"level": "FAIL", "desc": "panel section attribute missing"},
+    "L3": {"level": "FAIL", "desc": "panel style value in allowed mapping"},
+    "L4": {"level": "WARN", "desc": "unknown code language"},
+    "L5": {"level": "WARN", "desc": "unresolved placeholder"},
+    "L6": {"level": "FAIL", "desc": "nested color span"},
+    "L7": {"level": "FAIL", "desc": "table column count mismatch"},
 }
 
 ALLOWED_DIV_CLASSES = {"panel", "info", "warning", "note", "tip", "expand"}
@@ -84,46 +84,46 @@ ALLOWED_CODE_LANGS = {
     "dockerfile", "makefile",
 }
 ALLOWED_PLACEHOLDERS = {
-    # 발행 시 치환되는 매크로 placeholder
+    # macro placeholders substituted at publish time
     "DATE", "PRODUCT_NAME", "DOC_ID", "VERSION", "WO_ID",
     "LAST_UPDATED", "AUTHOR", "TYPE", "LAYER",
-    # 자동 매크로 명령형 placeholder
+    # auto-macro imperative placeholder
     "toc",
 }
-# {{change_history 3}} 처럼 인자 동반 매크로 prefix
+# macro prefix taking an argument, e.g. {{change_history 3}}
 ALLOWED_PLACEHOLDER_PREFIXES = ("change_history",)
 
 
-# ── 패턴 정의 ──────────────────────────────────────────────────────────────
+# ── Pattern definitions ────────────────────────────────────────────────────
 
-# Fenced div 시작: ::: {.class attr="..." ...}
-# 닫는 div 는 ::: 단독 줄
+# Fenced div open: ::: {.class attr="..." ...}
+# Closing div is a standalone ::: line
 RE_DIV_OPEN = re.compile(r'^:::\s*\{([^}]*)\}\s*$')
 RE_DIV_CLOSE = re.compile(r'^:::\s*$')
-# attribute 파싱: .class 또는 key="value"
+# attribute parsing: .class or key="value"
 RE_DIV_CLASS = re.compile(r'\.([A-Za-z_][\w-]*)')
 RE_DIV_ATTR = re.compile(r'([A-Za-z_][\w-]*)\s*=\s*"([^"]*)"')
 
-# 코드 펜스: ``` 또는 ~~~ + (선택) 언어
+# code fence: ``` or ~~~ + (optional) language
 RE_CODE_FENCE = re.compile(r'^(\s*)(`{3,}|~{3,})\s*([^\s`{]*)')
 
 # Placeholder {{...}}
 RE_PLACEHOLDER = re.compile(r'\{\{\s*([A-Za-z_][\w]*)(?:\s+[^}]*)?\s*\}\}')
 
-# 색상 span — Pandoc bracketed_spans: [text]{.class}
-# nested 탐지: [text [inner]{.color-X} more]{.color-Y}
-# 이를 위해 색상 span 안에 또 다른 색상 span 이 있는지를 검사
+# Color span — Pandoc bracketed_spans: [text]{.class}
+# nested detection: [text [inner]{.color-X} more]{.color-Y}
+# checks whether another color span exists inside a color span
 RE_COLOR_SPAN = re.compile(
     r'\[([^\[\]]*(?:\[[^\[\]]*\][^\[\]]*)*)\]\{\.color-[A-Za-z0-9_-]+\}'
 )
 RE_INNER_COLOR_SPAN = re.compile(r'\[[^\[\]]+\]\{\.color-[A-Za-z0-9_-]+\}')
 
-# 표 라인: 셀 구분자 | 가 2개 이상 (예: | a | b |)
-# 헤더 다음에 separator 행 (|---|---|) 가 있어야 표
+# table line: cell separator | appears 2+ times (e.g. | a | b |)
+# a separator row (|---|---|) must follow the header to count as a table
 RE_TABLE_SEP = re.compile(r'^\s*\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?\s*$')
 
 
-# ── 데이터 구조 ────────────────────────────────────────────────────────────
+# ── Data structures ────────────────────────────────────────────────────────
 
 @dataclass
 class Finding:
@@ -135,12 +135,12 @@ class Finding:
     snippet: str = ""
 
 
-# ── 헬퍼: 코드블록 영역 마스킹 ────────────────────────────────────────────
+# ── Helper: mask code block regions ────────────────────────────────────────
 
 def _scan_code_fence_regions(lines: list[str]) -> list[tuple[int, int, str]]:
-    """코드 펜스로 둘러싸인 영역 [start_idx, end_idx], 언어 fence 반환.
+    """Return regions [start_idx, end_idx] enclosed by code fences, with language fence.
 
-    start_idx / end_idx 는 0-based, 둘 다 포함 (펜스 라인 본인 포함).
+    start_idx / end_idx are 0-based and both inclusive (fence lines themselves included).
     """
     regions: list[tuple[int, int, str]] = []
     i = 0
@@ -154,7 +154,7 @@ def _scan_code_fence_regions(lines: list[str]) -> list[tuple[int, int, str]]:
         lang = m.group(3) or ""
         start = i
         i += 1
-        # 같은 종류·같은 길이 이상의 펜스 만날 때까지
+        # until a fence of the same kind and length or longer is found
         while i < n:
             m2 = re.match(rf'^\s*{re.escape(fence[0])}{{{len(fence)},}}\s*$', lines[i])
             if m2:
@@ -173,11 +173,11 @@ def _line_in_regions(idx: int, regions: list[tuple[int, int, str]]) -> bool:
     return False
 
 
-# ── 규칙 함수 ──────────────────────────────────────────────────────────────
+# ── Rule functions ─────────────────────────────────────────────────────────
 
 def check_l1_l2_l3(text: str, path: Path) -> list[Finding]:
-    """[L1] fenced div 클래스 허용 목록 / [L2] panel section 필수 /
-    [L3] panel style 허용 매핑."""
+    """[L1] fenced div class allowed list / [L2] panel section required /
+    [L3] panel style allowed mapping."""
     findings: list[Finding] = []
     lines = text.splitlines()
     code_regions = _scan_code_fence_regions(lines)
@@ -193,11 +193,11 @@ def check_l1_l2_l3(text: str, path: Path) -> list[Finding]:
         attrs = dict(RE_DIV_ATTR.findall(inner))
         ln = idx + 1
 
-        # L1: 허용 클래스 검증
+        # L1: validate allowed class
         if not classes:
             findings.append(Finding(
                 path=path, line=ln, rule="L1", level="FAIL",
-                message="fenced div 에 클래스 없음 (`::: {.panel ...}` 형식 필요)",
+                message="fenced div has no class (must use `::: {.panel ...}` format)",
                 snippet=raw.strip(),
             ))
             continue
@@ -205,28 +205,28 @@ def check_l1_l2_l3(text: str, path: Path) -> list[Finding]:
         if first_cls not in ALLOWED_DIV_CLASSES:
             findings.append(Finding(
                 path=path, line=ln, rule="L1", level="FAIL",
-                message=f"허용되지 않은 fenced div 클래스: .{first_cls} "
-                        f"(허용: {sorted(ALLOWED_DIV_CLASSES)})",
+                message=f"disallowed fenced div class: .{first_cls} "
+                        f"(allowed: {sorted(ALLOWED_DIV_CLASSES)})",
                 snippet=raw.strip(),
             ))
             continue
 
-        # L2: panel 은 section 필수
+        # L2: panel requires section
         if first_cls == "panel" and "section" not in attrs:
             findings.append(Finding(
                 path=path, line=ln, rule="L2", level="FAIL",
-                message="panel 블록에 section=\"...\" 속성 누락",
+                message="panel block missing section=\"...\" attribute",
                 snippet=raw.strip(),
             ))
 
-        # L3: panel style 허용 매핑
+        # L3: panel style allowed mapping
         if first_cls == "panel" and "style" in attrs:
             sty = attrs["style"]
             if sty not in ALLOWED_PANEL_STYLES:
                 findings.append(Finding(
                     path=path, line=ln, rule="L3", level="FAIL",
-                    message=f"panel style 값 허용 안 됨: {sty!r} "
-                            f"(허용: {sorted(ALLOWED_PANEL_STYLES)})",
+                    message=f"disallowed panel style value: {sty!r} "
+                            f"(allowed: {sorted(ALLOWED_PANEL_STYLES)})",
                     snippet=raw.strip(),
                 ))
 
@@ -234,7 +234,7 @@ def check_l1_l2_l3(text: str, path: Path) -> list[Finding]:
 
 
 def check_l4(text: str, path: Path) -> list[Finding]:
-    """[L4] 코드블록 언어 fence 가 알려진 언어 (지정된 경우)."""
+    """[L4] code block language fence is a known language (when specified)."""
     findings: list[Finding] = []
     lines = text.splitlines()
     regions = _scan_code_fence_regions(lines)
@@ -244,15 +244,15 @@ def check_l4(text: str, path: Path) -> list[Finding]:
         if lang.lower() not in ALLOWED_CODE_LANGS:
             findings.append(Finding(
                 path=path, line=start + 1, rule="L4", level="WARN",
-                message=f"알 수 없는 코드 언어 fence: {lang!r} "
-                        f"(허용 목록에 없음 — 정말 의도된 값인지 확인)",
+                message=f"unknown code language fence: {lang!r} "
+                        f"(not in allowed list — confirm this is intentional)",
                 snippet=lines[start].strip(),
             ))
     return findings
 
 
 def check_l5(text: str, path: Path) -> list[Finding]:
-    """[L5] 자동 매크로 `{{...}}` 미해결 placeholder."""
+    """[L5] unresolved auto-macro `{{...}}` placeholder."""
     findings: list[Finding] = []
     lines = text.splitlines()
     regions = _scan_code_fence_regions(lines)
@@ -267,15 +267,15 @@ def check_l5(text: str, path: Path) -> list[Finding]:
                 continue
             findings.append(Finding(
                 path=path, line=idx + 1, rule="L5", level="WARN",
-                message=f"미해결 placeholder: {{{{{name}}}}} "
-                        f"(허용 목록 외 — 치환 누락 가능성)",
+                message=f"unresolved placeholder: {{{{{name}}}}} "
+                        f"(not in allowed list — substitution may be missing)",
                 snippet=raw.strip(),
             ))
     return findings
 
 
 def check_l6(text: str, path: Path) -> list[Finding]:
-    """[L6] 색상 span nested 금지 (Phase 3 예약)."""
+    """[L6] nested color spans forbidden (reserved for Phase 3)."""
     findings: list[Finding] = []
     lines = text.splitlines()
     regions = _scan_code_fence_regions(lines)
@@ -287,7 +287,7 @@ def check_l6(text: str, path: Path) -> list[Finding]:
             if RE_INNER_COLOR_SPAN.search(inner_text):
                 findings.append(Finding(
                     path=path, line=idx + 1, rule="L6", level="FAIL",
-                    message="색상 span 중첩 발견 — nested 금지 (Phase 3 사양)",
+                    message="nested color span found — nesting forbidden (Phase 3 spec)",
                     snippet=raw.strip(),
                 ))
                 break
@@ -295,7 +295,7 @@ def check_l6(text: str, path: Path) -> list[Finding]:
 
 
 def check_l7(text: str, path: Path) -> list[Finding]:
-    """[L7] 표 컬럼 수 일관성."""
+    """[L7] table column count consistency."""
     findings: list[Finding] = []
     lines = text.splitlines()
     regions = _scan_code_fence_regions(lines)
@@ -318,11 +318,11 @@ def check_l7(text: str, path: Path) -> list[Finding]:
         if sep_cols != header_cols:
             findings.append(Finding(
                 path=path, line=i + 2, rule="L7", level="FAIL",
-                message=f"표 separator 행 컬럼 수 불일치 — "
-                        f"헤더: {header_cols}, separator: {sep_cols}",
+                message=f"table separator row column count mismatch — "
+                        f"header: {header_cols}, separator: {sep_cols}",
                 snippet=sep.strip(),
             ))
-        # 본문 행 검사
+        # check body rows
         j = i + 2
         row_num = 0
         while j < n:
@@ -336,8 +336,8 @@ def check_l7(text: str, path: Path) -> list[Finding]:
             if row_cols != header_cols:
                 findings.append(Finding(
                     path=path, line=j + 1, rule="L7", level="FAIL",
-                    message=f"표 컬럼 수 불일치 — 헤더: {header_cols} 컬럼, "
-                            f"본문 {row_num}번째 행: {row_cols} 컬럼",
+                    message=f"table column count mismatch — header: {header_cols} cols, "
+                            f"body row {row_num}: {row_cols} cols",
                     snippet=row.strip(),
                 ))
             j += 1
@@ -346,25 +346,25 @@ def check_l7(text: str, path: Path) -> list[Finding]:
 
 
 def _count_table_cols(line: str) -> int:
-    """파이프 기준 셀 개수 카운트. 양 끝 파이프는 무시."""
+    """Count cells based on pipes. Ignores leading/trailing pipes."""
     s = line.strip()
     if not s:
         return 0
-    # 양 끝 | 제거
+    # strip leading/trailing |
     if s.startswith("|"):
         s = s[1:]
     if s.endswith("|"):
         s = s[:-1]
     if not s:
         return 0
-    # escape 처리는 생략 (lint 수준에서는 단순 split 충분)
+    # escape handling omitted (simple split is sufficient at lint level)
     return s.count("|") + 1
 
 
-# ── 파일/제품 단위 ─────────────────────────────────────────────────────────
+# ── File/product level ──────────────────────────────────────────────────────
 
 def lint_file(path: Path) -> list[Finding]:
-    """단일 MD 파일 검사. (모든 규칙 실행)"""
+    """Check a single MD file (runs all rules)."""
     try:
         text = path.read_text(encoding="utf-8", errors="replace")
     except OSError as e:
@@ -376,16 +376,16 @@ def lint_file(path: Path) -> list[Finding]:
     findings += check_l5(text, path)
     findings += check_l6(text, path)
     findings += check_l7(text, path)
-    # 라인 → 규칙 순으로 정렬
+    # sort by line, then by rule
     findings.sort(key=lambda f: (f.line, f.rule))
     return findings
 
 
 def lint_product(hub_root: Path, product: str) -> dict:
-    """제품 단위 lint. 결과: {path: [Finding]} 사전."""
+    """Lint at the product level. Result: {path: [Finding]} dict."""
     proj_root = hub_root / "PROJECTS" / product
     if not proj_root.is_dir():
-        raise FileNotFoundError(f"제품 디렉터리 없음: {proj_root}")
+        raise FileNotFoundError(f"product directory not found: {proj_root}")
     md_files: list[Path] = []
     for sub in ("drafts", "reports/render", "reports"):
         d = proj_root / sub
@@ -397,13 +397,13 @@ def lint_product(hub_root: Path, product: str) -> dict:
     return results
 
 
-# ── 보고 출력 ──────────────────────────────────────────────────────────────
+# ── Report output ──────────────────────────────────────────────────────────
 
 def format_report(
     results: dict[Path, list[Finding]],
     base_dir: Path | None = None,
 ) -> str:
-    """render_verify.py 패턴의 텍스트 보고 생성."""
+    """Generate a text report in the render_verify.py pattern."""
     all_findings: list[Finding] = []
     for fs in results.values():
         all_findings += fs
@@ -414,21 +414,21 @@ def format_report(
     n_warn = sum(1 for f in all_findings if f.level == "WARN")
 
     lines: list[str] = []
-    lines.append("Publication Syntax Lint 결과")
+    lines.append("Publication Syntax Lint Results")
     lines.append("============================")
     lines.append("")
-    lines.append(f"검사 파일: {n_files}개")
-    lines.append(f"PASS: {n_pass}개 파일")
-    lines.append(f"FAIL: {n_fail}개 항목")
-    lines.append(f"WARN: {n_warn}개 항목")
+    lines.append(f"Files checked: {n_files}")
+    lines.append(f"PASS: {n_pass} files")
+    lines.append(f"FAIL: {n_fail} items")
+    lines.append(f"WARN: {n_warn} items")
     lines.append("")
 
     if not all_findings:
-        lines.append("모든 검증 통과")
+        lines.append("All checks passed")
         lines.append("")
         return "\n".join(lines)
 
-    # 규칙별 그룹 (FAIL 먼저, 그다음 WARN)
+    # group by rule (FAIL first, then WARN)
     by_rule: dict[str, list[Finding]] = {}
     for f in all_findings:
         by_rule.setdefault(f.rule, []).append(f)
@@ -466,16 +466,16 @@ def format_report_md(
     results: dict[Path, list[Finding]],
     base_dir: Path | None = None,
 ) -> str:
-    """--report 용 markdown 보고."""
+    """Markdown report for --report."""
     header = [
         "# publication-lint report",
         "",
-        f"> 생성: {datetime.now().isoformat(timespec='seconds')}"
-        f" · lint_publication_syntax.py 자동 생성 (수정 금지)",
+        f"> Generated: {datetime.now().isoformat(timespec='seconds')}"
+        f" · auto-generated by lint_publication_syntax.py (do not edit)",
         "",
     ]
     body = format_report(results, base_dir=base_dir)
-    # 본문을 코드 블록으로 감싸 정렬 보존
+    # wrap the body in a code block to preserve alignment
     return "\n".join(header) + "```\n" + body + "\n```\n"
 
 
@@ -484,17 +484,17 @@ def format_report_md(
 def main() -> int:
     ap = argparse.ArgumentParser(description="Publication Syntax Lint (publication-lint)")
     ap.add_argument("--input", type=Path, default=None,
-                    help="단일 MD 파일 검사")
+                    help="check a single MD file")
     ap.add_argument("--hub-root", type=Path, default=None,
-                    help="Planning-Agent-Hub 루트 (--product 와 함께)")
+                    help="Planning-Agent-Hub root (used with --product)")
     ap.add_argument("--product", default=None,
-                    help="PROJECTS/<product> 한 제품만 검사 (생략 시 전체)")
+                    help="check only PROJECTS/<product> (checks all if omitted)")
     ap.add_argument("--report", type=Path, default=None,
-                    help="md 보고 저장 경로")
+                    help="path to save the md report")
     args = ap.parse_args()
 
     if not args.input and not args.hub_root:
-        sys.stderr.write("[lint] --input 또는 --hub-root 필요\n")
+        sys.stderr.write("[lint] --input or --hub-root required\n")
         return 2
 
     results: dict[Path, list[Finding]] = {}
@@ -503,18 +503,18 @@ def main() -> int:
     try:
         if args.input:
             if not args.input.is_file():
-                sys.stderr.write(f"[lint] 파일 없음: {args.input}\n")
+                sys.stderr.write(f"[lint] file not found: {args.input}\n")
                 return 2
             results[args.input] = lint_file(args.input)
         else:
             hub = args.hub_root
             if not hub.is_dir():
-                sys.stderr.write(f"[lint] hub-root 없음: {hub}\n")
+                sys.stderr.write(f"[lint] hub-root not found: {hub}\n")
                 return 2
             base_dir = hub
             projects_root = hub / "PROJECTS"
             if not projects_root.is_dir():
-                sys.stderr.write(f"[lint] PROJECTS 없음: {projects_root}\n")
+                sys.stderr.write(f"[lint] PROJECTS not found: {projects_root}\n")
                 return 2
             if args.product:
                 results.update(lint_product(hub, args.product))
@@ -527,7 +527,7 @@ def main() -> int:
                     except FileNotFoundError:
                         continue
     except OSError as e:
-        sys.stderr.write(f"[lint] I/O 오류: {e}\n")
+        sys.stderr.write(f"[lint] I/O error: {e}\n")
         return 2
 
     report = format_report(results, base_dir=base_dir)
@@ -543,7 +543,7 @@ def main() -> int:
                 encoding="utf-8",
             )
         except OSError as e:
-            sys.stderr.write(f"[lint] report 저장 실패: {e}\n")
+            sys.stderr.write(f"[lint] failed to save report: {e}\n")
             return 2
 
     n_fail = sum(1 for fs in results.values() for f in fs if f.level == "FAIL")

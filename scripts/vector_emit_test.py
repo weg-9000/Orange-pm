@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""vector_emit 회귀 테스트 — Neo4j 벡터 인덱스 현황(가짜 세션) + graceful degrade."""
+"""vector_emit regression tests — Neo4j vector index status (fake session) + graceful degrade."""
 from __future__ import annotations
 
 import pytest
@@ -9,7 +9,7 @@ import vector_emit as ve
 
 
 class _Row(dict):
-    def __getitem__(self, k):  # neo4j Record 유사 접근
+    def __getitem__(self, k):  # neo4j-Record-like access
         return super().__getitem__(k)
 
 
@@ -43,7 +43,7 @@ def test_query_stats_aggregates():
 
 
 def test_query_stats_handles_missing_index():
-    # SHOW VECTOR INDEXES 가 비어도(구버전/권한) 청크 통계는 동작
+    # chunk stats still work even if SHOW VECTOR INDEXES is empty (old version/permissions)
     chunk_rows = [_Row(prefix="EX", layer="EX-B", docId="EX-B-001", service="", chunks=3)]
     stats = ve.query_stats(_FakeSession([], chunk_rows))
     assert stats["indexName"] is None and stats["totalChunks"] == 3

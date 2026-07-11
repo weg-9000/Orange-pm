@@ -1,22 +1,26 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""임의 마크다운 계층 자동 분류 A/B/C (멀티테넌트 SaaS Phase 2).
+"""Automatic markdown layer classifier A/B/C (multi-tenant SaaS Phase 2).
 
-목적:
-    위치(reference-docs/{A,B,C}) 기반 계층 결정의 대안. 외부 임포트 문서를
-    내용 휴리스틱으로 A(용어·정의) / B(공통 정책) / C(서비스 산출물) 로 분류한다.
-    결정적 코어 — 저신뢰(임계 미만)는 layer='unknown' 으로 PM 확인에 위임한다
-    (자동 강제 금지).
+Purpose:
+    An alternative to location-based (reference-docs/{A,B,C}) layer determination.
+    Classifies externally imported documents by content heuristics into
+    A (terminology/definitions) / B (common policy) / C (service deliverable).
+    Deterministic core — low confidence (below threshold) defers to layer='unknown'
+    for PM confirmation (no automatic forcing).
 
-분류 신호:
-    A: 용어/정의 밀도 (build_a_index.extract_terms 재사용) + "용어/정의/약어" 헤딩.
-    B: 정책 동사("해야 한다/금지/원칙/기준/정책/필수") 빈도 + 다(多)제품 참조.
-    C: 특정 제품/서비스명 + 공통정책 참조 패턴("[{ID} §X 참조]", "공통 정책").
+Classification signals:
+    A: term/definition density (reuses build_a_index.extract_terms) + a
+       "term/definition/abbreviation" heading.
+    B: policy-verb frequency ("must/prohibited/principle/standard/policy/required")
+       + multi-product reference diversity.
+    C: specific product/service name + common-policy reference pattern
+       ("[{ID} §X reference]", "common policy").
 
-사용법:
+Usage:
     python layer_classify.py --input X.md [--json]
 
-exit code: 0 성공 / 1 입력 없음 / 2 인자 오류
+exit code: 0 success / 1 no input / 2 argument error
 """
 from __future__ import annotations
 
@@ -28,23 +32,29 @@ from pathlib import Path
 
 from build_a_index import extract_terms
 
-# 정책 동사·표현 (B 신호)
+# Policy verbs/expressions (B signal)
+# NOTE: this is Korean-language pattern data used to classify real Korean
+# policy documents by content — not a translation gap. Keep as-is.
 _POLICY_TERMS = [
     "해야 한다", "하여야 한다", "금지", "원칙", "기준", "정책", "필수",
     "허용", "제한", "준수", "규정", "불가", "가능하다", "한다.",
 ]
-# 공통정책 참조 패턴 (C 신호) — [{ID} §X 참조] / 공통 정책 / 상속
+# Common-policy reference pattern (C signal) — [{ID} §X 참조] / 공통 정책 / inherits
+# NOTE: these regexes match Korean reference/heading phrasing found in real Hub
+# documents — functional Korean-language pattern data, not a translation gap.
 _REF_PATTERNS = [
     re.compile(r"\[[A-Za-z0-9]+-[ABC]-?\d*[^\]]*참조\]"),
     re.compile(r"공통\s*정책"),
     re.compile(r"inherits_from"),
     re.compile(r"§\s*\d"),
 ]
-# 계층 힌트 헤딩
+# Layer-hint headings
+# NOTE: matches Korean terminology-heading words alongside their English
+# equivalents — functional Korean-language pattern data, not a translation gap.
 _A_HEADINGS = re.compile(r"^#{1,6}\s*.*(용어|정의|약어|glossary|terminology)", re.I | re.M)
 _DOC_ID_TOKEN = re.compile(r"[A-Za-z0-9]+-[ABC]-\d+")
 
-CONFIDENCE_THRESHOLD = 0.34  # 최고 점수 비중이 이 미만이면 unknown
+CONFIDENCE_THRESHOLD = 0.34  # falls back to unknown if the top score's share is below this
 
 
 def _count(patterns_or_terms, text: str) -> int:
@@ -58,17 +68,17 @@ def _count(patterns_or_terms, text: str) -> int:
 
 
 def classify(text: str) -> dict:
-    """{layer, confidence, scores, signals} 반환."""
+    """Returns {layer, confidence, scores, signals}."""
     n_lines = max(text.count("\n") + 1, 1)
     terms = extract_terms(text, "x.md")
-    term_density = len(terms) / n_lines  # 줄당 정의 수
+    term_density = len(terms) / n_lines  # definitions per line
 
-    # A 점수: 용어 밀도 + 용어 헤딩
+    # A score: term density + term heading
     a_score = term_density * 8.0 + (2.0 if _A_HEADINGS.search(text) else 0.0)
-    # B 점수: 정책 동사 빈도 (줄당 정규화) + 다제품 참조 다양성
+    # B score: policy-verb frequency (normalized per line) + multi-product reference diversity
     policy_hits = _count(_POLICY_TERMS, text)
     b_score = (policy_hits / n_lines) * 6.0
-    # C 점수: 공통정책 참조 패턴 + 서비스 doc_id 토큰
+    # C score: common-policy reference pattern + service doc_id token
     ref_hits = _count(_REF_PATTERNS, text)
     c_score = (ref_hits / n_lines) * 6.0
 
@@ -78,9 +88,9 @@ def classify(text: str) -> dict:
     confidence = round(scores[best] / total, 4)
 
     signals = []
-    signals.append(f"용어 {len(terms)}개(밀도 {term_density:.3f})")
-    signals.append(f"정책표현 {policy_hits}회")
-    signals.append(f"공통참조 {ref_hits}회")
+    signals.append(f"{len(terms)} terms (density {term_density:.3f})")
+    signals.append(f"policy expressions x{policy_hits}")
+    signals.append(f"common references x{ref_hits}")
 
     layer = best if (scores[best] > 0 and confidence >= CONFIDENCE_THRESHOLD) else "unknown"
     return {
@@ -93,9 +103,9 @@ def classify(text: str) -> dict:
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description="임의 MD 계층 분류 A/B/C")
+    ap = argparse.ArgumentParser(description="Classify an arbitrary MD layer A/B/C")
     ap.add_argument("--input", required=True, type=Path)
-    ap.add_argument("--json", action="store_true", help="결과를 JSON 으로 출력")
+    ap.add_argument("--json", action="store_true", help="Print the result as JSON")
     args = ap.parse_args()
     if not args.input.is_file():
         sys.stderr.write(f"input not found: {args.input}\n")
@@ -104,7 +114,7 @@ def main() -> int:
     if args.json:
         print(json.dumps(result, ensure_ascii=False, indent=2))
     else:
-        tag = result["layer"] + ("(검토 필요)" if result["needs_review"] else "")
+        tag = result["layer"] + ("(needs review)" if result["needs_review"] else "")
         print(f"[layer_classify] {args.input.name} → {tag} "
               f"(conf={result['confidence']}, {', '.join(result['signals'])})")
     return 0

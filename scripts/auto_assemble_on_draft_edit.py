@@ -1,30 +1,30 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""PostToolUse hook — drafts/*.draft.md 편집 시 render_assemble 자동 실행.
+"""PostToolUse hook — automatically runs render_assemble when drafts/*.draft.md is edited.
 
-설계 의도:
-    render_assemble.py 는 결정적 master 인라인 단계 (LLM 토큰 0, 부작용 없음).
-    /write, /flow 등으로 draft 가 갱신될 때마다 PM 이 명시적으로 /render 를
-    호출하지 않아도 reports/render/{WO_ID}.complete.md 가 항상 최신 상태가
-    되도록 자동 트리거한다.
+Design intent:
+    render_assemble.py is a deterministic master-inline stage (0 LLM tokens, no
+    side effects). Every time /write, /flow, etc. update a draft, this hook
+    auto-triggers so that reports/render/{WO_ID}.complete.md always stays
+    current, without the PM having to explicitly call /render.
 
-    LLM publication 변환·Confluence push 는 절대 자동 실행하지 않는다.
-    이 hook 은 오직 stage 1 (assemble) 만 담당한다.
+    LLM publication conversion and Confluence push are never auto-run.
+    This hook only handles stage 1 (assemble).
 
-동작:
-    1. stdin 의 PostToolUse 페이로드를 읽는다.
-    2. cwd 가 Planning-Agent-Hub 가 아니면 dormant.
-    3. 직전 도구가 수정한 파일이 PROJECTS/*/drafts/*.draft.md 가 아니면 skip.
-    4. frontmatter status 가 empty 이면 skip (fanout shell 만 채워진 상태).
-    5. WO_ID 와 product 를 경로에서 추출.
-    6. render_assemble.py --hub-root . --product {p} --wo {WO_ID} 를 silent 실행.
-    7. 실패해도 차단하지 않는다 (PM 작업 흐름을 막지 않음). 오류만 stderr.
+Behavior:
+    1. Read the PostToolUse payload from stdin.
+    2. Dormant if cwd is not Planning-Agent-Hub.
+    3. Skip if the file the previous tool modified is not PROJECTS/*/drafts/*.draft.md.
+    4. Skip if frontmatter status is empty (fanout shell only, body not yet written).
+    5. Extract WO_ID and product from the path.
+    6. Silently run render_assemble.py --hub-root . --product {p} --wo {WO_ID}.
+    7. Never blocks on failure (does not interrupt the PM's workflow). Errors go to stderr only.
 
-stdout 출력:
-    - 성공·skip: 없음 (silent)
-    - 변경 있음: 한 줄 안내 ("[auto-assemble] {WO_ID} updated")
+stdout output:
+    - success/skip: none (silent)
+    - on change: a one-line notice ("[auto-assemble] {WO_ID} updated")
 
-비-Hub 세션 dormant 패턴은 _hook_guard.py 와 동일.
+The non-Hub-session dormant pattern matches _hook_guard.py.
 """
 from __future__ import annotations
 
@@ -44,10 +44,10 @@ HUB_MARKERS = (
     Path("CONTEXT") / "_session-bootstrap.md",
 )
 
-# wo 그룹 = draft 파일 stem 전체 (확장자 .draft.md 제외). render_assemble.py 는
-# --wo 를 `drafts/{wo}.draft.md` 로 해석하고 출력도 `{stem}.complete.md` 이므로
-# (render_assemble.py:251,264), 어떤 명명이든 stem 그대로 넘기면 정합한다.
-# legacy WO-NN, Track A cluster_{id}, dossier G2-x-NN 등 모두 매칭 (H1 — 감사 2026-06-08).
+# wo group = the full draft filename stem (excluding the .draft.md extension). render_assemble.py
+# interprets --wo as `drafts/{wo}.draft.md` and also outputs `{stem}.complete.md`
+# (render_assemble.py:251,264), so passing the stem as-is stays consistent regardless of naming.
+# Matches legacy WO-NN, Track A cluster_{id}, dossier G2-x-NN, etc. (H1 — audited 2026-06-08).
 DRAFT_PATH_RE = re.compile(
     r"PROJECTS[/\\](?P<product>[^/\\]+)[/\\]drafts[/\\](?P<wo>[^/\\]+)\.draft\.md$"
 )
@@ -73,7 +73,7 @@ def _read_payload() -> dict:
 
 
 def _frontmatter_status(path: Path) -> str:
-    """draft 의 status 필드 (없으면 빈 문자열)."""
+    """The draft's status field (empty string if absent)."""
     try:
         with path.open(encoding="utf-8") as fh:
             in_fm = False
@@ -96,7 +96,7 @@ def _frontmatter_status(path: Path) -> str:
 
 
 def _extract_draft_target(payload: dict, cwd: Path) -> tuple[str, str, Path] | None:
-    """페이로드에서 draft 편집 대상을 추출. 해당 안 되면 None."""
+    """Extract the draft-edit target from the payload. Returns None if not applicable."""
     tool_name = payload.get("tool_name", "")
     if tool_name not in ("Write", "Edit", "MultiEdit"):
         return None
@@ -109,7 +109,7 @@ def _extract_draft_target(payload: dict, cwd: Path) -> tuple[str, str, Path] | N
         return None
     product = m.group("product")
     wo_id = m.group("wo")
-    # 절대 경로 확보
+    # resolve absolute path
     if os.path.isabs(file_path):
         abs_path = Path(file_path)
     else:
@@ -129,30 +129,31 @@ def main() -> int:
         return 0
     product, wo_id, abs_path = target
 
-    # status: empty 면 skip (fanout 직후, 본문 미작성)
+    # skip if status: empty (right after fanout, body not yet written)
     if _frontmatter_status(abs_path) == "empty":
         return 0
 
     if not ASSEMBLE_SCRIPT.is_file():
-        # 스크립트 미설치 — silent fail
+        # script not installed — silent fail
         return 0
 
-    # HIGH #7: per-WO 락. 동일 WO 에 대한 parallel hook 호출 시 두 번째 이후는 skip
-    # (이미 진행 중인 subprocess 가 종료될 때 최신 draft 상태를 읽음 — 멱등).
-    # 타임아웃은 환경변수로 오버라이드 가능 (대형 WO 또는 master 인라인 다수일 때).
+    # HIGH #7: per-WO lock. When parallel hook calls target the same WO, the second
+    # and later calls are skipped (the already-running subprocess reads the latest
+    # draft state on exit — idempotent).
+    # Timeout can be overridden via env var (for large WOs or many master inlines).
     lock_dir = abs_path.parent.parent / ".auto-assemble-locks"
     lock_dir.mkdir(parents=True, exist_ok=True)
     lock_path = lock_dir / f"{wo_id}.lock"
 
     try:
-        # O_EXCL 락 — 동일 WO 의 in-flight 호출이 있으면 즉시 skip
+        # O_EXCL lock — skip immediately if an in-flight call for the same WO exists
         fd = os.open(str(lock_path), os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o644)
     except FileExistsError:
-        # stale 검사: 5분 초과 시 강제 인수
+        # stale check: force takeover if older than 5 minutes
         try:
             age = abs_path.stat().st_mtime - lock_path.stat().st_mtime
             if age < 300:
-                # 살아 있는 hook 이 곧 결과를 쓸 것 — skip
+                # a live hook is about to write the result — skip
                 return 0
         except OSError:
             return 0
@@ -191,9 +192,9 @@ def main() -> int:
         stderr_text = result.stderr or ""
     except subprocess.TimeoutExpired:
         sys.stderr.write(
-            f"[auto-assemble] TIMEOUT ({timeout_s}s): {wo_id} — complete.md 갱신 실패. "
-            f"ORANGE_PM_AUTO_ASSEMBLE_TIMEOUT 환경변수로 조정 가능. "
-            f"수동 실행 권고: python {ASSEMBLE_SCRIPT.name} --hub-root . --product {product} --wo {wo_id}\n"
+            f"[auto-assemble] TIMEOUT ({timeout_s}s): {wo_id} — complete.md update failed. "
+            f"Adjustable via the ORANGE_PM_AUTO_ASSEMBLE_TIMEOUT env var. "
+            f"Manual run recommended: python {ASSEMBLE_SCRIPT.name} --hub-root . --product {product} --wo {wo_id}\n"
         )
         rc = -1
         stderr_text = "timeout"
@@ -208,13 +209,13 @@ def main() -> int:
             pass
 
     if rc == 0:
-        sys.stdout.write(f"[auto-assemble] {wo_id} → reports/render/{wo_id}.complete.md 갱신됨\n")
+        sys.stdout.write(f"[auto-assemble] {wo_id} → reports/render/{wo_id}.complete.md updated\n")
     elif rc != -1:
-        # 일반 실패: PM 에게 stderr 마지막 줄과 수동 재실행 명령 모두 표시
+        # generic failure: show the PM both the last stderr line and the manual re-run command
         stderr_tail = (stderr_text).strip().splitlines()[-1:] or ["unknown"]
         sys.stderr.write(
             f"[auto-assemble] FAIL {wo_id}: {stderr_tail[0]}\n"
-            f"  수동 재실행: python orange-pm-plugin/scripts/render_assemble.py "
+            f"  manual re-run: python orange-pm-plugin/scripts/render_assemble.py "
             f"--hub-root . --product {product} --wo {wo_id}\n"
         )
     return 0

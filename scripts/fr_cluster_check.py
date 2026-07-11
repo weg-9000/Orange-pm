@@ -1,27 +1,30 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""FR ↔ cluster 추적성 게이트 (P4, docs/fr-cluster-alignment.md).
+"""FR <-> cluster traceability gate (P4, docs/fr-cluster-alignment.md).
 
-목적:
-    요구사항(FR) · 군집(cluster_map.fr_index) · cluster draft(fr_refs) 3자가
-    하나의 키(capability/cluster_id)로 일관되게 관통되는지(DEC-A/DEC-D) 결정적으로
-    검증한다. 씨앗 누락(orphan) · 미매핑(unmapped) 은 WARN(비차단)으로, fr_index ↔
-    cluster draft fr_refs 불일치(mismatch) 는 BLOCK(차단)으로 적발한다.
-    순수 스크립트(모델 미관여) — requirements·cluster_map·draft 를 수정하지 않는다.
+Purpose:
+    Deterministically verify that requirements (FR), clusters
+    (cluster_map.fr_index), and cluster drafts (fr_refs) stay consistent
+    through a single key (capability/cluster_id) (DEC-A/DEC-D). Missing
+    seeds (orphan) and unmapped FRs (unmapped) are flagged as WARN
+    (non-blocking); a mismatch between fr_index and cluster draft fr_refs is
+    flagged as BLOCK (blocking).
+    Pure script (no model involvement) — never modifies requirements,
+    cluster_map, or drafts.
 
-판정 (gates/fr-cluster-trace-gate.md SSoT):
-    orphan FR  : FR 이 requirements 에 있으나 capability 씨앗도 없고 fr_index 에도
-                 없음 → WARN
-    unmapped FR: FR 이 requirements 에 있으나 fr_index 에 없음(씨앗만 있음) → WARN
-    mismatch   : (a) fr_index 가 FR→cluster X 로 매핑하는데 X 의 cluster draft 가
-                 그 FR 을 fr_refs 에 안 실음, 또는 (b) 어떤 cluster draft 가
-                 fr_refs 에 실은 FR 이 fr_index 에서 다른 cluster 로 매핑되거나
-                 어디에도 매핑 안 됨 → BLOCK
+Verdicts (gates/fr-cluster-trace-gate.md SSoT):
+    orphan FR  : FR is in requirements but has neither a capability seed nor
+                 an fr_index entry -> WARN
+    unmapped FR: FR is in requirements but not in fr_index (seed only) -> WARN
+    mismatch   : (a) fr_index maps FR->cluster X but X's cluster draft does
+                 not carry that FR in fr_refs, or (b) a cluster draft carries
+                 an FR in fr_refs that fr_index maps to a different cluster,
+                 or to nothing at all -> BLOCK
 
-종료 코드:
-    0  clean (WARN-only 포함 — WARN 은 차단하지 않음)
-    2  BLOCK 1건 이상
-    1  입력 오류(파일 없음 등) — graceful, 절대 예외로 죽지 않음
+Exit codes:
+    0  clean (including WARN-only — WARN never blocks)
+    2  one or more BLOCKs
+    1  input error (file missing, etc.) — graceful, never crashes on an exception
 
 CLI:
     python fr_cluster_check.py \
@@ -32,17 +35,19 @@ CLI:
         [--report PROJECTS/{p}/reports/fr-cluster-trace-queue.md] \
         [--queue  PROJECTS/{p}/reports/fr-cluster-queue.md]
 
-큐 출력(--queue):
-    viz status 어댑터(ssot_emit.py)가 집계하는 `reports/fr-cluster-queue.md` 를
-    쓴다. 보고서(--report)와 동일한 render_report 양식이며, 헤더의
-    `> **BLOCK: N · WARN: M**` 라인을 ssot_emit 이 BLOCK/WARN 등가로 흡수한다
-    (drift/policy-impact/mtg/bdd-coverage 큐와 동일 메커니즘).
+Queue output (--queue):
+    Writes `reports/fr-cluster-queue.md`, aggregated by the viz status
+    adapter (ssot_emit.py). Uses the same render_report layout as the
+    report (--report); ssot_emit absorbs the header line
+    `> **BLOCK: N · WARN: M**` as BLOCK/WARN equivalents (the same
+    mechanism as the drift/policy-impact/mtg/bdd-coverage queues).
 
-씨앗 출처:
-    capability 씨앗은 requirements.md 인라인 HTML-주석 태그가 아니라 **사이드카**
-    `requirements.seeds.yml`(requirements.md 와 같은 디렉터리) 에서 읽는다.
-    top-level map `FR-ID → {capability, cluster_hint?, lock?}`. FR 이 씨앗을
-    가진다 ⇔ seeds 에 키로 존재하고 `capability` 가 비어있지 않다.
+Seed source:
+    capability seeds are read from a **sidecar** `requirements.seeds.yml`
+    (same directory as requirements.md), not from inline HTML-comment tags
+    in requirements.md. Top-level map `FR-ID -> {capability, cluster_hint?,
+    lock?}`. An FR has a seed iff it exists as a key in seeds and
+    `capability` is non-empty.
 """
 from __future__ import annotations
 
@@ -57,27 +62,28 @@ from typing import Any
 
 try:
     import yaml  # type: ignore
-except Exception:  # pragma: no cover - yaml 부재 시 graceful
+except Exception:  # pragma: no cover - graceful when yaml is unavailable
     yaml = None  # type: ignore
 
-# FR ID: FR-[섹션][순번][-하위] (cluster_seed_backfill.py 와 동일 규약)
-# requirements 테이블 행의 선두 셀에 등장하는 FR ID 만 그 행의 주체로 본다.
+# FR ID: FR-[section][seq][-sub] (same convention as cluster_seed_backfill.py)
+# Only an FR ID appearing in the leading cell of a requirements table row is
+# treated as that row's subject.
 _ROW_FR_RE = re.compile(r"^\s*\|\s*\*{0,2}(FR-\d+(?:-\d+)*)\*{0,2}\s*\|")
 
-# cluster draft frontmatter 의 fr_refs YAML 리스트 안에 등장하는 FR ID
+# FR ID appearing inside a cluster draft frontmatter's fr_refs YAML list
 _FR_ID_RE = re.compile(r"FR-\d+(?:-\d+)*")
 
 
-# ── 순수 파서 헬퍼 (I/O 없음) ─────────────────────────────────────────────
+# ── Pure parser helpers (no I/O) ──────────────────────────────────────────
 def parse_fr_ids(md_text: str) -> list[str]:
-    """requirements 본문에서 FR 행(테이블 선두 셀)을 파싱해 FR universe 를 반환.
+    """Parse FR rows (table leading cell) from the requirements body and return the FR universe.
 
-    씨앗 정보는 더 이상 여기서 추론하지 않는다(사이드카 yml 로 이동).
+    Seed information is no longer inferred here (moved to the sidecar yml).
 
     Returns:
-        [FR-ID, ...] — 등장 순서 보존, 중복 제거.
+        [FR-ID, ...] — order of appearance preserved, deduplicated.
 
-    예외를 던지지 않는다(graceful). 비문자열 입력은 빈 리스트로 처리."""
+    Never raises (graceful). Non-string input is treated as an empty list."""
     out: list[str] = []
     if not isinstance(md_text, str):
         return out
@@ -94,10 +100,11 @@ def parse_fr_ids(md_text: str) -> list[str]:
 
 
 def read_seeds(seeds_path: Path) -> dict[str, dict]:
-    """사이드카 requirements.seeds.yml 을 읽어 {FR-ID: {capability, ...}} 반환.
+    """Read the sidecar requirements.seeds.yml and return {FR-ID: {capability, ...}}.
 
-    top-level map 만 받아들이며, 값이 dict 가 아니면 건너뛴다. 파일 부재·손상·
-    yaml 부재 등 어떤 경우에도 예외를 던지지 않고 빈 dict 로 graceful 처리."""
+    Only a top-level map is accepted; values that aren't dicts are skipped.
+    Never raises, regardless of a missing file, corrupt content, or missing
+    yaml — always falls back gracefully to an empty dict."""
     if yaml is None:
         return {}
     try:
@@ -116,7 +123,7 @@ def read_seeds(seeds_path: Path) -> dict[str, dict]:
 
 
 def seeded_set(seeds: dict[str, dict]) -> set[str]:
-    """seeds dict → 씨앗을 가진 FR 집합. capability 가 truthy(비어있지 않음)여야 함."""
+    """seeds dict -> set of FRs that have a seed. capability must be truthy (non-empty)."""
     out: set[str] = set()
     if not isinstance(seeds, dict):
         return out
@@ -127,9 +134,10 @@ def seeded_set(seeds: dict[str, dict]) -> set[str]:
 
 
 def read_fr_index(cluster_map: Any) -> dict[str, dict]:
-    """cluster_map 에서 fr_index(FR→{capability,cluster_id}) 추출 (graceful).
+    """Extract fr_index (FR->{capability,cluster_id}) from cluster_map (graceful).
 
-    포맷이 어긋나면 빈 dict 를 반환(예외 금지 — cluster_seed_backfill 과 동일 정책)."""
+    Returns an empty dict on malformed input (no exceptions — same policy as
+    cluster_seed_backfill)."""
     if not isinstance(cluster_map, dict):
         return {}
     raw = cluster_map.get("fr_index")
@@ -143,14 +151,15 @@ def read_fr_index(cluster_map: Any) -> dict[str, dict]:
 
 
 def parse_cluster_fr_refs(draft_text: str) -> tuple[str | None, list[str]]:
-    """cluster draft 1개에서 (cluster_id, fr_refs) 추출 (graceful).
+    """Extract (cluster_id, fr_refs) from a single cluster draft (graceful).
 
-    cluster_id 는 frontmatter 의 `cluster_id:` 값(cluster 블록 또는 top-level)을 읽고,
-    fr_refs 는 `fr_refs:` 리스트 블록 안의 FR ID 들을 수집한다. 정규식 기반이라
-    YAML 라이브러리 의존이 없으며 어떤 입력이든 예외를 던지지 않는다.
+    cluster_id is read from the frontmatter's `cluster_id:` value (either in
+    the cluster block or at the top level); fr_refs collects the FR IDs
+    found inside the `fr_refs:` list block. Regex-based, so it has no YAML
+    library dependency and never raises on any input.
 
     Returns:
-        (cluster_id 또는 None, [FR-ID, ...])"""
+        (cluster_id or None, [FR-ID, ...])"""
     if not isinstance(draft_text, str):
         return None, []
 
@@ -171,36 +180,36 @@ def parse_cluster_fr_refs(draft_text: str) -> tuple[str | None, list[str]]:
             if re.match(r"^\s*fr_refs\s*:", line):
                 in_block = True
                 block_indent = len(line) - len(line.lstrip())
-                # 인라인 리스트 (fr_refs: ["FR-1", "FR-2"]) 도 흡수
+                # Also absorb an inline list (fr_refs: ["FR-1", "FR-2"])
                 inline = line.split(":", 1)[1]
                 fr_refs.extend(_FR_ID_RE.findall(inline))
             continue
-        # 블록 내부 — `- "FR-..."` 형태의 항목만 수집
+        # Inside the block — collect only `- "FR-..."`-style entries
         if stripped.startswith("- ") or stripped.startswith("-\t"):
             fr_refs.extend(_FR_ID_RE.findall(line))
             continue
-        # 들여쓰기가 fr_refs 키 수준 이하인 새 키를 만나면 블록 종료
+        # A new key indented at or below the fr_refs key level ends the block
         cur_indent = len(line) - len(line.lstrip())
         if stripped and cur_indent <= block_indent and ":" in stripped:
             in_block = False
             continue
-        # 빈 줄·주석은 블록 유지
+        # Blank lines/comments keep the block open
         if not stripped or stripped.startswith("#"):
             continue
-        # 그 외 들여쓴 비리스트 라인은 블록 종료로 간주
+        # Any other indented non-list line is treated as ending the block
         if cur_indent <= block_indent:
             in_block = False
 
-    # 중복 제거(순서 보존)
+    # Deduplicate (preserving order)
     seen: set[str] = set()
     uniq = [f for f in fr_refs if not (f in seen or seen.add(f))]
     return cluster_id, uniq
 
 
-# ── Finding 모델 + 순수 검사 로직 ─────────────────────────────────────────
+# ── Finding model + pure check logic ──────────────────────────────────────
 @dataclass(frozen=True)
 class Finding:
-    """추적성 위반 1건. level ∈ {BLOCK, WARN}."""
+    """A single traceability violation. level ∈ {BLOCK, WARN}."""
 
     level: str   # "BLOCK" | "WARN"
     fr: str
@@ -213,19 +222,22 @@ def check_traceability(
     fr_index: dict[str, dict],
     cluster_fr_refs: dict[str, list[str]],
 ) -> list[Finding]:
-    """FR ↔ cluster 추적성 검사 (순수 함수 — I/O 없음).
+    """FR <-> cluster traceability check (pure function — no I/O).
 
     Args:
-        fr_ids: [FR-ID, ...] — requirements 에서 파싱한 FR universe.
-        seeded: {FR-ID, ...} — 사이드카 seeds yml 에 capability 씨앗을 가진 FR 집합.
-        fr_index: {FR-ID: {capability, cluster_id}} — cluster_map 권위 매핑.
-        cluster_fr_refs: {cluster_id: [FR-ID, ...]} — cluster draft 들의 fr_refs.
+        fr_ids: [FR-ID, ...] — FR universe parsed from requirements.
+        seeded: {FR-ID, ...} — FRs that have a capability seed in the
+            sidecar seeds yml.
+        fr_index: {FR-ID: {capability, cluster_id}} — cluster_map's
+            authoritative mapping.
+        cluster_fr_refs: {cluster_id: [FR-ID, ...]} — fr_refs from cluster
+            drafts.
 
     Returns:
-        Finding 리스트 (정렬됨: level BLOCK 먼저, 그 다음 FR).
+        List of Findings (sorted: BLOCK level first, then FR).
 
-    판정(gates/fr-cluster-trace-gate.md):
-        orphan(WARN) / unmapped(WARN) / mismatch(BLOCK, 양방향)."""
+    Verdicts (gates/fr-cluster-trace-gate.md):
+        orphan(WARN) / unmapped(WARN) / mismatch(BLOCK, both directions)."""
     findings: list[Finding] = []
 
     fr_ids = fr_ids or []
@@ -233,30 +245,30 @@ def check_traceability(
     fr_index = fr_index or {}
     cluster_fr_refs = cluster_fr_refs or {}
 
-    # FR → 그 FR 을 fr_refs 에 실은 cluster_id 들 (역인덱스)
+    # FR -> the cluster_ids whose fr_refs carry that FR (reverse index)
     fr_to_draft_clusters: dict[str, list[str]] = {}
     for cid, refs in cluster_fr_refs.items():
         for fr in refs or []:
             fr_to_draft_clusters.setdefault(fr, []).append(cid)
 
-    # ── requirements FR 기준: orphan / unmapped ──────────────────────────
+    # ── Based on requirements FRs: orphan / unmapped ──────────────────────
     for fr in fr_ids:
         has_seed = fr in seeded
         in_index = fr in fr_index
         if not in_index and not has_seed:
             findings.append(Finding(
                 "WARN", fr,
-                "orphan — capability 씨앗 없음 + fr_index 미등록 "
-                "(cluster_identify/seed_backfill 미실행)",
+                "orphan — no capability seed + not registered in fr_index "
+                "(cluster_identify/seed_backfill not run)",
             ))
         elif not in_index:
             findings.append(Finding(
                 "WARN", fr,
-                "unmapped — capability 씨앗은 있으나 fr_index 미등록 "
-                "(cluster_identify 재실행 필요)",
+                "unmapped — has a capability seed but not registered in "
+                "fr_index (cluster_identify re-run needed)",
             ))
 
-    # ── 방향 (a): fr_index 매핑 ↔ cluster draft fr_refs 누락 → BLOCK ──────
+    # ── Direction (a): fr_index mapping <-> missing cluster draft fr_refs -> BLOCK
     for fr, info in fr_index.items():
         cid = str(info.get("cluster_id") or "").strip()
         if not cid:
@@ -264,35 +276,38 @@ def check_traceability(
         draft_clusters = fr_to_draft_clusters.get(fr, [])
         if cid not in draft_clusters:
             if cid not in cluster_fr_refs:
-                # 매핑된 cluster 의 draft 자체가 없으면 검사 대상에서 제외(부분 검증).
-                # draft 가 존재하는데 누락된 경우만 BLOCK 으로 본다.
+                # If the mapped cluster's draft doesn't even exist, exclude
+                # it from this check (partial validation). Only flag BLOCK
+                # when the draft exists but is missing the reference.
                 continue
             findings.append(Finding(
                 "BLOCK", fr,
-                f"mismatch — fr_index 는 {fr}→{cid} 인데 {cid} cluster draft 의 "
-                f"fr_refs 에 {fr} 가 없음 (draft fr_refs 보강 필요)",
+                f"mismatch — fr_index maps {fr}->{cid} but the {cid} cluster "
+                f"draft's fr_refs is missing {fr} (draft fr_refs needs updating)",
             ))
 
-    # ── 방향 (b): cluster draft fr_refs ↔ fr_index 불일치 → BLOCK ────────
+    # ── Direction (b): cluster draft fr_refs <-> fr_index mismatch -> BLOCK
     for cid, refs in cluster_fr_refs.items():
         for fr in refs or []:
             info = fr_index.get(fr)
             if info is None:
                 findings.append(Finding(
                     "BLOCK", fr,
-                    f"mismatch — {cid} cluster draft 가 fr_refs 에 {fr} 를 실었으나 "
-                    f"fr_index 에 {fr} 매핑이 없음 (draft 오참조 또는 cluster_identify 누락)",
+                    f"mismatch — {cid} cluster draft carries {fr} in fr_refs "
+                    f"but fr_index has no mapping for {fr} (draft misreference "
+                    f"or cluster_identify was skipped)",
                 ))
                 continue
             mapped = str(info.get("cluster_id") or "").strip()
             if mapped and mapped != cid:
                 findings.append(Finding(
                     "BLOCK", fr,
-                    f"mismatch — {cid} cluster draft 가 fr_refs 에 {fr} 를 실었으나 "
-                    f"fr_index 는 {fr}→{mapped} (다른 cluster) 로 매핑 (경계 충돌)",
+                    f"mismatch — {cid} cluster draft carries {fr} in fr_refs "
+                    f"but fr_index maps {fr}->{mapped} (a different cluster) "
+                    f"(boundary conflict)",
                 ))
 
-    # 결정성: BLOCK 먼저, 같은 level 내 FR·reason 정렬, 중복 제거
+    # Determinism: BLOCK first, sort by FR/reason within the same level, dedupe
     seen: set[tuple[str, str, str]] = set()
     uniq: list[Finding] = []
     for f in findings:
@@ -306,48 +321,49 @@ def check_traceability(
 
 
 def exit_code_for(findings: list[Finding]) -> int:
-    """판정 → 종료 코드. BLOCK 1건 이상이면 2, 아니면 0(WARN-only 포함)."""
+    """Verdicts -> exit code. 2 if at least one BLOCK, else 0 (including WARN-only)."""
     return 2 if any(f.level == "BLOCK" for f in findings) else 0
 
 
-# ── 보고서 (큐 스타일 markdown) ──────────────────────────────────────────
+# ── Report (queue-style markdown) ─────────────────────────────────────────
 def render_report(findings: list[Finding], *, product: str | None = None) -> str:
-    """findings 를 큐 스타일 markdown 으로 렌더(bdd-coverage-queue.md 양식 차용)."""
+    """Render findings as queue-style markdown (borrows the bdd-coverage-queue.md layout)."""
     blocks = sum(1 for f in findings if f.level == "BLOCK")
     warns = sum(1 for f in findings if f.level == "WARN")
     title = f"# fr-cluster-trace-queue{' — ' + product if product else ''}"
     lines = [
         title,
         "",
-        f"> 생성: {datetime.now().isoformat(timespec='seconds')} · "
-        f"fr_cluster_check.py (수정 금지)",
+        f"> Generated: {datetime.now().isoformat(timespec='seconds')} · "
+        f"fr_cluster_check.py (do not edit)",
         f"> **BLOCK: {blocks} · WARN: {warns}**",
         "",
-        "| FR | 등급 | 사유 |",
+        "| FR | Level | Reason |",
         "|---|---|---|",
     ]
     if findings:
         for f in findings:
             lines.append(f"| {f.fr} | **{f.level}** | {f.reason} |")
     else:
-        lines.append("| _(추적성 위반 없음)_ | OK | FR↔cluster 일관 |")
+        lines.append("| _(no traceability violations)_ | OK | FR<->cluster consistent |")
     lines += [
         "",
-        "## 처리 기준 (gates/fr-cluster-trace-gate.md)",
-        "- orphan(WARN): capability 씨앗 + fr_index 부재 → "
-        "/draft-req 씨앗 기입 또는 cluster_identify 실행 (비차단)",
-        "- unmapped(WARN): 씨앗은 있으나 fr_index 부재 → cluster_identify 재실행 (비차단)",
-        "- mismatch(BLOCK): fr_index ↔ cluster draft fr_refs 불일치 → "
-        "draft fr_refs 보강 또는 cluster_identify 재군집 (차단)",
+        "## Resolution criteria (gates/fr-cluster-trace-gate.md)",
+        "- orphan(WARN): capability seed and fr_index both missing -> "
+        "enter the seed via /draft-req or run cluster_identify (non-blocking)",
+        "- unmapped(WARN): seed exists but fr_index is missing -> "
+        "re-run cluster_identify (non-blocking)",
+        "- mismatch(BLOCK): fr_index and cluster draft fr_refs disagree -> "
+        "update draft fr_refs or re-cluster with cluster_identify (blocking)",
     ]
     return "\n".join(lines) + "\n"
 
 
-# ── 파일 I/O 래퍼 ────────────────────────────────────────────────────────
+# ── File I/O wrapper ───────────────────────────────────────────────────────
 def _load_drafts_fr_refs(drafts_dir: Path) -> dict[str, list[str]]:
-    """drafts/ 의 cluster draft 들에서 {cluster_id: [FR-ID,...]} 수집 (graceful).
+    """Collect {cluster_id: [FR-ID,...]} from the cluster drafts in drafts/ (graceful).
 
-    cluster_id 가 없는 draft·파싱 실패 파일은 건너뛴다(예외 금지)."""
+    Drafts with no cluster_id or that fail to parse are skipped (no exceptions)."""
     result: dict[str, list[str]] = {}
     if not drafts_dir.is_dir():
         return result
@@ -376,44 +392,46 @@ def run_check(
     queue_path: Path | None = None,
     product: str | None = None,
 ) -> tuple[int, list[Finding]]:
-    """파일 I/O 래퍼. (exit_code, findings) 반환.
+    """File I/O wrapper. Returns (exit_code, findings).
 
-    씨앗은 사이드카 seeds yml 에서 읽는다. seeds_path 가 None 이면
-    requirements_path 의 형제 `requirements.seeds.yml` 로 기본 설정.
+    Seeds are read from the sidecar seeds yml. If seeds_path is None it
+    defaults to the sibling `requirements.seeds.yml` next to requirements_path.
 
-    queue_path 가 주어지면 viz status 어댑터(ssot_emit.py)가 집계하는
-    `fr-cluster-queue.md` 를 render_report 양식으로 쓴다(헤더의
-    `**BLOCK: N · WARN: M**` 가 ssot 에서 BLOCK/WARN 등가로 흡수됨).
-    report_path 와 queue_path 는 동일 양식이며 독립적으로 쓸 수 있다.
+    If queue_path is given, writes `fr-cluster-queue.md` (aggregated by the
+    viz status adapter ssot_emit.py) using the render_report layout — the
+    header's `**BLOCK: N · WARN: M**` is absorbed by ssot as BLOCK/WARN
+    equivalents. report_path and queue_path share the same layout and can be
+    written independently.
 
-    exit_code: 0 clean(WARN-only 포함) / 2 BLOCK / 1 입력 오류.
-    절대 예외로 죽지 않는다 — 손상 입력은 graceful 하게 빈 결과로 흡수."""
+    exit_code: 0 clean (including WARN-only) / 2 BLOCK / 1 input error.
+    Never raises — corrupt input is absorbed gracefully as an empty result."""
     if not requirements_path.is_file():
-        print(f"[fr_cluster_check] ERROR: requirements 파일 없음: {requirements_path}",
+        print(f"[fr_cluster_check] ERROR: requirements file not found: {requirements_path}",
               file=sys.stderr)
         return 1, []
     if not cluster_map_path.is_file():
-        print(f"[fr_cluster_check] ERROR: cluster_map 파일 없음: {cluster_map_path}",
+        print(f"[fr_cluster_check] ERROR: cluster_map file not found: {cluster_map_path}",
               file=sys.stderr)
         return 1, []
     if not drafts_dir.is_dir():
-        print(f"[fr_cluster_check] ERROR: drafts 디렉터리 없음: {drafts_dir}",
+        print(f"[fr_cluster_check] ERROR: drafts directory not found: {drafts_dir}",
               file=sys.stderr)
         return 1, []
 
     try:
         md_text = requirements_path.read_text(encoding="utf-8", errors="replace")
     except OSError as exc:
-        print(f"[fr_cluster_check] ERROR: requirements 읽기 실패: {exc}", file=sys.stderr)
+        print(f"[fr_cluster_check] ERROR: failed to read requirements: {exc}", file=sys.stderr)
         return 1, []
 
     cluster_map: Any = {}
     try:
         cluster_map = json.loads(cluster_map_path.read_text(encoding="utf-8"))
     except (json.JSONDecodeError, OSError) as exc:
-        # 손상 cluster_map → 빈 fr_index 로 graceful 처리(차단 아님, WARN 만 산출 가능)
-        print(f"[fr_cluster_check] WARN: cluster_map 파싱 실패 — 빈 fr_index 로 진행: {exc}",
-              file=sys.stderr)
+        # Corrupt cluster_map -> proceed gracefully with an empty fr_index
+        # (not blocking; can still yield WARNs)
+        print(f"[fr_cluster_check] WARN: failed to parse cluster_map — proceeding with "
+              f"empty fr_index: {exc}", file=sys.stderr)
         cluster_map = {}
 
     if seeds_path is None:
@@ -429,46 +447,47 @@ def run_check(
     code = exit_code_for(findings)
 
     rendered = render_report(findings, product=product)
-    for out_path, label in ((report_path, "보고서"), (queue_path, "큐")):
+    for out_path, label in ((report_path, "report"), (queue_path, "queue")):
         if out_path is None:
             continue
         try:
             out_path.parent.mkdir(parents=True, exist_ok=True)
             out_path.write_text(rendered, encoding="utf-8")
         except OSError as exc:
-            print(f"[fr_cluster_check] WARN: {label} 쓰기 실패: {exc}", file=sys.stderr)
+            print(f"[fr_cluster_check] WARN: failed to write {label}: {exc}", file=sys.stderr)
 
     blocks = sum(1 for f in findings if f.level == "BLOCK")
     warns = sum(1 for f in findings if f.level == "WARN")
     print(f"[fr_cluster_check] BLOCK={blocks} WARN={warns} "
           f"(FR {len(fr_ids)} · seeded {len(seeded)} · fr_index {len(fr_index)} · "
           f"cluster draft {len(cluster_fr_refs)})"
-          + ("" if blocks == 0 else " — fr-cluster-trace-gate 차단"))
+          + ("" if blocks == 0 else " — blocked by fr-cluster-trace-gate"))
     return code, findings
 
 
-# ── 메인 ─────────────────────────────────────────────────────────────────
+# ── Main ───────────────────────────────────────────────────────────────────
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="fr_cluster_check",
-        description="FR ↔ cluster 추적성 게이트 (P4, gates/fr-cluster-trace-gate.md)",
+        description="FR <-> cluster traceability gate (P4, gates/fr-cluster-trace-gate.md)",
     )
     parser.add_argument("--requirements", type=Path, required=True,
-                        help="입력 requirements.md (FR 테이블)")
+                        help="Input requirements.md (FR table)")
     parser.add_argument("--cluster-map", type=Path, required=True,
-                        help="cluster_map.json (fr_index 권위 매핑)")
+                        help="cluster_map.json (authoritative fr_index mapping)")
     parser.add_argument("--drafts-dir", type=Path, required=True,
-                        help="cluster draft 디렉터리 (*.draft.md, fr_refs 보유)")
+                        help="Cluster draft directory (*.draft.md, carries fr_refs)")
     parser.add_argument("--seeds", type=Path, default=None,
-                        help="사이드카 requirements.seeds.yml (생략 시 "
-                             "requirements 형제 requirements.seeds.yml)")
+                        help="Sidecar requirements.seeds.yml (defaults to the "
+                             "sibling requirements.seeds.yml if omitted)")
     parser.add_argument("--report", type=Path, default=None,
-                        help="큐 스타일 보고서 markdown 출력 경로")
+                        help="Output path for the queue-style report markdown")
     parser.add_argument("--queue", type=Path, default=None,
-                        help="viz status 어댑터(ssot_emit.py) 집계용 큐 "
-                             "(reports/fr-cluster-queue.md) 출력 경로")
+                        help="Output path for the queue consumed by the viz "
+                             "status adapter (ssot_emit.py) "
+                             "(reports/fr-cluster-queue.md)")
     parser.add_argument("--product", default=None,
-                        help="보고서 제목에 표기할 제품명(선택)")
+                        help="Product name to show in the report title (optional)")
     args = parser.parse_args(argv)
 
     code, _ = run_check(

@@ -1,29 +1,31 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-r"""Draft ↔ Confluence XML 양방향 동기화 스캐너 (C-SYNC).
+r"""Draft <-> Confluence XML bidirectional sync scanner (C-SYNC).
 
-목적:
-    drift_scan.py 가 Master(G2-A/B)→Draft 방향의 버전 drift 를 잡는다면,
-    본 스크립트는 Draft ↔ Confluence XML 양방향의 sync gap 을 잡는다.
+Purpose:
+    Where drift_scan.py catches version drift in the Master(G2-A/B) -> Draft
+    direction, this script catches the sync gap in the Draft <-> Confluence
+    XML direction (both ways).
 
-상태 분류:
-    SYNCED        : draft 와 Confluence 모두 마지막 push 와 동일
-    OUTDATED      : draft 가 더 최신 (push 필요 — `/render --push`)
-    REMOTE-DRIFT  : Confluence 가 더 최신 (PM 이 Confluence 에서 편집 — merge-proposal 생성)
-    PENDING       : meta.json 없음이거나 page_id 가 플레이스홀더("{{" 포함)
-    REMOTE-UNKNOWN: wiki snapshot 미존재 (모델이 wiki 커넥터 조회 미실행)
-    UNKNOWN       : updated_at 또는 last_published_at 파싱 불가
+Status classification:
+    SYNCED        : both the draft and Confluence match the last push
+    OUTDATED      : the draft is newer (push needed — `/render --push`)
+    REMOTE-DRIFT  : Confluence is newer (PM edited it in Confluence — a merge-proposal is generated)
+    PENDING       : no meta.json, or page_id is a placeholder (contains "{{")
+    REMOTE-UNKNOWN: no wiki snapshot exists (the model hasn't run a wiki-connector lookup yet)
+    UNKNOWN       : updated_at or last_published_at could not be parsed
 
-Remote drift 감지 패턴 (wiki 커넥터 연동):
-    본 스크립트는 직접 원격 API 를 호출하지 않는다 (인증·도구 분리 원칙 —
-    외부 I/O 는 항상 모델의 wiki 커넥터 도구 호출로만 수행, CONNECTORS.md).
-    대신 모델(/render --check-sync 또는 /lc 진입 시)이 sync-queue 의 page_id
-    목록을 보고 wiki 커넥터(예: Confluence 등 MCP 도구)로 각 페이지를 조회해
-    결과를 reports/.confluence-snapshot/{page_id}.json 에 저장한다.
-    본 스크립트는 그 snapshot 파일과 meta.json._sync.last_published_version 을
-    비교한다.
+Remote drift detection pattern (wiki connector integration):
+    This script never calls a remote API directly (per the auth/tool
+    separation principle — all external I/O goes exclusively through the
+    model's wiki-connector tool calls; see CONNECTORS.md). Instead, the model
+    (on `/render --check-sync` or entering `/lc`) looks at the page_id list in
+    the sync-queue, looks up each page via a wiki connector (e.g. Confluence
+    or another MCP tool), and saves the result to
+    reports/.confluence-snapshot/{page_id}.json. This script then compares
+    that snapshot file against meta.json._sync.last_published_version.
 
-    snapshot JSON 기대 shape (wiki 커넥터가 저장한 스냅샷):
+    Expected snapshot JSON shape (as saved by the wiki connector):
         {
           "id": "12345",
           "version": {"number": 7, "when": "2026-05-28T..."},
@@ -31,22 +33,22 @@ Remote drift 감지 패턴 (wiki 커넥터 연동):
           "body": {"storage": {"value": "<xml>...</xml>"}}
         }
 
-    snapshot 미존재 시: REMOTE-UNKNOWN (오류 아님, 경고만)
-    snapshot version > meta.json._sync.last_published_version: REMOTE-DRIFT
-        → reports/inbox/{WO_ID}.merge-proposal.md 자동 생성
+    If no snapshot exists: REMOTE-UNKNOWN (not an error, just a warning)
+    If snapshot version > meta.json._sync.last_published_version: REMOTE-DRIFT
+        -> automatically generates reports/inbox/{WO_ID}.merge-proposal.md
 
-출력:
-    PROJECTS/{product}/reports/sync-queue.md         (모든 상태)
-    PROJECTS/{product}/reports/inbox/{WO_ID}.merge-proposal.md (REMOTE-DRIFT 시)
+Output:
+    PROJECTS/{product}/reports/sync-queue.md         (all statuses)
+    PROJECTS/{product}/reports/inbox/{WO_ID}.merge-proposal.md (on REMOTE-DRIFT)
 
 exit code:
-    0 = OUTDATED / PENDING / REMOTE-DRIFT 없음
-    1 = 위 셋 중 1건 이상
-    2 = 인자 오류
+    0 = no OUTDATED / PENDING / REMOTE-DRIFT
+    1 = one or more of the above
+    2 = argument error
 
-사용법:
+Usage:
     python render_sync_check.py --hub-root <Hub> [--product <name>] [--with-remote]
-    (--with-remote: confluence snapshot 도 검사. 생략 시 순방향만)
+    (--with-remote: also checks the confluence snapshot; forward-only if omitted)
 """
 from __future__ import annotations
 
@@ -69,7 +71,7 @@ FRONTMATTER = re.compile(r"\A---\n(.*?)\n---\n", re.DOTALL)
 ISO_DATE = re.compile(r"(\d{4}-\d{2}-\d{2}(?:[T ]\d{2}:\d{2}(?::\d{2})?(?:Z|[+-]\d{2}:?\d{2})?)?)")
 PLACEHOLDER = re.compile(r"\{\{")
 
-# meta.json 에서 마지막 publish 시각을 담는 키 후보 (우선순위 순)
+# Candidate keys in meta.json that hold the last publish time (priority order)
 META_PUBLISHED_KEYS = [
     ("_sync", "last_published_at"),
     ("lastUpdatedAt",),
@@ -114,7 +116,7 @@ def _extract_iso(s: str | None) -> datetime | None:
 
 
 def _get_meta_published(meta: dict) -> datetime | None:
-    """meta.json 에서 last_published_at 을 다중 키 전략으로 추출."""
+    """Extract last_published_at from meta.json using a multi-key strategy."""
     for key_path in META_PUBLISHED_KEYS:
         obj = meta
         for k in key_path:
@@ -132,37 +134,39 @@ def _get_meta_published(meta: dict) -> datetime | None:
 
 def _classify(draft_upd: datetime | None, pub: datetime | None) -> tuple[str, str]:
     if draft_upd is None:
-        return "UNKNOWN", "draft updated_at 파싱 불가"
+        return "UNKNOWN", "could not parse draft updated_at"
     if pub is None:
-        return "UNKNOWN", "meta.json last_published_at 파싱 불가"
+        return "UNKNOWN", "could not parse meta.json last_published_at"
     if pub >= draft_upd:
-        return "SYNCED", f"게시({pub.date()}) >= draft 수정({draft_upd.date()})"
-    return "OUTDATED", f"draft 수정({draft_upd.date()}) > 마지막 게시({pub.date()}) — push 필요"
+        return "SYNCED", f"published({pub.date()}) >= draft modified({draft_upd.date()})"
+    return "OUTDATED", f"draft modified({draft_upd.date()}) > last published({pub.date()}) — push needed"
 
 
-# ── 발행 모드 (fix-plan-dossier-publish-split) ──────────────────────────────
+# ── Publication mode (fix-plan-dossier-publish-split) ───────────────────────
 
-# split-deliverable 발행 단위: (transpose deliverable, meta slug, 표시 라벨)
+# split-deliverable publication units: (transpose deliverable, meta slug, display label)
 SPLIT_DELIVERABLES = [
-    ("D2", "02-policy", "정책정의서"),
-    ("D3", "03-screen-design", "화면설계서"),
+    ("D2", "02-policy", "Policy Definition"),
+    ("D3", "03-screen-design", "Screen Design"),
 ]
 
-# 발행 모드 무관 공통 발행 문서 (publication-map §0/§0-bis: D1/D4/D5 각 1페이지).
-# (slug, 라벨, 소스 하위 디렉토리, 파일 glob) — 소스 파일이 없으면 행 생략.
-# doc_id 는 meta 명명 규약과 동일한 `{slug}-{product}` 정본 키(sync_emit 과 정합).
+# Common publication docs regardless of publication mode (publication-map §0/§0-bis:
+# D1/D4/D5, one page each).
+# (slug, label, source subdirectory, file glob) — the row is omitted if no source file exists.
+# doc_id follows the same `{slug}-{product}` canonical key as the meta naming
+# convention (kept consistent with sync_emit).
 COMMON_DOCS = [
-    ("01-requirements", "요구사항정의서", "inputs", "requirements*.md"),
-    ("04-meetings", "회의록", "meetings", "*.md"),
-    ("05-research", "타사조사", "inputs", "research*.md"),
+    ("01-requirements", "Requirements Definition", "inputs", "requirements*.md"),
+    ("04-meetings", "Meeting Notes", "meetings", "*.md"),
+    ("05-research", "Competitor Research", "inputs", "research*.md"),
 ]
 
 
 def _scan_common_docs(proj: Path, src_dir: Path, product: str) -> tuple[list[tuple], int, int]:
-    """D1/D4/D5 공통 문서 스캔 (감사 2026-06-11 갭1 — D4/D5 미스캔 해소).
+    """Scan the D1/D4/D5 common docs (audit 2026-06-11 gap 1 — fixes D4/D5 not being scanned).
 
-    draft 측 기준값: 소스 파일들의 frontmatter updated_at 최댓값,
-    frontmatter 가 없으면(회의록 등) 파일 mtime 으로 폴백.
+    Draft-side baseline: the max frontmatter updated_at across the source
+    files, falling back to file mtime when there's no frontmatter (e.g. Meeting Notes).
     Returns: (rows, n_outdated, n_pending)
     """
     rows: list[tuple] = []
@@ -173,7 +177,7 @@ def _scan_common_docs(proj: Path, src_dir: Path, product: str) -> tuple[list[tup
         if not files:
             continue
         doc_id = f"{slug}-{product}"
-        fname = files[0].name if len(files) == 1 else f"{subdir}/{pattern} ({len(files)}건)"
+        fname = files[0].name if len(files) == 1 else f"{subdir}/{pattern} ({len(files)} files)"
 
         sides: list[datetime] = []
         for f in files:
@@ -194,20 +198,20 @@ def _scan_common_docs(proj: Path, src_dir: Path, product: str) -> tuple[list[tup
             if cands:
                 meta_path = cands[0]
         if meta_path is None:
-            rows.append((fname, doc_id, "—", "meta.json 없음", "PENDING",
-                         f"{slug}-{product}.meta.json 없음 — /cr 로 페이지 생성·초기화 필요"))
+            rows.append((fname, doc_id, "—", "no meta.json", "PENDING",
+                         f"{slug}-{product}.meta.json missing — create/initialize the page via /cr"))
             n_pend += 1
             continue
         try:
             meta = json.loads(meta_path.read_text(encoding="utf-8", errors="replace"))
         except Exception as e:
             rows.append((fname, doc_id, str(meta_path.name), str(e), "UNKNOWN",
-                         "meta.json 파싱 오류"))
+                         "meta.json parse error"))
             continue
         page_id = str(meta.get("id", ""))
         if PLACEHOLDER.search(page_id) or not page_id:
             rows.append((fname, doc_id, meta_path.name, "id=PLACEHOLDER",
-                         "PENDING", "Confluence 페이지 미생성"))
+                         "PENDING", "Confluence page not yet created"))
             n_pend += 1
             continue
         pub = _get_meta_published(meta)
@@ -221,9 +225,9 @@ def _scan_common_docs(proj: Path, src_dir: Path, product: str) -> tuple[list[tup
 
 
 def _parse_source_clusters(text: str) -> set[str] | None:
-    """assembled.md frontmatter 의 source_clusters 목록(블록/인라인 YAML 리스트).
+    """The source_clusters list in assembled.md frontmatter (block or inline YAML list).
 
-    없으면 None — 호출 측은 전체 draft 기준으로 폴백한다.
+    Returns None if absent — the caller falls back to the whole-draft baseline.
     """
     m = FRONTMATTER.match(text)
     if not m:
@@ -251,10 +255,12 @@ def _parse_source_clusters(text: str) -> set[str] | None:
 
 
 def _deliverable_source_clusters(proj: Path, dtype: str, slug: str) -> set[str] | None:
-    """deliverable 의 기여 cluster 집합 — reports/render/ 의 assembled 산출물에서.
+    """The set of contributing clusters for a deliverable, from the assembled
+    output in reports/render/.
 
-    render_transpose 가 frontmatter 에 source_clusters 를 기록한다(감사 갭4 대응).
-    산출물/필드가 없으면 None(전체 draft 기준 폴백 — 종전 동작).
+    render_transpose records source_clusters in the frontmatter (addresses
+    audit gap 4). Returns None if the output/field is absent (falls back to
+    the whole-draft baseline — previous behavior).
     """
     render_dir = proj / "reports" / "render"
     if not render_dir.is_dir():
@@ -272,10 +278,12 @@ def _deliverable_source_clusters(proj: Path, dtype: str, slug: str) -> set[str] 
 
 
 def _read_publication_mode(proj: Path) -> str:
-    """graph/project-mode.json 의 publication_mode 를 읽는다.
+    """Read publication_mode from graph/project-mode.json.
 
-    단일 소스(_emit_common.read_publication_mode)로 위임 — sync_emit 과 정합.
-    파일/키 없으면 "dossier-page"(기존 동작) — dbaas 등 기존 프로젝트 회귀 가드.
+    Delegates to the single source of truth (_emit_common.read_publication_mode)
+    to stay consistent with sync_emit. If the file/key is absent, defaults to
+    "dossier-page" (previous behavior) — a regression guard for existing
+    projects such as dbaas.
     """
     return C.read_publication_mode(proj)
 
@@ -283,17 +291,20 @@ def _read_publication_mode(proj: Path) -> str:
 def _scan_split(
     proj: Path, drafts_dir: Path, src_dir: Path, product: str
 ) -> tuple[list[tuple], int, int]:
-    """split-deliverable 모드 스캔.
+    """Scan split-deliverable mode.
 
-    dossier draft 는 정본 소스이므로 **SOURCE-ONLY**(최저 severity, actionable 제외)
-    행으로만 표기해 허위 PENDING 을 막는다. 실제 발행 단위는 D2 정책정의서 /
-    D3 화면설계서 2개 deliverable 이며, 그 최신성은 *기여 dossier draft 의
-    updated_at 최댓값* vs deliverable meta.json 의 last_published_at 으로 분류한다.
+    A dossier draft is the canonical source, so it's shown only as
+    **SOURCE-ONLY** (lowest severity, excluded from actionable) to avoid a
+    false PENDING. The actual publication units are the two deliverables D2
+    Policy Definition / D3 Screen Design, and their freshness is classified
+    as *max updated_at across contributing dossier drafts* vs. the
+    deliverable meta.json's last_published_at.
 
     Returns: (rows, n_outdated, n_pending)
     """
     rows: list[tuple] = []
-    # cluster_id → updated_at — deliverable 별 기여 cluster 한정 비교용(감사 갭4).
+    # cluster_id -> updated_at — used to scope the comparison to each deliverable's
+    # contributing clusters (audit gap 4).
     draft_upd_by_cluster: dict[str, datetime] = {}
     if drafts_dir.is_dir():
         for draft in sorted(drafts_dir.glob("*.draft.md")):
@@ -302,19 +313,21 @@ def _scan_split(
             doc_id = fm.get("doc_id", draft.stem)
             upd_str = fm.get("updated_at", "") or fm.get("frozen_at", "")
             dt = _extract_iso(upd_str)
-            # naive frontmatter 파서는 nested cluster: 블록의 cluster_id 도 평탄화해 잡는다.
+            # The naive frontmatter parser also picks up cluster_id from the
+            # nested cluster: block, flattened.
             cluster_id = fm.get("cluster_id", "") or draft.stem.replace(".draft", "").replace("cluster_", "")
             if dt:
                 draft_upd_by_cluster[cluster_id] = max(
                     dt, draft_upd_by_cluster.get(cluster_id, dt))
             rows.append((draft.name, doc_id, "—", upd_str or "?", "SOURCE-ONLY",
-                         "split 정본 소스 — 발행 단위는 D2/D3 (actionable 제외)"))
+                         "split canonical source — publication unit is D2/D3 (excluded from actionable)"))
     all_side = max(draft_upd_by_cluster.values()) if draft_upd_by_cluster else None
 
     n_out = n_pend = 0
     for _dtype, slug, label in SPLIT_DELIVERABLES:
         doc_id = f"{slug}-{product}"
-        # 기여 cluster 가 기록돼 있으면 그 부분집합의 최댓값만 비교(false OUTDATED 방지).
+        # If contributing clusters are recorded, compare only that subset's max
+        # (avoids false OUTDATED).
         sources = _deliverable_source_clusters(proj, _dtype, slug)
         if sources:
             scoped = [dt for cid, dt in draft_upd_by_cluster.items() if cid in sources]
@@ -328,20 +341,20 @@ def _scan_split(
             if cands:
                 meta_path = cands[0]
         if meta_path is None:
-            rows.append((f"{label} (assembled)", doc_id, "—", "meta.json 없음",
-                         "PENDING", f"{slug}-{product}.meta.json 없음 — /cr split 계층으로 생성 필요"))
+            rows.append((f"{label} (assembled)", doc_id, "—", "no meta.json",
+                         "PENDING", f"{slug}-{product}.meta.json missing — create via /cr split hierarchy"))
             n_pend += 1
             continue
         try:
             meta = json.loads(meta_path.read_text(encoding="utf-8", errors="replace"))
         except Exception as e:
             rows.append((f"{label} (assembled)", doc_id, meta_path.name, str(e),
-                         "UNKNOWN", "meta.json 파싱 오류"))
+                         "UNKNOWN", "meta.json parse error"))
             continue
         page_id = str(meta.get("id", ""))
         if PLACEHOLDER.search(page_id) or not page_id:
             rows.append((f"{label} (assembled)", doc_id, meta_path.name, "id=PLACEHOLDER",
-                         "PENDING", "Confluence 페이지 미생성 — templates/standard/ 로 신규 생성 필요"))
+                         "PENDING", "Confluence page not yet created — create new via templates/standard/"))
             n_pend += 1
             continue
         pub = _get_meta_published(meta)
@@ -354,14 +367,14 @@ def _scan_split(
     return rows, n_out, n_pend
 
 
-# ── Remote (Confluence) drift 감지 ───────────────────────────────────────────
+# ── Remote (Confluence) drift detection ─────────────────────────────────────
 
 def _snapshot_path(proj: Path, page_id: str) -> Path:
     return proj / "reports" / ".confluence-snapshot" / f"{page_id}.json"
 
 
 def _load_remote_snapshot(proj: Path, page_id: str) -> dict | None:
-    """모델이 wiki 커넥터 조회로 저장한 snapshot 을 로드. 없으면 None."""
+    """Load the snapshot the model saved via a wiki-connector lookup. None if absent."""
     p = _snapshot_path(proj, page_id)
     if not p.is_file():
         return None
@@ -372,38 +385,39 @@ def _load_remote_snapshot(proj: Path, page_id: str) -> dict | None:
 
 
 def _classify_remote(meta: dict, snapshot: dict | None) -> tuple[str, str, int | None, int | None]:
-    """remote version vs local last_published_version 비교.
+    """Compare remote version vs local last_published_version.
 
-    반환: (status, reason, local_ver, remote_ver)
+    Returns: (status, reason, local_ver, remote_ver)
     """
     if snapshot is None:
         return ("REMOTE-UNKNOWN",
-                "wiki snapshot 없음 — 모델이 wiki 커넥터 조회 미실행",
+                "no wiki snapshot — the model hasn't run a wiki-connector lookup yet",
                 None, None)
     sync_block = meta.get("_sync") or {}
     local_ver = sync_block.get("last_published_version")
     remote_ver = (snapshot.get("version") or {}).get("number")
     if not isinstance(local_ver, int) or not isinstance(remote_ver, int):
         return ("REMOTE-UNKNOWN",
-                f"version 필드 누락 (local={local_ver}, remote={remote_ver})",
+                f"missing version field (local={local_ver}, remote={remote_ver})",
                 local_ver if isinstance(local_ver, int) else None,
                 remote_ver if isinstance(remote_ver, int) else None)
     if remote_ver > local_ver:
         return ("REMOTE-DRIFT",
-                f"Confluence v{remote_ver} > 마지막 push v{local_ver} — Confluence 에서 편집됨",
+                f"Confluence v{remote_ver} > last push v{local_ver} — edited in Confluence",
                 local_ver, remote_ver)
-    # MEDIUM #11: remote < local 은 Confluence 페이지 롤백 또는 페이지 ID 오류 — 회귀 신호
+    # MEDIUM #11: remote < local suggests a Confluence page rollback or page-ID
+    # mismatch — a regression signal
     if remote_ver < local_ver:
         return ("REMOTE-ROLLBACK",
-                f"Confluence v{remote_ver} < 마지막 push v{local_ver} — 페이지 롤백 또는 page_id 불일치 의심",
+                f"Confluence v{remote_ver} < last push v{local_ver} — suspected page rollback or page_id mismatch",
                 local_ver, remote_ver)
-    return ("SYNCED", f"Confluence v{remote_ver} == 마지막 push v{local_ver}", local_ver, remote_ver)
+    return ("SYNCED", f"Confluence v{remote_ver} == last push v{local_ver}", local_ver, remote_ver)
 
 
 def _convert_tables_to_markdown(xml: str) -> str:
-    """<table><tr><td>...</td></tr></table> → markdown 표 형식 변환.
+    """Convert <table><tr><td>...</td></tr></table> to markdown table format.
 
-    fact_preservation_check 가 표 셀을 추출하려면 `| cell |` 형식이 필요하다.
+    fact_preservation_check needs the `| cell |` format to extract table cells.
     """
     def _table_repl(table_match: re.Match) -> str:
         table_body = table_match.group(1)
@@ -415,7 +429,7 @@ def _convert_tables_to_markdown(xml: str) -> str:
             cells = re.findall(
                 r"<t[hd][^>]*>(.*?)</t[hd]>", row, re.DOTALL | re.IGNORECASE,
             )
-            # 셀 내부 태그 제거 + 줄바꿈 정리
+            # strip inner tags from cells + normalize whitespace/newlines
             clean_cells = []
             for c in cells:
                 c = re.sub(r"<[^>]+>", "", c)
@@ -424,7 +438,8 @@ def _convert_tables_to_markdown(xml: str) -> str:
             if not clean_cells:
                 continue
             md_lines.append("| " + " | ".join(clean_cells) + " |")
-            # 첫 행 다음에 헤더 구분선 추가 (모든 셀이 th 였거나 첫 행)
+            # add a header separator after the first row (whether all cells
+            # were th, or just as the first row)
             if i == 0:
                 md_lines.append("|" + "|".join(["---"] * len(clean_cells)) + "|")
         return "\n" + "\n".join(md_lines) + "\n"
@@ -438,43 +453,44 @@ def _convert_tables_to_markdown(xml: str) -> str:
 
 
 def _strip_storage_xml(xml: str) -> str:
-    """Confluence Storage Format XML 을 검토용 markdown 으로 변환.
+    """Convert Confluence Storage Format XML to markdown for review.
 
-    표는 markdown 표 형식으로 보존 (fact_preservation_check 호환).
-    완벽한 변환 아님 — merge-proposal 에서 PM 이 차이를 인지하는 용도.
-    실제 본문 적용은 render_apply_inbox.py 에서 수행.
+    Tables are preserved in markdown table format (fact_preservation_check
+    compatible). Not a perfect conversion — its purpose is letting the PM see
+    the difference in the merge-proposal. The actual body is applied by
+    render_apply_inbox.py.
     """
     if not xml:
         return ""
-    # ac:* / ri:* 매크로 태그 제거 (열고닫는 형태)
+    # strip ac:* / ri:* macro tags (opening and closing forms)
     text = re.sub(r"</?ac:[^>]+>", "", xml)
     text = re.sub(r"</?ri:[^>]+>", "", text)
-    # CDATA 풀기 (코드 블록 본문 보존)
+    # unwrap CDATA (preserves code block bodies)
     text = re.sub(r"<!\[CDATA\[(.*?)\]\]>", r"\1", text, flags=re.DOTALL)
-    # 표 → markdown 변환 (다른 태그 제거 전에 처리)
+    # tables -> markdown (before other tags are stripped)
     text = _convert_tables_to_markdown(text)
-    # 헤딩 → markdown 헤더
+    # headings -> markdown headers
     for level in range(1, 7):
         text = re.sub(
             rf"<h{level}[^>]*>(.*?)</h{level}>",
             lambda m, lv=level: "\n" + ("#" * lv) + " " + re.sub(r"<[^>]+>", "", m.group(1)).strip() + "\n",
             text, flags=re.DOTALL | re.IGNORECASE,
         )
-    # 리스트
+    # lists
     text = re.sub(r"<li[^>]*>(.*?)</li>", lambda m: "- " + re.sub(r"<[^>]+>", "", m.group(1)).strip() + "\n", text, flags=re.DOTALL | re.IGNORECASE)
     text = re.sub(r"</?[uo]l[^>]*>", "\n", text)
-    # 단락·줄바꿈
+    # paragraphs / line breaks
     text = re.sub(r"<br\s*/?>", "\n", text)
     text = re.sub(r"</p>", "\n\n", text)
     text = re.sub(r"<p[^>]*>", "", text)
-    # 굵게·기울임 → markdown
+    # bold / italic -> markdown
     text = re.sub(r"<strong[^>]*>(.*?)</strong>", r"**\1**", text, flags=re.DOTALL | re.IGNORECASE)
     text = re.sub(r"<b[^>]*>(.*?)</b>", r"**\1**", text, flags=re.DOTALL | re.IGNORECASE)
     text = re.sub(r"<em[^>]*>(.*?)</em>", r"*\1*", text, flags=re.DOTALL | re.IGNORECASE)
     text = re.sub(r"<i[^>]*>(.*?)</i>", r"*\1*", text, flags=re.DOTALL | re.IGNORECASE)
-    # 나머지 태그 모두 제거
+    # strip all remaining tags
     text = re.sub(r"<[^>]+>", "", text)
-    # 연속 빈 줄 압축
+    # collapse consecutive blank lines
     text = re.sub(r"\n{3,}", "\n\n", text)
     return text.strip()
 
@@ -488,7 +504,7 @@ def _write_merge_proposal(
     remote_snapshot: dict,
     draft_text: str,
 ) -> Path:
-    """REMOTE-DRIFT 감지 시 PM 검토용 merge-proposal 생성."""
+    """Generate a merge-proposal for PM review when REMOTE-DRIFT is detected."""
     inbox_dir = proj / "reports" / "inbox"
     inbox_dir.mkdir(parents=True, exist_ok=True)
     out_path = inbox_dir / f"{wo_id}.merge-proposal.md"
@@ -496,45 +512,46 @@ def _write_merge_proposal(
     remote_storage = ((remote_snapshot.get("body") or {}).get("storage") or {}).get("value", "")
     remote_text = _strip_storage_xml(remote_storage)
 
-    # draft 본문에서 frontmatter 제거 (비교 용이)
+    # strip frontmatter from the draft body (for easier comparison)
     fm_match = FRONTMATTER.match(draft_text)
     local_body = draft_text[fm_match.end():] if fm_match else draft_text
 
-    # CRITICAL #2: apply 가 추출하는 본문은 ``` 펜스가 아닌 HTML 주석 sentinel 로 감싼다
-    # (Confluence 본문이 ``` 를 포함해도 추출이 안전하도록).
+    # CRITICAL #2: the body that apply extracts is wrapped in HTML-comment
+    # sentinels rather than ``` fences (so extraction stays safe even if the
+    # Confluence body itself contains ```).
     remote_truncated = remote_text[:20000]
-    remote_overflow = "" if len(remote_text) <= 20000 else f"\n\n_… 이하 생략 (전체 {len(remote_text)}자)_"
+    remote_overflow = "" if len(remote_text) <= 20000 else f"\n\n_... truncated (full length {len(remote_text)} chars)_"
     local_truncated = local_body[:20000]
-    local_overflow = "" if len(local_body) <= 20000 else f"\n\n_… 이하 생략 (전체 {len(local_body)}자)_"
+    local_overflow = "" if len(local_body) <= 20000 else f"\n\n_... truncated (full length {len(local_body)} chars)_"
     storage_truncated = remote_storage[:10000]
-    storage_overflow = "" if len(remote_storage) <= 10000 else f"\n\n_… 이하 생략 (전체 {len(remote_storage)}자)_"
+    storage_overflow = "" if len(remote_storage) <= 10000 else f"\n\n_... truncated (full length {len(remote_storage)} chars)_"
 
     lines = [
-        f"# Merge Proposal — {wo_id} (REMOTE-DRIFT 감지)",
+        f"# Merge Proposal — {wo_id} (REMOTE-DRIFT detected)",
         "",
-        f"> 생성: {datetime.now().isoformat(timespec='seconds')}",
-        f"> page_id: `{page_id}`  ·  Confluence v{remote_ver}  vs  마지막 push v{local_ver}",
-        f"> 자동 생성 (수정 금지) — render_sync_check.py",
+        f"> Generated: {datetime.now().isoformat(timespec='seconds')}",
+        f"> page_id: `{page_id}`  ·  Confluence v{remote_ver}  vs  last push v{local_ver}",
+        f"> Auto-generated (do not edit) — render_sync_check.py",
         "",
-        "## 처리 방법",
+        "## How to proceed",
         "",
-        "아래 두 본문을 비교 후 다음 중 하나 선택:",
+        "Compare the two bodies below, then choose one of:",
         "",
-        f"- [ ] **전체 본문 채택** (Confluence 본문으로 draft 덮어쓰기 — `/render --apply-inbox {wo_id}` 가 처리)",
-        "- [ ] **수동 검토 완료** (PM 이 /write 등으로 수동 반영, 본 proposal 은 archive)",
+        f"- [ ] **Adopt full body** (overwrite the draft with the wiki body — handled by `/render --apply-inbox {wo_id}`)",
+        "- [ ] **Manual review complete** (PM manually applies via /write etc.; this proposal is archived)",
         "",
-        "두 항목 모두 미체크 상태로 `/render --apply-inbox` 호출 시 NOOP (proposal 유지).",
-        "전체 본문 채택 선택 시 적용 직후 fact_preservation_check 자동 실행 — fact 손실 발견 시 차단.",
+        "If neither item is checked, calling `/render --apply-inbox` is a NOOP (the proposal is kept).",
+        "When 'Adopt full body' is selected, fact_preservation_check runs automatically right after applying — blocks if fact loss is detected.",
         "",
         "---",
         "",
-        f"## Confluence (현재 v{remote_ver}) 본문 — apply 시 사용",
+        f"## Confluence body (current v{remote_ver}) — used on apply",
         "",
         "<!-- confluence-body:start -->",
         remote_truncated + remote_overflow,
         "<!-- confluence-body:end -->",
         "",
-        "## Local draft 본문 (frontmatter 제외, 참고용)",
+        "## Local draft body (frontmatter excluded, for reference)",
         "",
         "<!-- local-body:start -->",
         local_truncated + local_overflow,
@@ -542,7 +559,7 @@ def _write_merge_proposal(
         "",
         "---",
         "",
-        "## 원본 Confluence Storage Format (참고용 — apply 시 직접 사용 X)",
+        "## Original Confluence Storage Format (reference only — not used directly on apply)",
         "",
         "<!-- storage-xml:start -->",
         storage_truncated + storage_overflow,
@@ -555,7 +572,7 @@ def _write_merge_proposal(
 def scan(hub_root: Path, product: str | None = None, with_remote: bool = False) -> int:
     projects_root = hub_root / "PROJECTS"
     if not projects_root.is_dir():
-        print(f"[sync_check] PROJECTS 없음: {projects_root} — 스캔 대상 없음")
+        print(f"[sync_check] no PROJECTS: {projects_root} — nothing to scan")
         return 0
 
     products = (
@@ -574,20 +591,20 @@ def scan(hub_root: Path, product: str | None = None, with_remote: bool = False) 
         drafts_dir = proj / "drafts"
         src_dir = proj / "confluence-source"
         rows: list[tuple] = []
-        # 본 product 의 draft 본문 캐시 (merge-proposal 생성용)
+        # cache of this product's draft bodies (for merge-proposal generation)
         draft_text_cache: dict[str, str] = {}
 
-        # 발행 모드 분기 (fix-plan-dossier-publish-split).
+        # branch on publication mode (fix-plan-dossier-publish-split).
         pub_mode = _read_publication_mode(proj)
 
-        # ── split-deliverable: dossier 는 SOURCE-ONLY, 발행은 D2/D3 2단위 ──
+        # ── split-deliverable: dossier is SOURCE-ONLY, publication is 2 units (D2/D3) ──
         if pub_mode == "split-deliverable":
             srows, s_out, s_pend = _scan_split(proj, drafts_dir, src_dir, pname)
             rows.extend(srows)
             total_outdated += s_out
             total_pending += s_pend
 
-        # ── dossier-page (기본): draft 1개 = 페이지 1개 ──────────────────────
+        # ── dossier-page (default): 1 draft = 1 page ────────────────────────
         elif drafts_dir.is_dir():
             for draft in sorted(drafts_dir.glob("*.draft.md")):
                 text = draft.read_text(encoding="utf-8", errors="replace")
@@ -596,26 +613,32 @@ def scan(hub_root: Path, product: str | None = None, with_remote: bool = False) 
                 upd_str = fm.get("updated_at", "") or fm.get("frozen_at", "")
                 draft_upd = _extract_iso(upd_str)
 
-                # 대응하는 meta.json 탐색 (per-dossier — fix-plan-dossier-publish).
-                # dossier 모델은 dossier 1개 = 페이지 1개이므로 각 draft 는 자신의
-                # meta.json 과만 매칭한다. "첫 meta 폴백" 은 모든 dossier 가 같은
-                # 페이지로 잘못 매칭되므로 쓰지 않는다(meta 없으면 PENDING).
+                # Find the corresponding meta.json (per-dossier — fix-plan-dossier-publish).
+                # In the dossier model, 1 dossier = 1 page, so each draft is
+                # matched only against its own meta.json. A "first-meta
+                # fallback" is not used, since it would wrongly match every
+                # dossier to the same page (no meta -> PENDING).
                 #
-                # H3 (감사 2026-06-08): 과거엔 meta **파일명** substring 으로만
-                # 매칭해 cr 이 만든 {WO_ID}.meta.json(예: G2-K-PR-01) 과 draft stem
-                # (cluster_PR-01) 이 어긋나 발행 후에도 영구 PENDING 으로 보고됐다.
-                # 이제 sync_emit 과 동일하게 meta **내부 식별자**(wo_id/doc_id/cluster_id)
-                # 로 조인한다. 레거시 파일명 substring 매칭도 폴백으로 유지.
+                # H3 (audit 2026-06-08): previously matching was done only via
+                # meta **filename** substring, which meant a {WO_ID}.meta.json
+                # created by cr (e.g. G2-K-PR-01) and the draft stem
+                # (cluster_PR-01) could diverge, causing a permanent PENDING
+                # report even after publication. Now it joins on the meta's
+                # **internal identifiers** (wo_id/doc_id/cluster_id), same as
+                # sync_emit. The legacy filename-substring match is kept as a fallback.
                 stem_hint = draft.stem.replace(".draft", "")
                 wo_id_fm = fm.get("wo_id", "")
                 draft_keys = {
                     k.lower() for k in (stem_hint, doc_id, wo_id_fm) if k
                 }
-                # 결정적 조인 (감사 2026-06-11 갭3): ① 내부 식별자 정확 일치
-                # ② 파일명 stem 정확 일치 ③ 레거시 substring(후방 호환 폴백).
-                # 종전엔 ①~③ 을 한 조건으로 합쳐 glob 정렬 첫 일치에 의존했고,
-                # 유사 ID(PR-01 / PR-010)가 잘못 매칭될 수 있었다. 동일 tier 에서
-                # 복수 일치 시 경고를 남기고 정렬 첫 항목을 쓴다(결정적).
+                # Deterministic join (audit 2026-06-11 gap 3): (1) exact match
+                # on internal identifiers (2) exact match on filename stem
+                # (3) legacy substring match (backward-compat fallback).
+                # Previously (1)-(3) were combined into one condition and
+                # relied on the first glob-sorted match, which could
+                # mismatch similar IDs (PR-01 / PR-010). On multiple matches
+                # within the same tier, log a warning and use the first
+                # sorted entry (deterministic).
                 meta_path: Path | None = None
                 meta: dict | None = None
                 if src_dir.is_dir():
@@ -643,27 +666,27 @@ def scan(hub_root: Path, product: str | None = None, with_remote: bool = False) 
                         if matched:
                             if len(matched) > 1:
                                 names = ", ".join(f.name for f, _ in matched)
-                                print(f"[sync_check] WARN: {pname}/{draft.name} meta 다중 일치"
-                                      f" ({names}) — 첫 항목 사용", file=sys.stderr)
+                                print(f"[sync_check] WARN: {pname}/{draft.name} multiple meta matches"
+                                      f" ({names}) — using the first", file=sys.stderr)
                             meta_path, meta = matched[0]
                             break
 
                 if meta_path is None:
-                    rows.append((draft.name, doc_id, "—", "meta.json 없음", "PENDING",
-                                 "이 dossier 의 meta.json 없음 — /cr 로 페이지 생성·초기화 필요"))
+                    rows.append((draft.name, doc_id, "—", "no meta.json", "PENDING",
+                                 "no meta.json for this dossier — create/initialize the page via /cr"))
                     total_pending += 1
                     continue
 
                 if meta is None:
                     rows.append((draft.name, doc_id, str(meta_path.name),
-                                 "JSON 파싱 오류", "UNKNOWN", "meta.json 파싱 오류"))
+                                 "JSON parse error", "UNKNOWN", "meta.json parse error"))
                     continue
 
-                # page_id 플레이스홀더 체크
+                # page_id placeholder check
                 page_id = str(meta.get("id", ""))
                 if PLACEHOLDER.search(page_id) or not page_id:
                     rows.append((draft.name, doc_id, meta_path.name, "id=PLACEHOLDER",
-                                 "PENDING", "Confluence 페이지 미생성 — templates/standard/ 로 신규 생성 필요"))
+                                 "PENDING", "Confluence page not yet created — create new via templates/standard/"))
                     total_pending += 1
                     continue
 
@@ -671,11 +694,11 @@ def scan(hub_root: Path, product: str | None = None, with_remote: bool = False) 
                 status, reason = _classify(draft_upd, pub)
                 if status == "OUTDATED":
                     total_outdated += 1
-                # 순방향 행 추가
+                # add the forward-direction row
                 rows.append((draft.name, doc_id, meta_path.name,
                              upd_str or "?", status, reason))
 
-                # ── 역방향 (Confluence remote drift) 검사 ────────────────
+                # ── reverse-direction (Confluence remote drift) check ─────
                 if with_remote and not PLACEHOLDER.search(page_id) and page_id:
                     snapshot = _load_remote_snapshot(proj, page_id)
                     r_status, r_reason, l_ver, r_ver = _classify_remote(meta, snapshot)
@@ -686,7 +709,7 @@ def scan(hub_root: Path, product: str | None = None, with_remote: bool = False) 
                     ))
                     if r_status == "REMOTE-DRIFT":
                         total_remote_drift += 1
-                        # WO_ID 추출: drafts/WO-NN.draft.md → WO-NN
+                        # extract WO_ID: drafts/WO-NN.draft.md -> WO-NN
                         wo_id = draft.stem.replace(".draft", "")
                         try:
                             proposal_path = _write_merge_proposal(
@@ -696,18 +719,18 @@ def scan(hub_root: Path, product: str | None = None, with_remote: bool = False) 
                             print(f"[sync_check] {pname}: REMOTE-DRIFT {wo_id} "
                                   f"→ {proposal_path.relative_to(hub_root)}")
                         except Exception as exc:
-                            print(f"[sync_check] WARN: merge-proposal 생성 실패 ({wo_id}): {exc}",
+                            print(f"[sync_check] WARN: failed to generate merge-proposal ({wo_id}): {exc}",
                                   file=sys.stderr)
                     elif r_status == "REMOTE-UNKNOWN":
                         total_remote_unknown += 1
 
-        # ── 공통 발행 문서 스캔 (D1 요구사항 · D4 회의록 · D5 타사조사) ─────
+        # ── scan common publication docs (D1 Requirements · D4 Meeting Notes · D5 Competitor Research) ──
         crows, c_out, c_pend = _scan_common_docs(proj, src_dir, pname)
         rows.extend(crows)
         total_outdated += c_out
         total_pending += c_pend
 
-        # ── 보고서 저장 ──────────────────────────────────────────────────────
+        # ── save report ──────────────────────────────────────────────────────
         reports = proj / "reports"
         reports.mkdir(parents=True, exist_ok=True)
         out = reports / "sync-queue.md"
@@ -722,36 +745,36 @@ def scan(hub_root: Path, product: str | None = None, with_remote: bool = False) 
         lines = [
             f"# sync-queue — {pname}",
             "",
-            f"> 생성: {datetime.now().isoformat(timespec='seconds')}"
-            f" · render_sync_check.py 자동 생성 (수정 금지)"
-            + (f" · 발행 모드: {pub_mode}" if pub_mode != "dossier-page" else ""),
+            f"> Generated: {datetime.now().isoformat(timespec='seconds')}"
+            f" · auto-generated by render_sync_check.py (do not edit)"
+            + (f" · publication mode: {pub_mode}" if pub_mode != "dossier-page" else ""),
             f"> **OUTDATED: {n_out} · REMOTE-DRIFT: {n_drift} · PENDING: {n_pend}"
             f" · REMOTE-UNKNOWN: {n_runk} · UNKNOWN: {n_unk}**"
             + (f" · SOURCE-ONLY: {n_src}" if n_src else ""),
             "",
-            "| 파일 | doc_id | meta.json | 기준값 | 상태 | 사유 |",
+            "| File | doc_id | meta.json | Baseline | Status | Reason |",
             "|---|---|---|---|---|---|",
         ]
         if rows:
             for fname, did, mname, upd, st, why in rows:
                 lines.append(f"| {fname} | `{did}` | {mname} | {upd} | **{st}** | {why} |")
         else:
-            lines.append("| _(대상 없음)_ | — | — | — | — | drafts/ 또는 inputs/ 비어있음 |")
+            lines.append("| _(none)_ | — | — | — | — | drafts/ or inputs/ is empty |")
 
         lines += [
             "",
-            "## 처리 기준",
-            "- **OUTDATED**: draft 수정 이후 push 미실시 — `/render --push` 로 동기화",
-            "- **REMOTE-DRIFT**: Confluence 가 더 최신 (PM 이 Confluence 에서 편집) — `reports/inbox/{WO}.merge-proposal.md` 검토 후 `/render --apply-inbox {WO}` 또는 수동 반영",
-            "- **PENDING**: Confluence 페이지 미생성 — templates/standard/ 기본 양식으로 신규 생성 후 meta.json 초기화",
-            "- **REMOTE-UNKNOWN**: wiki snapshot 없음 — 모델이 wiki 커넥터로 페이지를 조회해 `reports/.confluence-snapshot/{id}.json` 에 저장하는 단계 미실행",
-            "- **UNKNOWN**: updated_at/last_published_at 파싱 불가 — 날짜 형식 점검 (ISO 8601 권장)",
-            "- **SYNCED**: 정상 — 추가 조치 불필요",
+            "## Handling criteria",
+            "- **OUTDATED**: no push since the draft was modified — sync via `/render --push`",
+            "- **REMOTE-DRIFT**: Confluence is newer (edited by the PM in Confluence) — review `reports/inbox/{WO}.merge-proposal.md`, then `/render --apply-inbox {WO}` or apply manually",
+            "- **PENDING**: Confluence page not yet created — create new from the templates/standard/ default template, then initialize meta.json",
+            "- **REMOTE-UNKNOWN**: no wiki snapshot — the model hasn't yet looked up the page via a wiki connector and saved it to `reports/.confluence-snapshot/{id}.json`",
+            "- **UNKNOWN**: could not parse updated_at/last_published_at — check the date format (ISO 8601 recommended)",
+            "- **SYNCED**: normal — no further action needed",
         ]
         if n_src:
             lines.append(
-                "- **SOURCE-ONLY**: split-deliverable 모드의 dossier 정본 소스 — "
-                "발행 단위가 아니므로 actionable 제외 (D2/D3 deliverable 행 참조)"
+                "- **SOURCE-ONLY**: canonical dossier source in split-deliverable mode — "
+                "not a publication unit, so excluded from actionable (see the D2/D3 deliverable rows)"
             )
         out.write_text("\n".join(lines) + "\n", encoding="utf-8")
         print(f"[sync_check] {pname}: OUTDATED={n_out} REMOTE-DRIFT={n_drift}"
@@ -759,18 +782,18 @@ def scan(hub_root: Path, product: str | None = None, with_remote: bool = False) 
               f" → {out.relative_to(hub_root)}")
 
     total_actionable = total_outdated + total_pending + total_remote_drift
-    print(f"[sync_check] 완료 — OUTDATED {total_outdated}건 REMOTE-DRIFT {total_remote_drift}건"
-          f" PENDING {total_pending}건 REMOTE-UNKNOWN {total_remote_unknown}건"
-          + ("" if total_actionable == 0 else " (sync 필요)"))
+    print(f"[sync_check] done — OUTDATED {total_outdated} REMOTE-DRIFT {total_remote_drift}"
+          f" PENDING {total_pending} REMOTE-UNKNOWN {total_remote_unknown}"
+          + ("" if total_actionable == 0 else " (sync needed)"))
     return 1 if total_actionable > 0 else 0
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description="Draft↔Confluence 양방향 동기화 스캔")
+    ap = argparse.ArgumentParser(description="Draft<->Confluence bidirectional sync scan")
     ap.add_argument("--hub-root", required=True, type=Path)
-    ap.add_argument("--product", default=None, help="PROJECTS/<product> (생략=전체)")
+    ap.add_argument("--product", default=None, help="PROJECTS/<product> (omit for all)")
     ap.add_argument("--with-remote", action="store_true",
-                    help="reports/.confluence-snapshot/ 의 remote 버전과도 비교 (REMOTE-DRIFT 감지)")
+                    help="also compare against the remote version in reports/.confluence-snapshot/ (REMOTE-DRIFT detection)")
     args = ap.parse_args()
     if not args.hub_root.is_dir():
         sys.stderr.write(f"hub-root not found: {args.hub_root}\n")

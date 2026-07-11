@@ -1,97 +1,97 @@
 ---
 name: orange-pm:update
-description: orange-pm 플러그인을 git pull로 최신 커밋으로 업데이트한다. 로컬 git 저장소에서 직접 당겨오므로 별도 토큰이 필요 없다.
+description: Updates the orange-pm plugin to the latest commit via git pull. Pulls directly from the local git repository, so no separate token is required.
 triggers:
   - "update"
   - "plugin update"
   - "orange-pm update"
-  - "플러그인 업데이트"
+  - "update plugin"
 phase: any
 effort: low
 model: haiku
 user-invocable: true
 ---
 
-## 실행 단계
+## Execution steps
 
-### 단계 1 — 새 커밋 확인
+### Step 1 — Check for new commits
 
 ```bash
 python "${CLAUDE_PLUGIN_ROOT}/scripts/update_orange_pm.py" --check
 ```
 
-- **exit 0**: 최신 상태 → "현재 최신 버전입니다." 출력 후 종료
-- **exit 2**: 새 커밋 있음 → 커밋 수와 함께 단계 2 진행
-- **exit 1**: 오류 → 오류 내용 출력 후 PM에게 안내
+- **exit 0**: up to date → print "You're on the latest version." and stop
+- **exit 2**: new commits available → proceed to Step 2 along with the commit count
+- **exit 1**: error → print the error and inform the PM
 
-**소스 경로를 찾지 못한 경우 안내:**
+**Guidance if the source path can't be found:**
 ```
-~/.claude/plugins/known_marketplaces.json 에 'orange-pm' 항목이 없습니다.
-처음 설치라면 README의 팀원 설치 가이드를 따르세요.
-```
-
-### 단계 2 — PM 확인 요청
-
-새 커밋이 있으면 현재 상태를 보여주고 진행 여부를 묻는다:
-
-```
-orange-pm 업데이트 가능
-  새 커밋: {N}개
-  소스: {source_dir}
-
-업데이트를 진행할까요? [Y/N]
+No 'orange-pm' entry found in ~/.claude/plugins/known_marketplaces.json.
+If this is your first install, follow the team installation guide in the README.
 ```
 
-PM이 N이면 종료한다.
+### Step 2 — Request PM confirmation
 
-### 단계 3 — 업데이트 실행
+If new commits exist, show the current status and ask whether to proceed:
+
+```
+orange-pm update available
+  New commits: {N}
+  Source: {source_dir}
+
+Proceed with the update? [Y/N]
+```
+
+If the PM says N, stop.
+
+### Step 3 — Run the update
 
 ```bash
 python "${CLAUDE_PLUGIN_ROOT}/scripts/update_orange_pm.py"
 ```
 
-진행 상태를 실시간으로 보여준다:
-- "git pull 실행 중..."
-- git 출력 그대로 표시 (새 파일, 변경 파일 목록)
-- "플러그인 캐시 동기화: N개 경로"
+Show progress in real time:
+- "Running git pull..."
+- Display the raw git output (list of new/changed files)
+- "Syncing plugin cache: N paths"
 
-### 단계 4 — 완료 안내
+### Step 4 — Completion notice
 
 ```
-✓ orange-pm 업데이트 완료 (vX.X.X)
+✓ orange-pm update complete (vX.X.X)
 
-Claude Code를 재시작하면 새 버전이 적용됩니다.
-  Mac: Cmd+Q 후 재실행
-  Windows: 창 닫기 후 재실행
+Restart Claude Code to apply the new version.
+  Mac: Cmd+Q, then relaunch
+  Windows: close the window, then relaunch
 ```
 
-## 오류 처리
+## Error handling
 
-| 상황 | 조치 |
+| Situation | Action |
 |---|---|
-| `known_marketplaces.json` 에 orange-pm 없음 | 팀원 최초 설치 가이드 안내 |
-| `.git` 을 찾을 수 없음 | 소스 경로가 git 저장소인지 확인 요청 |
-| `git pull` 충돌 | 충돌 메시지 출력, 수동 해소 안내 |
-| 네트워크 오류 | git 자격증명·VPN 확인 안내 |
+| No orange-pm entry in `known_marketplaces.json` | Guide the team member through first-time install |
+| `.git` not found | Ask them to confirm the source path is a git repository |
+| `git pull` conflict | Print the conflict message, guide manual resolution |
+| Network error | Guide them to check git credentials/VPN |
 
-## 최초 설치
+## First-time install
 
-가장 간단한 방법 — GitHub 마켓플레이스로 설치:
+Simplest method — install via the GitHub marketplace:
 
 ```
 /plugin marketplace add weg-9000/Orange-pm
 /plugin install orange-pm@orange-pm
 ```
 
-git 저장소를 직접 클론해서 로컬 마켓플레이스로 쓰는 방법 (개발/사내 미러용):
+Method for cloning the git repository directly and using it as a local marketplace (for development/internal mirrors):
 
 ```bash
-# 1. 저장소 클론 (자신의 fork 또는 미러 주소로)
-git clone <저장소 URL> ~/orange-pm
+# 1. Clone the repository (to your own fork or mirror URL)
+git clone <repository URL> ~/orange-pm
 
-# 2. Claude Code 에 로컬 마켓플레이스 추가
+# 2. Add the local marketplace to Claude Code
 /plugin marketplace add ~/orange-pm
 /plugin install orange-pm@orange-pm
 ```
 
-이후 업데이트는 `/orange-pm:update` 만으로 끝납니다.
+After that, updating is as simple as running `/orange-pm:update`.

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""next_emit 유닛 테스트."""
+"""next_emit unit tests."""
 import os
 import sys
 
@@ -20,7 +20,7 @@ def test_blocking_queue_emits_fix_action_ranked_first():
     ])
     out = M.transform_next("demo", ssot, [{"status": "ai-draft", "type": "policy", "woId": "W1"}], 0, True, True)
     a = out["actions"]
-    assert a[0]["direction"] == "fix" and a[0]["source"] == "drift"      # drift 우선
+    assert a[0]["direction"] == "fix" and a[0]["source"] == "drift"      # drift ranks first
     assert a[0]["cmd"] == "/render"
     assert any(x["source"] == "bdd-coverage" and x["cmd"] == "/bdd" for x in a)
     assert out["blockers"] >= 2
@@ -29,7 +29,7 @@ def test_blocking_queue_emits_fix_action_ranked_first():
 def test_pending_dec_fix_action():
     out = M.transform_next("demo", _ssot([]), [{"status": "human-reviewed", "type": "policy", "woId": "W1"}], 3, True, True)
     dec = [x for x in out["actions"] if x["source"] == "decisions"]
-    assert dec and dec[0]["cmd"] == "/dec-approve" and "3건" in dec[0]["reason"]
+    assert dec and dec[0]["cmd"] == "/dec-approve" and "3 pending DEC decision(s)" in dec[0]["reason"]
 
 
 def test_upstream_gap_backward_action():
@@ -66,7 +66,7 @@ def test_phase_forward_when_no_graph_or_wo():
 
 def test_count_pending_dec():
     md = (
-        "| ID | 일자 | 도메인 | 핵심 결정 | 번복 | 승인 | 근거 |\n"
+        "| ID | Date | Domain | Key Decision | Reversal | Approval | Basis |\n"
         "| DEC-077 | 05-21 | 🎯 | x | - | ⬜ | /critique |\n"
         "| DEC-078 | 05-21 | 💰 | y | - | ✅ jeongdh | /su |\n"
         "| DEC-079 | 05-21 | 🏗️ | z | - | ⬜ | /write |\n"
@@ -91,7 +91,7 @@ def test_fr_cluster_mismatch_emits_fix_action():
 
 
 def test_fr_cluster_many_untagged_recommends_backfill():
-    # WARN(orphan/unmapped) 임계 이상 → forward backfill 권고
+    # WARN(orphan/unmapped) above threshold → recommend forward backfill
     ssot = {"queues": [{"id": "fr-cluster", "title": "FR-Cluster Trace", "block": 0, "warn": 4}],
             "totals": {"block": 0, "warn": 4}}
     out = M.transform_next("demo", ssot, [{"status": "frozen", "type": "policy", "woId": "W1"}], 0, True, True)
@@ -108,7 +108,7 @@ def test_fr_cluster_few_warns_no_backfill():
 
 
 def test_track_a_no_wo_recommends_cluster_mode():
-    """Track A 인데 WO 미생성 → fanout 추천이 --cluster-mode 여야 한다 (P3)."""
+    """Track A with no WO generated yet -> fanout recommendation must be --cluster-mode (P3)."""
     out = M.transform_next("demo", _ssot([]), [], 0, True, False, track="A")
     fwd = [a for a in out["actions"] if a["source"] == "phase"]
     assert fwd and "--cluster-mode" in fwd[0]["arg"], fwd
@@ -121,7 +121,7 @@ def test_track_legacy_no_wo_recommends_plain_fanout():
 
 
 def test_track_mismatch_emits_fix_action():
-    """Track A + legacy index 공존 → 혼선 정리 fix 액션 (P3)."""
+    """Track A + legacy index coexisting -> fix action to resolve the confusion (P3)."""
     out = M.transform_next("demo", _ssot([]), [{"status": "empty", "type": "policy", "woId": "W1"}],
                            0, True, True, track="A", legacy_index_present=True)
     tm = [a for a in out["actions"] if a["source"] == "track"]

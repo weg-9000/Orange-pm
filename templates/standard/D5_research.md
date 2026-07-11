@@ -1,5 +1,5 @@
 ---
-title: "[타사조사] {{PRODUCT_NAME}}"
+title: "[Competitor Research] {{PRODUCT_NAME}}"
 type: research
 layer: DIRECT
 version: 1.0
@@ -9,278 +9,278 @@ publication:
   header:
     style: info
     body: |
-      **타사조사 정의서. {{PRODUCT_NAME}} 의 시장 포지셔닝 / 경쟁사 비교 / 벤치마크 결과**
+      **Competitor research definition. Market positioning / competitor comparison / benchmark results for {{PRODUCT_NAME}}**
 
-      doc_id: {{DOC_ID}} 버전: {{VERSION}} 최종 수정: {{DATE}}
+      doc_id: {{DOC_ID}} Version: {{VERSION}} Last updated: {{DATE}}
   meta:
     layout: two_equal
     cells:
       - panel:
-          title: "관련 페이지"
+          title: "Related Pages"
           body: |
-            **관련 문서**
+            **Related Documents**
 
-            - [[page:[요구사항 정의서] {{PRODUCT_NAME}}]]
-            - [[page:[정책정의서] {{PRODUCT_NAME}}]]
+            - [[page:[Requirements Definition] {{PRODUCT_NAME}}]]
+            - [[page:[Policy Definition] {{PRODUCT_NAME}}]]
       - change_history: 3
 ---
 
-::: {.panel section="§1 시장 개요 (Global)"}
-## §1 시장 개요 (Global)
+::: {.panel section="§1 Market Overview (Global)"}
+## §1 Market Overview (Global)
 
 ---
 
-### §1-1 시장 정의 (TAM / SAM / SOM)
+### §1-1 Market Definition (TAM / SAM / SOM)
 
 <!-- col-widths: 15%, 25%, 45%, 15% -->
-| 구분 | 정의 | 산정 근거 | 규모 |
+| Category | Definition | Basis of Estimate | Size |
 |---|---|---|---|
-| **TAM** | {{TAM 정의 — 전체 가용 시장}} | {{산정 근거 / 데이터 출처}} | {{TAM}} |
-| **SAM** | {{SAM 정의 — 서비스 가용 시장}} | {{산정 근거}} | {{SAM}} |
-| **SOM** | {{SOM 정의 — 획득 가능 시장}} | {{산정 근거 / 기간}} | {{SOM}} |
+| **TAM** | {{TAM definition — total addressable market}} | {{basis of estimate / data source}} | {{TAM}} |
+| **SAM** | {{SAM definition — serviceable available market}} | {{basis of estimate}} | {{SAM}} |
+| **SOM** | {{SOM definition — serviceable obtainable market}} | {{basis of estimate / period}} | {{SOM}} |
 
-### §1-2 시장 트렌드
+### §1-2 Market Trends
 
 <!-- col-widths: 10%, 25%, 50%, 15% -->
-| ID | 트렌드 | 내용 / 시사점 | 출처 |
+| ID | Trend | Content / Implication | Source |
 |---|---|---|---|
-| T-01 | {{트렌드명}} | {{트렌드 내용 — 객관 지표 위주}} | {{REF_1}} |
-| T-02 | {{트렌드명}} | {{내용}} | {{REF_2}} |
-| T-03 | {{트렌드명}} | {{내용}} | {{REF_3}} |
+| T-01 | {{trend name}} | {{trend content — focused on objective metrics}} | {{REF_1}} |
+| T-02 | {{trend name}} | {{content}} | {{REF_2}} |
+| T-03 | {{trend name}} | {{content}} | {{REF_3}} |
 
-### §1-3 진입 장벽 / 차별화 포인트
+### §1-3 Entry Barriers / Differentiation Points
 
 <!-- col-widths: 20%, 40%, 40% -->
-| 구분 | 항목 | 내용 |
+| Category | Item | Content |
 |---|---|---|
-| **진입 장벽** | {{장벽명}} | {{장벽 상세 — 규제 / 자본 / 기술 등}} |
-| **차별화 포인트** | {{포인트명}} | {{차별화 가능 축 — 객관 사실 기준}} |
+| **Entry Barrier** | {{barrier name}} | {{barrier detail — regulatory / capital / technical, etc.}} |
+| **Differentiation Point** | {{point name}} | {{possible differentiation axis — based on objective facts}} |
 
-### §1-4 조사 범위 / 방법론
+### §1-4 Research Scope / Methodology
 
 <!-- col-widths: 20%, 80% -->
-| 항목 | 내용 |
+| Item | Content |
 |---|---|
-| **조사 기간** | {{조사 시작일}} ~ {{조사 종료일}} |
-| **조사 대상** | {{국가 / 세그먼트 / 가격대 등}} |
-| **데이터 출처** | {{1차 자료 — 공식 문서 / 가격 페이지 / 공시}}, {{2차 자료 — 리서치 보고서 / 기사}} |
-| **수집 방법** | {{공식 사이트 수집 / 가격 페이지 캡처 / 인터뷰 / 데모 등}} |
-| **한계** | {{한계 — 비공개 가격, 추정 포함 영역, 시점 불일치 등}} |
+| **Research Period** | {{research start date}} ~ {{research end date}} |
+| **Research Target** | {{country / segment / price tier, etc.}} |
+| **Data Source** | {{primary source — official docs / pricing page / disclosures}}, {{secondary source — research reports / articles}} |
+| **Collection Method** | {{official-site collection / pricing-page capture / interviews / demos, etc.}} |
+| **Limitations** | {{limitations — non-public pricing, areas that include estimates, timing mismatches, etc.}} |
 :::
 
-::: {.panel section="§2 경쟁사 매트릭스 (Competitor Comparison)"}
-## §2 경쟁사 매트릭스 (Competitor Comparison)
+::: {.panel section="§2 Competitor Matrix (Competitor Comparison)"}
+## §2 Competitor Matrix (Competitor Comparison)
 
 ---
 
-### §2-1 비교 차원 정의
+### §2-1 Comparison Axis Definitions
 
 <!-- col-widths: 15%, 25%, 60% -->
-| 차원 | 측정 기준 | 비고 |
+| Axis | Measurement Criteria | Notes |
 |---|---|---|
-| **가격** | {{측정 기준 — 월 요금 / 사용량 단가 등}} | {{비고}} |
-| **핵심 기능** | {{측정 기준 — 지원 기능 수 / 자동화 범위 등}} | {{비고}} |
-| **SLA** | {{측정 기준 — 가용성 % / 응답 시간 등}} | {{비고}} |
-| **한국 지원** | {{측정 기준 — 한국어 UI / KR 리전 / 한국어 CS 등}} | {{비고}} |
-| **통합** | {{측정 기준 — API / SDK / 외부 연동 수}} | {{비고}} |
-| **운영** | {{측정 기준 — 콘솔 / 모니터링 / 백업 등}} | {{비고}} |
-| **보안** | {{측정 기준 — 인증 / 암호화 / 컴플라이언스}} | {{비고}} |
+| **Price** | {{measurement criteria — monthly fee / usage unit price, etc.}} | {{notes}} |
+| **Core Features** | {{measurement criteria — number of supported features / automation scope, etc.}} | {{notes}} |
+| **SLA** | {{measurement criteria — availability % / response time, etc.}} | {{notes}} |
+| **Korea Support** | {{measurement criteria — Korean-language UI / KR region / Korean-language CS, etc.}} | {{notes}} |
+| **Integration** | {{measurement criteria — number of API / SDK / external integrations}} | {{notes}} |
+| **Operations** | {{measurement criteria — console / monitoring / backup, etc.}} | {{notes}} |
+| **Security** | {{measurement criteria — authentication / encryption / compliance}} | {{notes}} |
 
-### §2-2 경쟁사 매트릭스
+### §2-2 Competitor Matrix
 
 <!-- col-widths: 12%, 13%, 18%, 10%, 13%, 14%, 20% -->
-| 경쟁사 | 가격 | 핵심 기능 | SLA | 한국 지원 | 통합 | 비고 |
+| Competitor | Price | Core Features | SLA | Korea Support | Integration | Notes |
 |---|---|---|---|---|---|---|
-| **{{COMPETITOR_1}}** | {{가격}} | {{핵심 기능}} | {{SLA}} | {{한국 지원}} | {{통합}} | {{비고}} |
-| **{{COMPETITOR_2}}** | {{가격}} | {{핵심 기능}} | {{SLA}} | {{한국 지원}} | {{통합}} | {{비고}} |
-| **{{COMPETITOR_3}}** | {{가격}} | {{핵심 기능}} | {{SLA}} | {{한국 지원}} | {{통합}} | {{비고}} |
+| **{{COMPETITOR_1}}** | {{price}} | {{core features}} | {{SLA}} | {{Korea support}} | {{integration}} | {{notes}} |
+| **{{COMPETITOR_2}}** | {{price}} | {{core features}} | {{SLA}} | {{Korea support}} | {{integration}} | {{notes}} |
+| **{{COMPETITOR_3}}** | {{price}} | {{core features}} | {{SLA}} | {{Korea support}} | {{integration}} | {{notes}} |
 
 ::: {.info}
-표 셀 값은 모두 출처 명시 가능한 객관 지표만 기재한다. 해석 / 평가는 §6 시사점에 분리한다.
+Every table-cell value must be an objective metric whose source can be cited. Interpretation / evaluation is kept separate, in §6 Implications.
 :::
 :::
 
-::: {.panel section="§3 경쟁사별 상세 — {{COMPETITOR_1}}"}
-## §3 경쟁사별 상세 — {{COMPETITOR_1}}
+::: {.panel section="§3 Competitor Detail — {{COMPETITOR_1}}"}
+## §3 Competitor Detail — {{COMPETITOR_1}}
 
 ---
 
-### §3-1 회사 / 제품 개요
+### §3-1 Company / Product Overview
 
 <!-- col-widths: 20%, 80% -->
-| 항목 | 내용 |
+| Item | Content |
 |---|---|
-| **회사명** | {{회사명}} |
-| **본사 / 리전** | {{본사 위치 / 서비스 리전}} |
-| **제품명** | {{제품명}} |
-| **출시 시점** | {{출시 연도}} |
-| **타깃 세그먼트** | {{타깃 — SMB / 엔터프라이즈 / 개발자 등}} |
-| **출처** | {{REF — 공식 사이트 URL}} |
+| **Company Name** | {{company name}} |
+| **HQ / Region** | {{HQ location / service region}} |
+| **Product Name** | {{product name}} |
+| **Launch Date** | {{launch year}} |
+| **Target Segment** | {{target — SMB / enterprise / developers, etc.}} |
+| **Source** | {{REF — official site URL}} |
 
-### §3-2 가격 정책
+### §3-2 Pricing Policy
 
 <!-- col-widths: 20%, 25%, 35%, 20% -->
-| 요금제 | 단가 | 포함 범위 | 출처 |
+| Plan | Unit Price | Included Scope | Source |
 |---|---|---|---|
-| {{요금제명}} | {{단가}} | {{포함 기능 / 사용량 한도}} | {{REF}} |
+| {{plan name}} | {{unit price}} | {{included features / usage limits}} | {{REF}} |
 
-### §3-3 핵심 기능 / 차별점
-
-<!-- col-widths: 25%, 50%, 25% -->
-| 기능 | 설명 (공식 문서 기준) | 출처 |
-|---|---|---|
-| {{기능명}} | {{공식 문서 인용 또는 요약}} | {{REF}} |
-
-### §3-4 약점 / 제약
+### §3-3 Core Features / Differentiators
 
 <!-- col-widths: 25%, 50%, 25% -->
-| 항목 | 내용 (사실 기반) | 출처 |
+| Feature | Description (per official documentation) | Source |
 |---|---|---|
-| {{제약 항목}} | {{공식 발표 / 사용자 보고 기반 제약}} | {{REF}} |
+| {{feature name}} | {{quoted or summarized from official documentation}} | {{REF}} |
 
-### §3-5 자사 {{PRODUCT_NAME}} 관점 시사점
+### §3-4 Weaknesses / Constraints
 
-{{관찰된 사실에 대한 자사 관점 해석. 추측 영역은 [검토 필요] 로 표시.}}
+<!-- col-widths: 25%, 50%, 25% -->
+| Item | Content (fact-based) | Source |
+|---|---|---|
+| {{constraint item}} | {{constraint based on official announcements / user reports}} | {{REF}} |
+
+### §3-5 Implications for Our Product, {{PRODUCT_NAME}}
+
+{{our product's interpretation of the observed facts. Mark speculative areas with [needs-review].}}
 :::
 
-::: {.panel section="§4 경쟁사별 상세 — {{COMPETITOR_2}}"}
-## §4 경쟁사별 상세 — {{COMPETITOR_2}}
+::: {.panel section="§4 Competitor Detail — {{COMPETITOR_2}}"}
+## §4 Competitor Detail — {{COMPETITOR_2}}
 
 ---
 
-### §4-1 회사 / 제품 개요
+### §4-1 Company / Product Overview
 
 <!-- col-widths: 20%, 80% -->
-| 항목 | 내용 |
+| Item | Content |
 |---|---|
-| **회사명** | {{회사명}} |
-| **본사 / 리전** | {{본사 위치 / 서비스 리전}} |
-| **제품명** | {{제품명}} |
-| **출시 시점** | {{출시 연도}} |
-| **타깃 세그먼트** | {{타깃}} |
-| **출처** | {{REF}} |
+| **Company Name** | {{company name}} |
+| **HQ / Region** | {{HQ location / service region}} |
+| **Product Name** | {{product name}} |
+| **Launch Date** | {{launch year}} |
+| **Target Segment** | {{target}} |
+| **Source** | {{REF}} |
 
-### §4-2 가격 정책
+### §4-2 Pricing Policy
 
 <!-- col-widths: 20%, 25%, 35%, 20% -->
-| 요금제 | 단가 | 포함 범위 | 출처 |
+| Plan | Unit Price | Included Scope | Source |
 |---|---|---|---|
-| {{요금제명}} | {{단가}} | {{포함 기능 / 사용량 한도}} | {{REF}} |
+| {{plan name}} | {{unit price}} | {{included features / usage limits}} | {{REF}} |
 
-### §4-3 핵심 기능 / 차별점
-
-<!-- col-widths: 25%, 50%, 25% -->
-| 기능 | 설명 (공식 문서 기준) | 출처 |
-|---|---|---|
-| {{기능명}} | {{공식 문서 인용 또는 요약}} | {{REF}} |
-
-### §4-4 약점 / 제약
+### §4-3 Core Features / Differentiators
 
 <!-- col-widths: 25%, 50%, 25% -->
-| 항목 | 내용 (사실 기반) | 출처 |
+| Feature | Description (per official documentation) | Source |
 |---|---|---|
-| {{제약 항목}} | {{사실 기반 제약}} | {{REF}} |
+| {{feature name}} | {{quoted or summarized from official documentation}} | {{REF}} |
 
-### §4-5 자사 {{PRODUCT_NAME}} 관점 시사점
+### §4-4 Weaknesses / Constraints
 
-{{사실에 대한 자사 관점 해석. 추측 영역은 [검토 필요] 표시.}}
+<!-- col-widths: 25%, 50%, 25% -->
+| Item | Content (fact-based) | Source |
+|---|---|---|
+| {{constraint item}} | {{fact-based constraint}} | {{REF}} |
+
+### §4-5 Implications for Our Product, {{PRODUCT_NAME}}
+
+{{our product's interpretation of the facts. Mark speculative areas with [needs-review].}}
 :::
 
-::: {.panel section="§5 경쟁사별 상세 — {{COMPETITOR_3}}"}
-## §5 경쟁사별 상세 — {{COMPETITOR_3}}
+::: {.panel section="§5 Competitor Detail — {{COMPETITOR_3}}"}
+## §5 Competitor Detail — {{COMPETITOR_3}}
 
 ---
 
-### §5-1 회사 / 제품 개요
+### §5-1 Company / Product Overview
 
 <!-- col-widths: 20%, 80% -->
-| 항목 | 내용 |
+| Item | Content |
 |---|---|
-| **회사명** | {{회사명}} |
-| **본사 / 리전** | {{본사 위치 / 서비스 리전}} |
-| **제품명** | {{제품명}} |
-| **출시 시점** | {{출시 연도}} |
-| **타깃 세그먼트** | {{타깃}} |
-| **출처** | {{REF}} |
+| **Company Name** | {{company name}} |
+| **HQ / Region** | {{HQ location / service region}} |
+| **Product Name** | {{product name}} |
+| **Launch Date** | {{launch year}} |
+| **Target Segment** | {{target}} |
+| **Source** | {{REF}} |
 
-### §5-2 가격 정책
+### §5-2 Pricing Policy
 
 <!-- col-widths: 20%, 25%, 35%, 20% -->
-| 요금제 | 단가 | 포함 범위 | 출처 |
+| Plan | Unit Price | Included Scope | Source |
 |---|---|---|---|
-| {{요금제명}} | {{단가}} | {{포함 기능 / 사용량 한도}} | {{REF}} |
+| {{plan name}} | {{unit price}} | {{included features / usage limits}} | {{REF}} |
 
-### §5-3 핵심 기능 / 차별점
-
-<!-- col-widths: 25%, 50%, 25% -->
-| 기능 | 설명 (공식 문서 기준) | 출처 |
-|---|---|---|
-| {{기능명}} | {{공식 문서 인용 또는 요약}} | {{REF}} |
-
-### §5-4 약점 / 제약
+### §5-3 Core Features / Differentiators
 
 <!-- col-widths: 25%, 50%, 25% -->
-| 항목 | 내용 (사실 기반) | 출처 |
+| Feature | Description (per official documentation) | Source |
 |---|---|---|
-| {{제약 항목}} | {{사실 기반 제약}} | {{REF}} |
+| {{feature name}} | {{quoted or summarized from official documentation}} | {{REF}} |
 
-### §5-5 자사 {{PRODUCT_NAME}} 관점 시사점
+### §5-4 Weaknesses / Constraints
 
-{{사실에 대한 자사 관점 해석. 추측 영역은 [검토 필요] 표시.}}
+<!-- col-widths: 25%, 50%, 25% -->
+| Item | Content (fact-based) | Source |
+|---|---|---|
+| {{constraint item}} | {{fact-based constraint}} | {{REF}} |
+
+### §5-5 Implications for Our Product, {{PRODUCT_NAME}}
+
+{{our product's interpretation of the facts. Mark speculative areas with [needs-review].}}
 :::
 
-::: {.panel section="§6 시사점 및 전략 권고"}
-## §6 시사점 및 전략 권고
+::: {.panel section="§6 Implications and Strategic Recommendations"}
+## §6 Implications and Strategic Recommendations
 
 ---
 
-### §6-1 자사 포지셔닝 권고
+### §6-1 Recommended Positioning for Our Product
 
 <!-- col-widths: 20%, 40%, 40% -->
-| 축 | 권고 포지셔닝 | 근거 (§2 매트릭스 참조) |
+| Axis | Recommended Positioning | Basis (see §2 matrix) |
 |---|---|---|
-| **가격** | {{포지셔닝 — 예: 중가 / 한국 가성비}} | {{근거}} |
-| **기능** | {{포지셔닝 — 예: 한국 운영 자동화 특화}} | {{근거}} |
-| **타깃** | {{타깃 세그먼트 권고}} | {{근거}} |
+| **Price** | {{positioning — e.g. mid-tier / value-for-money in Korea}} | {{basis}} |
+| **Features** | {{positioning — e.g. specialized in operations automation for Korea}} | {{basis}} |
+| **Target** | {{recommended target segment}} | {{basis}} |
 
-### §6-2 차별화 전략
+### §6-2 Differentiation Strategy
 
 <!-- col-widths: 15%, 25%, 60% -->
-| ID | 축 | 전략 내용 |
+| ID | Axis | Strategy Content |
 |---|---|---|
-| STR-01 | 가격 | {{전략 — 예: KR 결제 / 부가세 분리 표기}} |
-| STR-02 | 기능 | {{전략 — 예: 자사 도메인 연동 통합}} |
-| STR-03 | 지원 | {{전략 — 예: 한국어 24시간 CS}} |
+| STR-01 | Price | {{strategy — e.g. KR payment / VAT shown separately}} |
+| STR-02 | Features | {{strategy — e.g. integrated with our product's domain}} |
+| STR-03 | Support | {{strategy — e.g. 24/7 Korean-language CS}} |
 
-### §6-3 우선 대응 항목 (cluster 환류)
+### §6-3 Priority Response Items (cluster reflow)
 
 <!-- col-widths: 10%, 25%, 35%, 15%, 15% -->
-| ID | 항목 | 내용 / 검토 필요 | 우선순위 | 환류 대상 |
+| ID | Item | Content / Needs Review | Priority | Reflow Target |
 |---|---|---|---|---|
-| PRI-01 | {{대응 항목}} | {{내용 — TBD 인 부분 명시}} | P0 | {{cluster_ref / requirements}} |
-| PRI-02 | {{대응 항목}} | {{내용}} | P1 | {{cluster_ref}} |
+| PRI-01 | {{response item}} | {{content — state any TBD portions}} | P0 | {{cluster_ref / requirements}} |
+| PRI-02 | {{response item}} | {{content}} | P1 | {{cluster_ref}} |
 :::
 
-::: {.panel section="§7 부록 — 데이터 출처 / 참고 문헌" style="info"}
-## §7 부록 — 데이터 출처 / 참고 문헌
+::: {.panel section="§7 Appendix — Data Sources / References" style="info"}
+## §7 Appendix — Data Sources / References
 
 ---
 
-### §7-1 출처 목록
+### §7-1 Source List
 
 <!-- col-widths: 10%, 30%, 35%, 12%, 13% -->
-| ID | 항목 | 출처 URL | 수집 일자 | 신뢰도 |
+| ID | Item | Source URL | Collection Date | Reliability |
 |---|---|---|---|---|
-| REF-01 | {{항목 — 예: AWS RDS 가격}} | {{URL}} | {{YYYY-MM-DD}} | 1차 (공식) |
-| REF-02 | {{항목 — 예: 시장 규모 리서치}} | {{URL}} | {{YYYY-MM-DD}} | 2차 (리서치) |
-| REF-03 | {{항목 — 예: 사용자 후기}} | {{URL}} | {{YYYY-MM-DD}} | 3차 (커뮤니티) |
+| REF-01 | {{item — e.g. AWS RDS pricing}} | {{URL}} | {{YYYY-MM-DD}} | Primary (official) |
+| REF-02 | {{item — e.g. market-size research}} | {{URL}} | {{YYYY-MM-DD}} | Secondary (research) |
+| REF-03 | {{item — e.g. user reviews}} | {{URL}} | {{YYYY-MM-DD}} | Tertiary (community) |
 
-### §7-2 신뢰도 분류 기준
+### §7-2 Reliability Classification Criteria
 
 <!-- col-widths: 15%, 25%, 60% -->
-| 등급 | 분류 | 예시 |
+| Tier | Classification | Examples |
 |---|---|---|
-| **1차** | 공식 자료 | 공식 사이트 / 가격 페이지 / 공식 문서 / 공시 |
-| **2차** | 검증된 3자 | 리서치 보고서 / 주요 매체 기사 |
-| **3차** | 비공식 | 커뮤니티 / 사용자 후기 / 블로그 |
+| **Primary** | Official material | Official site / pricing page / official documentation / disclosures |
+| **Secondary** | Verified third party | Research reports / major media articles |
+| **Tertiary** | Unofficial | Community / user reviews / blogs |
 :::

@@ -1,27 +1,31 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""외부 임포트 마크다운 → 표준 임포트 레코드 (멀티테넌트 SaaS Phase 2).
+"""External import markdown -> standard import record (multi-tenant SaaS Phase 2).
 
-목적:
-    Confluence/GitLab/Notion 등에서 페치된 마크다운(소스 무관)을 표준 임포트
-    레코드로 적재한다. 본문은 무손실 보존하고 frontmatter 정규화·메타 기록을
-    수행한다. 실제 페치·소스별 변환은 상위(skill)가 담당한다:
-      - Confluence snapshot(XML) 은 storage_to_md.py 로 MD 변환 후 본 모듈에 입력.
-      - GitLab raw .md / Notion 계열 wiki 커넥터 fetch 결과는 MD 네이티브 → 직접 입력.
-    → 본 모듈은 **소스 무관(source-agnostic)** — 항상 MD 를 입력으로 받는다.
+Purpose:
+    Load markdown fetched from Confluence/GitLab/Notion etc. (source-agnostic)
+    into a standard import record. Preserves the body losslessly while
+    normalizing frontmatter and recording metadata. The actual fetch and
+    per-source conversion is handled by the caller (skill):
+      - A Confluence snapshot (XML) is converted to MD via storage_to_md.py
+        before being fed into this module.
+      - GitLab raw .md / Notion-family wiki connector fetch results are
+        already MD-native -> fed in directly.
+    -> This module is **source-agnostic** — it always takes MD as input.
 
-산출:
-    PROJECTS/{product}/inputs/imports/{source}/{id}.md       (정규화 frontmatter + 본문)
+Output:
+    PROJECTS/{product}/inputs/imports/{source}/{id}.md       (normalized frontmatter + body)
     PROJECTS/{product}/inputs/imports/{source}/{id}.meta.json
 
-멱등: 동일 내용 재실행 무변경. 기존 meta.json 은 덮어쓰지 않는다(from-url 패턴) —
-content 가 달라졌으면 경고만 출력한다.
+Idempotent: re-running with identical content is a no-op. The existing
+meta.json is not overwritten (from-url pattern) — a mismatched content hash
+only prints a warning.
 
-사용법:
+Usage:
     python import_normalize.py --hub-root <Hub> --product <p> --source <confluence|gitlab|notion|file> \
         --id <ID> --input <fetched.md> [--source-url URL] [--intent context]
 
-exit code: 0 성공 / 1 입력 없음 / 2 인자 오류
+exit code: 0 success / 1 no input / 2 argument error
 """
 from __future__ import annotations
 
@@ -51,14 +55,15 @@ def write_record(
     source_url: str = "",
     intent: str = "context",
 ) -> dict:
-    """임포트 레코드(md + meta.json)를 기록하고 결과 dict 반환."""
+    """Write the import record (md + meta.json) and return a result dict."""
     out_dir = hub_root / "PROJECTS" / product / "inputs" / "imports" / source
     out_dir.mkdir(parents=True, exist_ok=True)
     md_path = out_dir / f"{doc_id}.md"
     meta_path = out_dir / f"{doc_id}.meta.json"
 
     imported_at = datetime.now().isoformat(timespec="seconds")
-    # 멱등성: 기존 레코드가 있으면 그 imported_at 을 재사용해 재실행이 바이트 동일하도록.
+    # Idempotency: if a prior record exists, reuse its imported_at so a
+    # re-run produces byte-identical output.
     if md_path.exists():
         prev_fm, _, _ = detect_frontmatter(md_path.read_text(encoding="utf-8", errors="replace"))
         if prev_fm.get("imported_at"):
@@ -75,7 +80,7 @@ def write_record(
     md_path.write_text(normalized, encoding="utf-8")
 
     if meta_path.exists():
-        # 기존 메타 보존 — content 변동만 알림.
+        # Preserve the existing metadata — only flag a content change.
         existing = json.loads(meta_path.read_text(encoding="utf-8", errors="replace"))
         if existing.get("content_sha") != content_sha:
             existing["content_sha"] = content_sha
@@ -105,12 +110,12 @@ def write_record(
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description="외부 임포트 MD → 표준 레코드")
+    ap = argparse.ArgumentParser(description="External import MD -> standard record")
     ap.add_argument("--hub-root", required=True, type=Path)
     ap.add_argument("--product", required=True)
     ap.add_argument("--source", required=True, choices=VALID_SOURCES)
     ap.add_argument("--id", required=True, dest="doc_id")
-    ap.add_argument("--input", required=True, type=Path, help="페치된 MD 파일")
+    ap.add_argument("--input", required=True, type=Path, help="Fetched MD file")
     ap.add_argument("--source-url", default="")
     ap.add_argument("--intent", default="context", choices=("context", "target", "template"))
     args = ap.parse_args()
@@ -127,7 +132,7 @@ def main() -> int:
     )
     print(f"[import_normalize] {result['status']}: {result['md_path']}")
     if result["report"]["inferred"]:
-        print(f"  추론: {', '.join(result['report']['inferred'])}")
+        print(f"  inferred: {', '.join(result['report']['inferred'])}")
     return 0
 
 

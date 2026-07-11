@@ -1,14 +1,15 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Session Bootstrap 통합본 생성 (개선안 F — CONTEXT_OPTIMIZATION.md).
+"""Build the consolidated Session Bootstrap file (improvement F — CONTEXT_OPTIMIZATION.md).
 
-목적:
-    Hub/.claude/CLAUDE.md 가 세션 시작 시 6개 파일을 순차 로드하도록 강제하던
-    구조를, 단일 통합 파일 _session-bootstrap.md 한 번 읽기로 대체한다.
-    모든 skill SKILL.md 는 본 파일을 1회만 읽고 이후 재독하지 않는다.
+Purpose:
+    Replaces the structure where Hub/.claude/CLAUDE.md forced sequential loading
+    of 6 files at session start with a single consolidated file,
+    _session-bootstrap.md, read once. Every skill SKILL.md reads this file
+    exactly once per session and never re-reads it.
 
-    출력: CONTEXT/_session-bootstrap.md
-    포함 원본 파일 (변경 시 자동 재생성):
+    Output: CONTEXT/_session-bootstrap.md
+    Included source files (regenerated automatically on change):
       - layer-config.md
       - about-pm.md
       - project-rules.md
@@ -16,16 +17,17 @@
       - doc-layer-schema.md
       - team-members.md
 
-    캐시 무효화:
-      위 6 파일 중 어떤 것이든 mtime 이 _session-bootstrap.md 보다 새로우면
-      재생성한다. 누락된 파일은 자리 표시자 블록만 출력하고 진행한다.
+    Cache invalidation:
+      If any of the 6 files above has an mtime newer than
+      _session-bootstrap.md, regenerate. Missing files emit only a
+      placeholder block and processing continues.
 
-사용법:
-    python build_bootstrap.py --hub-root <Planning-Agent-Hub 경로>
+Usage:
+    python build_bootstrap.py --hub-root <Planning-Agent-Hub path>
 
 exit code:
-    0 = 성공
-    2 = 인자 오류
+    0 = success
+    2 = argument error
 """
 from __future__ import annotations
 
@@ -63,17 +65,17 @@ def build(hub_root: Path) -> int:
         return 0
 
     parts: list[str] = [
-        "# Session Bootstrap (자동 생성, 직접 수정 금지)",
+        "# Session Bootstrap (auto-generated, do not edit directly)",
         "",
-        "> 본 파일은 build_bootstrap.py 가 자동 생성한다.",
-        f"> 생성 시각: {datetime.now().isoformat(timespec='seconds')}",
-        "> 변경하려면 원본 CONTEXT/*.md 를 수정한 뒤 build_bootstrap.py 를 다시 실행한다.",
+        "> This file is generated automatically by build_bootstrap.py.",
+        f"> Generated at: {datetime.now().isoformat(timespec='seconds')}",
+        "> To change it, edit the source CONTEXT/*.md files and re-run build_bootstrap.py.",
         "",
-        "## 사용 규칙",
-        "- 각 skill SKILL.md 는 세션 1회만 본 파일을 읽고 이후 재독하지 않는다.",
-        "- 본 파일이 보장하는 컨텍스트: PREFIX, PM 프로필, 기획 원칙, 톤 기준,",
-        "  문서 스키마, 이해관계자 명단.",
-        "- 추가 컨텍스트가 필요한 skill 은 자체 전제조건 단계에서 별도 로드한다.",
+        "## Usage rules",
+        "- Each skill SKILL.md reads this file once per session and never re-reads it.",
+        "- Context guaranteed by this file: PREFIX, PM profile, planning principles,",
+        "  tone standards, document schema, stakeholder roster.",
+        "- Skills needing extra context load it separately in their own prerequisite step.",
         "",
     ]
 
@@ -83,7 +85,7 @@ def build(hub_root: Path) -> int:
         parts.append(f"---\n\n## SOURCE — {src.name}")
         parts.append("")
         if not src.exists():
-            parts.append(f"> ⚠️ `{src.name}` 미존재. /init-hub 실행 후 다시 build_bootstrap.py 호출 권장.")
+            parts.append(f"> ⚠️ `{src.name}` missing. Run /init-hub, then invoke build_bootstrap.py again.")
             parts.append("")
             missing.append(src.name)
             continue

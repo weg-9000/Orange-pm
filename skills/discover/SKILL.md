@@ -1,6 +1,6 @@
 ---
 name: discover
-description: 프로젝트 전체 디렉토리 구조를 생성하고 Discovery 단계(Phase -1)를 초기화한다. 신규 프로젝트의 첫 번째 실행 스킬이다.
+description: Creates the full project directory structure and initializes the Discovery phase (Phase -1). The first skill run for a new project.
 triggers:
   - "discover"
   - "new project"
@@ -11,51 +11,54 @@ model: haiku
 user-invocable: true
 ---
 
-## Bootstrap 캐시 가드 (개선안 F — CONTEXT_OPTIMIZATION.md)
+## Bootstrap Cache Guard (Improvement F — CONTEXT_OPTIMIZATION.md)
 
-세션 첫 진입 시 `CONTEXT/_session-bootstrap.md` 를 1회만 로드한다.
-이미 같은 세션에서 본 파일을 읽었다면 재독을 금지한다.
-캐시가 없거나 stale 이면 다음 명령으로 갱신한 뒤 진행한다:
+Load `CONTEXT/_session-bootstrap.md` once on first entry to the session.
+If this file has already been read in the same session, re-reading it is forbidden.
+If the cache is missing or stale, refresh it with the following command before proceeding:
 
 ```bash
 python ${CLAUDE_PLUGIN_ROOT}/scripts/build_bootstrap.py --hub-root .
 ```
 
-본 가드는 layer-config / about-pm / project-rules / brand-voice /
-doc-layer-schema / team-members 6개 원본 파일 재로드를 대체한다.
-원본 파일 직접 Read 는 본 skill 의 핵심 작업에 필수인 경우에만 허용된다.
+This guard replaces re-loading the 6 source files: layer-config / about-pm /
+project-rules / brand-voice / doc-layer-schema / team-members.
+Directly reading the source files is allowed only when strictly necessary
+for this skill's core work.
 
-## 전제조건 검사
+## Precondition Checks
 
-1. `CONTEXT/layer-config.md`를 읽어 `{product}`가 이미 등록된 PREFIX와 충돌하는지 확인한다.
-   충돌 시 PM에게 다른 이름 사용을 안내한다.
+1. Read `CONTEXT/layer-config.md` and check whether `{product}` conflicts
+   with an already-registered PREFIX.
+   If it conflicts, instruct the PM to use a different name.
 
-2. `PROJECTS/{product}/` 디렉토리가 이미 존재하는지 확인한다.
-   존재 시 다음 두 가지 선택지를 제시한다:
-   - 기존 프로젝트 이어서 진행 (`SessionStart` 흐름으로 안내)
-   - 완전 초기화 (PM 명시적 확인 후 진행)
+2. Check whether the `PROJECTS/{product}/` directory already exists.
+   If it exists, present two options:
+   - Continue the existing project (direct to the `SessionStart` flow)
+   - Fully reinitialize (proceed only after explicit PM confirmation)
 
 
-## 실행 단계
+## Execution Steps
 
-### 단계 1 — PREFIX 등록
+### Step 1 — Register PREFIX
 
-PM에게 이 프로젝트의 PREFIX 값을 입력받는다.
-입력 예: `CLOUD`, `DBAAS`, `BILLING`
-입력값이 없으면 `{product}` 대문자를 기본값으로 사용하고 PM에게 확인한다.
+Have the PM input the PREFIX value for this project.
+Example input: `CLOUD`, `DBAAS`, `BILLING`
+If no value is entered, use the uppercase of `{product}` as the default
+and confirm with the PM.
 
-`CONTEXT/layer-config.md`에 다음 항목을 추가한다:
+Add the following items to `CONTEXT/layer-config.md`:
 ```markdown
 ## {product}
 - PREFIX: {PREFIX}
-- created_at: {UTC 타임스탬프}
+- created_at: {UTC timestamp}
 - phase: -1
 ```
 
 
-### 단계 2 — 전체 디렉토리 구조 생성
+### Step 2 — Create the full directory structure
 
-다음 디렉토리를 일괄 생성한다:
+Create the following directories in bulk:
 
 ```
 PROJECTS/{product}/
@@ -70,23 +73,23 @@ PROJECTS/{product}/
 └── reports/
 ```
 
-CONTEXT/ 디렉토리가 없으면 함께 생성한다.
+If the CONTEXT/ directory does not exist, create it as well.
 
 
-### 단계 3 — 핵심 파일 초기화
+### Step 3 — Initialize core files
 
 **session-log.md**:
 ```markdown
 # {product} Session Log
 
 - PREFIX: {PREFIX}
-- created_at: {UTC 타임스탬프}
+- created_at: {UTC timestamp}
 
 ## Phase History
 
-| Phase | 진입 시각 | 진입 스킬 | 비고 |
+| Phase | Entry Time | Entry Skill | Notes |
 |---|---|---|---|
-| -1 (Discovery) | {UTC 타임스탬프} | /discover | 프로젝트 초기화 |
+| -1 (Discovery) | {UTC timestamp} | /discover | Project initialized |
 ```
 
 **decisions.md**:
@@ -94,140 +97,144 @@ CONTEXT/ 디렉토리가 없으면 함께 생성한다.
 # {product} Decisions
 
 - PREFIX: {PREFIX}
-- created_at: {UTC 타임스탬프}
+- created_at: {UTC timestamp}
 - freeze: false
 
-> 결정 관리 규칙: 에이전트가 결정성 발화·합의·번복을 감지하면 표에 후보 행을 자동 등재 (승인 칼럼 = `⬜`).
-> PM은 「승인」 셀에 `✅ {pm_id}` 직접 기입하거나 `/dec-approve {DEC-ID,...}` 로 일괄 승인한다.
-> 미승인 DEC은 정본 효력 없음 (INFO). 컬럼 정의·승인 워크플로는 [[CONTEXT/dec-schema]] 참조.
+> Decision management rule: when the agent detects a decisive statement,
+> agreement, or reversal, it auto-registers a candidate row in the table
+> (approval column = `⬜`).
+> The PM either enters `✅ {pm_id}` directly in the "Approval" cell, or
+> bulk-approves with `/dec-approve {DEC-ID,...}`.
+> An unapproved DEC has no master-copy effect (INFO). See
+> [[CONTEXT/dec-schema]] for column definitions and the approval workflow.
 
-## DEC 원장 (SSoT)
+## DEC Ledger (SSoT)
 
-| ID | 일자 | 도메인 | 핵심 결정 | 번복 | 승인 | 근거(스킬·세션) |
+| ID | Date | Domain | Key Decision | Reversal | Approval | Basis (skill/session) |
 |---|---|---|---|---|---|---|
-| _(아직 없음)_ | | | | | | |
+| _(none yet)_ | | | | | | |
 
 ## Freeze Records
 
-_(아직 없음)_
+_(none yet)_
 ```
 
-**도메인 ENUM**: 🏗️인프라 · 🧭LNB·네비 · 🎯화면 인터랙션 · 💰결제·약정 · 📊무료·SSoT · 🔧입력 컨트롤 · 🎨용어·시각 · 🛡️종속·자원 · 📦컨테이너 · 🔗공유·연동 · 🤖자동기록
+**Domain ENUM**: 🏗️Infrastructure · 🧭LNB/Navigation · 🎯Screen Interaction · 💰Billing/Commitment · 📊Free tier/SSoT · 🔧Input Controls · 🎨Terminology/Visual · 🛡️Dependency/Resource · 📦Container · 🔗Sharing/Integration · 🤖Auto-recorded
 
-**승인 ENUM**: `⬜` 미승인 / `✅ {pm_id}` 승인 / `❌ {pm_id}: {사유}` 반려 / `🟡 보류`
+**Approval ENUM**: `⬜` pending / `✅ {pm_id}` approved / `❌ {pm_id}: {reason}` rejected / `🟡 on-hold`
 
 **open-issues.md**:
 ```markdown
 # {product} Open Issues
 
-## P0 — 즉시 해소 필요
+## P0 — Requires Immediate Resolution
 
-_(없음)_
+_(none)_
 
-## P1 — Discovery 필수 수집 항목
+## P1 — Required Discovery Collection Items
 
-- [ ] [DISC-01] 경쟁사 분석 최소 3개사 미완료 → `/research {product}` 실행
-- [ ] [DISC-02] 이해관계자 요구사항 수집 미완료 → `/stakeholder {product}` 실행
-- [ ] [DISC-03] 자사 제품 현황 파악 미완료 → `/product-audit {product}` 실행
-- [ ] [DISC-04] `{PREFIX}-B` 공통 정책 문서 Confluence 링크 미등록
+- [ ] [DISC-01] Competitor analysis (at least 3 companies) incomplete → run `/research {product}`
+- [ ] [DISC-02] Stakeholder requirements gathering incomplete → run `/stakeholder {product}`
+- [ ] [DISC-03] Own-product status assessment incomplete → run `/product-audit {product}`
+- [ ] [DISC-04] `{PREFIX}-B` common policy document Confluence link not registered
 
-## P2 — 권장 수집 항목
+## P2 — Recommended Collection Items
 
-- [ ] [DISC-05] 법적·규제 제약 조건 확인
-- [ ] [DISC-06] 연동 대상 외부 시스템 목록 초안 작성
+- [ ] [DISC-05] Confirm legal/regulatory constraints
+- [ ] [DISC-06] Draft a list of external systems to integrate with
 ```
 
 
-### 단계 4 — Discovery 서브디렉토리 템플릿 생성
+### Step 4 — Create Discovery subdirectory templates
 
 **inputs/discovery/competitor/overview.md**:
 ```markdown
-# 경쟁사 분석 개요
+# Competitor Analysis Overview
 
-## 분석 대상
+## Analysis Targets
 
-| 경쟁사 | 분석 완료 | 담당 | 비고 |
+| Competitor | Analysis Complete | Owner | Notes |
 |---|---|---|---|
-| (미입력) | | | |
+| (not entered) | | | |
 
-## 기능 비교 매트릭스
+## Feature Comparison Matrix
 
-| 기능 항목 | 자사 | 경쟁사 A | 경쟁사 B | 경쟁사 C |
+| Feature Item | Us | Competitor A | Competitor B | Competitor C |
 |---|---|---|---|---|
-| (미입력) | | | | |
+| (not entered) | | | | |
 
-## 주요 발견 사항
+## Key Findings
 
-_(분석 완료 후 작성)_
+_(write after analysis is complete)_
 ```
 
 **inputs/discovery/stakeholder/overview.md**:
 ```markdown
-# 이해관계자 요구사항 개요
+# Stakeholder Requirements Overview
 
-## 이해관계자 목록
+## Stakeholder List
 
-| 이름 | 직책 | 관심 영역 | 인터뷰 완료 |
+| Name | Title | Area of Interest | Interview Complete |
 |---|---|---|---|
-| (미입력) | | | |
+| (not entered) | | | |
 
-## 요구사항 요약
+## Requirements Summary
 
-_(인터뷰 완료 후 작성)_
+_(write after interviews are complete)_
 
-## 미결 요구사항
+## Open Requirements
 
-_(작성 전)_
+_(not yet written)_
 ```
 
 **inputs/discovery/product-audit/overview.md**:
 ```markdown
-# 자사 제품 현황 개요
+# Own-Product Status Overview
 
-## 기존 기능 목록
+## Existing Feature List
 
-| 기능명 | 구현 상태 | 개선 필요 여부 | 비고 |
+| Feature | Implementation Status | Improvement Needed | Notes |
 |---|---|---|---|
-| (미입력) | | | |
+| (not entered) | | | |
 
-## 반복 문제 (Pain Points)
+## Recurring Issues (Pain Points)
 
-| 항목 | 유형 (성능/UX/보안) | 빈도 | 우선순위 |
+| Item | Type (Performance/UX/Security) | Frequency | Priority |
 |---|---|---|---|
-| (미입력) | | | |
+| (not entered) | | | |
 
-## 기술 제약 사항
+## Technical Constraints
 
-_(작성 전)_
+_(not yet written)_
 ```
 
 
-### 단계 5 — session-log.md 완료 기록
+### Step 5 — Record completion in session-log.md
 
 ```markdown
-| -1 (Discovery) | {UTC 타임스탬프} | /discover 완료 | 디렉토리 구조 생성, 템플릿 초기화 |
+| -1 (Discovery) | {UTC timestamp} | /discover complete | Directory structure created, templates initialized |
 ```
 
 
-## 결과 파일 목록
+## Output Files
 
-| 파일 / 디렉토리 | 내용 |
+| File / Directory | Content |
 |---|---|
-| `CONTEXT/layer-config.md` | PREFIX 등록 |
-| `PROJECTS/{product}/` | 전체 8개 디렉토리 생성 |
-| `session-log.md` | Phase -1 진입 기록 |
-| `decisions.md` | 초기 템플릿 (freeze: false) |
-| `open-issues.md` | Discovery 필수 수집 6개 P1/P2 항목 |
-| `inputs/discovery/competitor/overview.md` | 비교 매트릭스 템플릿 |
-| `inputs/discovery/stakeholder/overview.md` | 이해관계자 목록 템플릿 |
-| `inputs/discovery/product-audit/overview.md` | 현황 파악 템플릿 |
+| `CONTEXT/layer-config.md` | PREFIX registered |
+| `PROJECTS/{product}/` | All 8 directories created |
+| `session-log.md` | Records Phase -1 entry |
+| `decisions.md` | Initial template (freeze: false) |
+| `open-issues.md` | 6 required Discovery P1/P2 items |
+| `inputs/discovery/competitor/overview.md` | Comparison matrix template |
+| `inputs/discovery/stakeholder/overview.md` | Stakeholder list template |
+| `inputs/discovery/product-audit/overview.md` | Status assessment template |
 
 
-## 다음 단계
+## Next Steps
 
-Discovery 3개 스킬을 병렬로 실행할 수 있다:
-- `/research {product}`: 경쟁사 분석
-- `/stakeholder {product}`: 이해관계자 요구사항 수집
-- `/product-audit {product}`: 자사 제품 현황 파악
+The 3 Discovery skills can be run in parallel:
+- `/research {product}`: competitor analysis
+- `/stakeholder {product}`: stakeholder requirements gathering
+- `/product-audit {product}`: own-product status assessment
 
-3개 스킬 완료 후 → `/draft-req {product}`
+After all 3 skills are complete → `/draft-req {product}`

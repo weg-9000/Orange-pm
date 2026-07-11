@@ -1,12 +1,16 @@
 ---
 name: cr
 description: |
-  v1.0-frozen 확정 draft 의 Confluence 페이지 계층 구성 + 레이블·메타데이터 적용.
-  본문 업로드는 /render --push (publication 변환 거친 클린본) 가 담당하므로
-  본 스킬은 페이지 계층·레이블·인덱스 페이지·session-log 기록에 집중한다.
-  원격 호출은 wiki 커넥터(사용자가 연결한 MCP 도구 — 예: Confluence·Notion 등)를
-  CONNECTORS.md 탐지 프로토콜로 확인해 수행한다.
-  --local-only 플래그 사용 시 wiki 커넥터 없이 로컬 Markdown 저장만 수행.
+  Builds the Confluence page hierarchy + applies labels/metadata for
+  v1.0-frozen drafts.
+  Body upload is handled by /render --push (a clean copy that has gone
+  through the publication conversion), so this skill focuses on the page
+  hierarchy, labels, index page, and session-log recording.
+  Remote calls detect the wiki connector (an MCP tool the user has
+  connected — e.g. Confluence, Notion) using the CONNECTORS.md detection
+  protocol.
+  When the --local-only flag is used, only local Markdown storage is
+  performed, without a wiki connector.
 triggers:
   - "cr"
   - "confluence upload"
@@ -16,262 +20,296 @@ effort: medium
 user-invocable: true
 ---
 
-## 책임 분리 (Source/Publication 아키텍처)
+## Separation of Responsibilities (Source/Publication Architecture)
 
-| 영역 | 담당 |
+| Area | Owner |
 |---|---|
-| 본문 publication 변환 (prefilter·LLM 어투·fact-check) | `/render --push` |
-| 본문 Markdown → Storage Format XML 변환 | `/render --push` |
-| 본문 Confluence 페이지 update API 호출 | `/render --push` |
-| Confluence 페이지 계층 (parent_page_id 하위 배치) | **본 스킬** |
-| 페이지 레이블 (`v1-frozen`, `policy`, `screen` 등) | **본 스킬** |
-| 인덱스 페이지 본문 생성/갱신 | **본 스킬** |
-| session-log/metrics 기록 | **본 스킬** |
+| Body publication conversion (prefilter, LLM tone, fact-check) | `/render --push` |
+| Body Markdown → Storage Format XML conversion | `/render --push` |
+| Body Confluence page update API call | `/render --push` |
+| Confluence page hierarchy (placement under parent_page_id) | **this skill** |
+| Page labels (`v1-frozen`, `policy`, `screen`, etc.) | **this skill** |
+| Index page body creation/update | **this skill** |
+| session-log/metrics recording | **this skill** |
 
-`/confirm` 진입 시 단계 3-5 에서 `/render --push` 가 먼저 실행되어 본문이
-정본화된 상태로 Confluence 에 올라가 있다. 본 스킬은 그 위에 페이지 구조와
-메타데이터만 덮어쓴다 (본문 재push 금지 — publication 변환이 무효화됨).
+When `/confirm` is entered, `/render --push` runs first in step 3-5, so the
+body is already published to Confluence as the master copy. This skill only
+overlays the page structure and metadata on top of it (re-pushing the body
+is forbidden — it would invalidate the publication conversion).
 
-## Bootstrap 캐시 가드 (개선안 F — CONTEXT_OPTIMIZATION.md)
+## Bootstrap Cache Guard (Improvement F — CONTEXT_OPTIMIZATION.md)
 
-세션 첫 진입 시 `CONTEXT/_session-bootstrap.md` 를 1회만 로드한다.
-이미 같은 세션에서 본 파일을 읽었다면 재독을 금지한다.
-캐시가 없거나 stale 이면 다음 명령으로 갱신한 뒤 진행한다:
+Load `CONTEXT/_session-bootstrap.md` once on first entry to the session.
+If this file has already been read in the same session, re-reading it is forbidden.
+If the cache is missing or stale, refresh it with the following command before proceeding:
 
 ```bash
 python ${CLAUDE_PLUGIN_ROOT}/scripts/build_bootstrap.py --hub-root .
 ```
 
-본 가드는 layer-config / about-pm / project-rules / brand-voice /
-doc-layer-schema / team-members 6개 원본 파일 재로드를 대체한다.
-원본 파일 직접 Read 는 본 skill 의 핵심 작업에 필수인 경우에만 허용된다.
+This guard replaces re-loading the 6 source files: layer-config / about-pm /
+project-rules / brand-voice / doc-layer-schema / team-members.
+Directly reading the source files is allowed only when strictly necessary
+for this skill's core work.
 
-## 전제조건 검사
+## Precondition Checks
 
-1. `CONTEXT/layer-config.md`에서 다음 값을 읽는다:
-   - `confluence_space_key`: 업로드 대상 스페이스 키
-   - `confluence_parent_page_id`: 프로젝트 루트 상위 페이지 ID
-   미존재 시 PM에게 값 입력을 요청하고 중단한다.
+1. Read the following values from `CONTEXT/layer-config.md`:
+   - `confluence_space_key`: the target space key for upload
+   - `confluence_parent_page_id`: the project root's parent page ID
+   If missing, ask the PM to provide the values and stop.
 
-2. `drafts/*.draft.md`에서 `**version**: \`v1.0-frozen\`` 태그가 없는 파일을 탐지한다.
-   존재 시 목록을 출력하고 업로드 대상에서 제외한다.
-   frozen draft가 0건이면 "업로드할 확정 draft가 없습니다" 안내 후 중단한다.
+2. Detect any files under `drafts/*.draft.md` that lack the
+   `**version**: \`v1.0-frozen\`` tag.
+   If any exist, print the list and exclude them from the upload target.
+   If there are 0 frozen drafts, notify "There are no frozen drafts to
+   upload" and stop.
 
-3. `--local-only` 플래그 여부를 확인한다.
-   플래그가 있으면 wiki 커넥터 없이 단계 4만 실행하고 종료한다.
+3. Check whether the `--local-only` flag is set.
+   If set, run only step 4 without a wiki connector, then finish.
 
-4. wiki 커넥터(사용자가 연결한 MCP 도구 — 예: Confluence·Notion 등)를
-   CONNECTORS.md 탐지 프로토콜로 확인한다. `CONTEXT/connectors.md` 매핑 우선,
-   없으면 자동 탐지. 커넥터 부재 또는 연결 실패 시 CONNECTORS.md 의 안내문을
-   출력하고 `--local-only` 모드로 전환할지 PM에게 묻는다.
+4. Detect the wiki connector (an MCP tool the user has connected — e.g.
+   Confluence, Notion) using the CONNECTORS.md detection protocol. Prefer
+   the `CONTEXT/connectors.md` mapping; otherwise auto-detect. If the
+   connector is absent or the connection fails, print the guidance from
+   CONNECTORS.md and ask the PM whether to switch to `--local-only` mode.
 
 
-## 실행 단계
+## Execution Steps
 
-### 단계 1 — 업로드 대상 분류 (작성 모델 분기)
+### Step 1 — Classify upload targets (branch by authoring model)
 
-먼저 작성 모델을 판정한다 (fix-plan-dossier-publish):
-- **dossier 모델 (Track A)**: `work-orders/cluster_index.json` 존재(운영 게이트) +
-  dossier draft(`type: cluster_draft`, `wo_id: {PREFIX}-K-{cluster_id}`, fanout cluster-mode
-  산출) → **dossier 모드**. `graph/project-mode.json` 의 `publication_mode` 로 다시 분기:
-  - `dossier-page` (기본/키 없음) → **1-D** (기능정의서 1개 = 페이지 1개).
-  - `split-deliverable` → **1-D-split** (D2 정책정의서 / D3 화면설계서 2개 페이지).
-- **legacy 모델**: 그 외 → 기존 policy/screen 그룹 분리(아래 1-L).
+First, determine the authoring model (fix-plan-dossier-publish):
+- **dossier model (Track A)**: `work-orders/cluster_index.json` exists
+  (operational gate) + a dossier draft (`type: cluster_draft`,
+  `wo_id: {PREFIX}-K-{cluster_id}`, produced by fanout cluster-mode) →
+  **dossier mode**. Branch further by `graph/project-mode.json`'s
+  `publication_mode`:
+  - `dossier-page` (default / key absent) → **1-D** (1 capability dossier
+    = 1 page).
+  - `split-deliverable` → **1-D-split** (2 pages: D2 policy definition /
+    D3 screen design).
+- **legacy model**: anything else → the existing policy/screen group split
+  (1-L below).
 
-#### 1-D. dossier 모드 (dossier-page) — 기능정의서 1개 = 페이지 1개
+#### 1-D. dossier mode (dossier-page) — 1 capability dossier = 1 page
 
-`work-orders/cluster_index.json` 의 `clusters[]` 를 페이지 대상으로 로드한다.
-**페이지 계층 (transpose 분할 없음 — D2/D3 정책/화면 분리 폐기):**
+Load `clusters[]` from `work-orders/cluster_index.json` as the page targets.
+**Page hierarchy (no transpose split — D2/D3 policy/screen separation
+deprecated):**
 
 ```
-{product} 기획 v1.0 (루트, 단계 2)
-├─ 기능정의서/ (그룹 페이지)
-│   ├─ {dossier 1}   ← cluster_index.clusters[0]  (draft_path 클린본 본문)
+{product} Planning v1.0 (root, step 2)
+├─ Capability Dossiers/ (group page)
+│   ├─ {dossier 1}   ← cluster_index.clusters[0]  (draft_path clean-copy body)
 │   ├─ {dossier 2}
-│   └─ … (cluster_id 순)
-├─ D1 요구사항정의서   (inputs/requirements.md)
-├─ D4 회의록          (meetings/)
-└─ D5 타사조사         (inputs/research.md)
+│   └─ … (in cluster_id order)
+├─ D1 Requirements Definition   (inputs/requirements.md)
+├─ D4 Meeting Notes            (meetings/)
+└─ D5 Competitor Research       (inputs/research.md)
 ```
 
-각 dossier 페이지의 본문은 `/render --push` 가 `reports/render/{WO_ID}.complete.md`
-(클린본)에서 이미 업로드한다. 본 스킬은 **페이지 계층·레이블·per-dossier meta.json**
-에 집중한다.
+Each dossier page's body is already uploaded by `/render --push` from
+`reports/render/{WO_ID}.complete.md` (the clean copy). This skill focuses on
+**page hierarchy, labels, and per-dossier meta.json**.
 
-**per-dossier meta.json 생성** — 각 dossier 1개 = `confluence-source/{WO_ID}.meta.json`:
+**Create per-dossier meta.json** — 1 dossier = `confluence-source/{WO_ID}.meta.json`:
 ```json
-{ "id": "{생성된 page_id 또는 {{PLACEHOLDER}}}",
-  "title": "{capability} 기능정의서",
+{ "id": "{created page_id or {{PLACEHOLDER}}}",
+  "title": "{capability} Capability Dossier",
   "wo_id": "{WO_ID}", "doc_id": "{cluster_id}",
   "_sync": { "last_published_version": 0, "last_published_at": null } }
 ```
-이 파일이 render_sync_check·sync_emit 의 per-dossier 상태 키다. 페이지 생성 전이면
-`id` 를 `{{PLACEHOLDER}}` 로 두며 sync 상태는 PENDING 으로 노출된다.
+This file is the per-dossier state key for render_sync_check/sync_emit.
+Before the page is created, keep `id` as `{{PLACEHOLDER}}`, and the sync
+status is exposed as PENDING.
 
-> **Confluence 미접근 시**: 페이지 생성·page_id 확보는 보류. meta.json 은
-> placeholder 로 선생성 가능(`--local-only`). 실제 페이지 생성은 접근 복구 후.
+> **If Confluence is unreachable**: page creation and page_id acquisition
+> are held. meta.json can be pre-created with a placeholder
+> (`--local-only`). Actual page creation happens once access is restored.
 
-#### 1-D-split. dossier 모드 (split-deliverable) — D2/D3 2개 페이지
+#### 1-D-split. dossier mode (split-deliverable) — 2 pages, D2/D3
 
-`publication_mode: split-deliverable` 일 때. dossier 정본은 **D2 정책정의서 /
-D3 화면설계서 2개 deliverable 페이지로 투영**된다(기능정의서 그룹 페이지 없음).
+When `publication_mode: split-deliverable`. The dossier master is
+**projected into 2 deliverable pages: D2 policy definition / D3 screen
+design** (no capability dossier group page).
 
 ```
-{product} 기획 v1.0 (루트, 단계 2)
-├─ 정책정의서        ← dossier §1 → transpose D2 (reports/render/02-policy.assembled.md)
-├─ 화면설계서        ← dossier §2 → transpose D3, 화면 단위 (03-screen-design.assembled.md)
-├─ D1 요구사항정의서   (inputs/requirements.md)   ← 무변경
-├─ D4 회의록          (meetings/)                 ← 무변경
-└─ D5 타사조사         (inputs/research.md)        ← 무변경
+{product} Planning v1.0 (root, step 2)
+├─ Policy Definition        ← dossier §1 → transpose D2 (reports/render/02-policy.assembled.md)
+├─ Screen Design            ← dossier §2 → transpose D3, per-screen (03-screen-design.assembled.md)
+├─ D1 Requirements Definition   (inputs/requirements.md)   ← unchanged
+├─ D4 Meeting Notes            (meetings/)                 ← unchanged
+└─ D5 Competitor Research       (inputs/research.md)        ← unchanged
 ```
 
-본문 push 는 `/render --push` 의 split 경로(단계 3-A-split)가 담당한다. 본 스킬은
-**페이지 계층·레이블·인덱스·per-deliverable meta** 만 구성한다.
+Body push is handled by `/render --push`'s split path (step 3-A-split).
+This skill only sets up the **page hierarchy, labels, index, and
+per-deliverable meta**.
 
-**per-deliverable meta.json 생성** (2개):
+**Create per-deliverable meta.json** (2 files):
 ```json
 // confluence-source/02-policy-{product}.meta.json
-{ "id": "{page_id 또는 {{PLACEHOLDER}}}", "title": "[정책정의서] {product}",
+{ "id": "{page_id or {{PLACEHOLDER}}}", "title": "[Policy Definition] {product}",
   "deliverable": "D2", "_sync": { "last_published_version": 0, "last_published_at": null } }
 // confluence-source/03-screen-design-{product}.meta.json
-{ "id": "{page_id 또는 {{PLACEHOLDER}}}", "title": "[화면설계서] {product}",
+{ "id": "{page_id or {{PLACEHOLDER}}}", "title": "[Screen Design] {product}",
   "deliverable": "D3", "_sync": { "last_published_version": 0, "last_published_at": null } }
 ```
 
-페이지 부트스트랩 양식: `templates/standard/02-policy.md` /
-`templates/standard/03-screen-design.md`. meta.json 은 별도 템플릿 없이 위
-**per-deliverable meta.json 생성** 블록대로 본 스킬이 인라인으로 작성한다. 레이블:
-`{product},policy,v1-frozen` / `{product},screen,v1-frozen`.
+Page bootstrap templates: `templates/standard/02-policy.md` /
+`templates/standard/03-screen-design.md`. There is no separate template for
+meta.json — this skill writes it inline per the **Create per-deliverable
+meta.json** block above. Labels: `{product},policy,v1-frozen` /
+`{product},screen,v1-frozen`.
 
-이 2개 meta 가 render_sync_check·sync_emit 의 per-deliverable 상태 키다(SOURCE-ONLY
-dossier 와 구분). 페이지 생성 전이면 `id` 를 `{{PLACEHOLDER}}` 로 둔다.
+These 2 meta files are the per-deliverable state keys for
+render_sync_check/sync_emit (distinct from a SOURCE-ONLY dossier). Before
+the page is created, keep `id` as `{{PLACEHOLDER}}`.
 
-#### 1-L. legacy 모드 — policy/screen 그룹 (기존)
+#### 1-L. legacy mode — policy/screen groups (existing)
 
-`drafts/*.draft.md`를 직접 스캔해 draft 목록을 로드한다(기본 경로).
-`reports/integration-input.json`은 존재할 경우에만 참조하는 legacy 선택 입력이며
-필수가 아니다(integrate/integrator 는 draft frontmatter 를 직접 스캔한다).
-draft를 두 그룹으로 분리한다:
-- `policy` 그룹: type=policy인 WO draft
-- `screen` 그룹: type=screen인 WO draft
+Load the draft list by scanning `drafts/*.draft.md` directly (default
+path). `reports/integration-input.json` is a legacy optional input
+referenced only if it exists, and is not required (integrate/integrator
+scan draft frontmatter directly). Split drafts into two groups:
+- `policy` group: WO drafts with type=policy
+- `screen` group: WO drafts with type=screen
 
-업로드 순서: policy 전체 완료 후 screen 처리.
-(screen 페이지가 policy 페이지 ID를 내부 링크로 참조하므로 순서가 중요하다.)
-
-
-### 단계 2 — 프로젝트 루트 페이지 생성 또는 조회
-
-wiki 커넥터의 조회(get/search) 작업으로 `confluence_parent_page_id` 하위에
-`{product} 정책서 v1.0` 제목의 페이지가 있는지 조회한다.
-존재하면 page_id를 재사용한다.
-없으면 새 페이지를 생성하고 page_id를 기록한다.
-
-루트 페이지 본문에 다음 항목을 포함한다:
-- 프로젝트명, frozen_at 타임스탬프
-- graph.json 해시
-- policy WO 수 / screen WO 수
-- 생성될 하위 페이지 링크 목록 (업로드 완료 후 갱신)
+Upload order: complete all of policy first, then process screen.
+(Order matters because screen pages reference policy page IDs via internal
+links.)
 
 
-### 단계 3 — policy WO 페이지 메타데이터 적용
+### Step 2 — Create or look up the project root page
 
-> **본문은 /render --push 가 이미 업로드** 한 상태. 본 단계는 페이지 계층·
-> 제목·레이블·draft frontmatter 핀만 처리.
+Use the wiki connector's lookup (get/search) operation to check whether a
+page titled `{product} Policy Document v1.0` exists under
+`confluence_parent_page_id`.
+If it exists, reuse its page_id.
+If not, create a new page and record the page_id.
 
-policy 그룹의 각 draft 에 대해 순서대로 처리한다.
+Include the following items in the root page body:
+- Project name, frozen_at timestamp
+- graph.json hash
+- policy WO count / screen WO count
+- List of links to child pages to be created (updated after upload completes)
 
-wiki 커넥터로 다음 작업을 수행한다.
 
-**우선 커넥터 스키마 점검 — 본문 재push 가 publication 변환을 무효화하므로 필수:**
+### Step 3 — Apply metadata to policy WO pages
 
-발견한 wiki 도구의 스키마를 읽어, 본문(body)을 건드리지 않고 제목·상위 페이지·
-레이블만 갱신할 수 있는 작업(메타데이터 전용 update)을 지원하는지 확인한다.
+> **The body has already been uploaded by /render --push.** This step
+> only handles the page hierarchy, title, labels, and the draft frontmatter
+> pin.
 
-분기:
+Process each draft in the policy group in order.
 
-1. **본문 미수정 메타데이터 갱신 지원** — 해당 작업을 스키마에 맞춰 호출한다.
-   전달할 도메인 정보:
-   - 대상 페이지: `{page_id}`
-   - 제목: `{WO_ID} — {섹션 제목}`
-   - 상위 페이지: `{root_page_id}`
-   - 레이블: `{product}`, `policy`, `{WO_ID}`, `v1-frozen`
+Perform the following operations with the wiki connector.
 
-2. **미지원 (본문 포함 update 만 가능)** — `/render --push` 가 이미 본문 + 제목을 모두 정확히 업로드한
-   상태이므로 본 단계 전체 skip. 레이블·parent 변경 필요 시 PM 에게:
+**First, inspect the connector schema — mandatory, since re-pushing the
+body invalidates the publication conversion:**
+
+Read the schema of the discovered wiki tool and check whether it supports
+an operation (a metadata-only update) that can update the title, parent
+page, and labels without touching the body.
+
+Branch:
+
+1. **Metadata update without body modification is supported** — call the
+   operation per the schema. Domain information to pass:
+   - Target page: `{page_id}`
+   - Title: `{WO_ID} — {section title}`
+   - Parent page: `{root_page_id}`
+   - Labels: `{product}`, `policy`, `{WO_ID}`, `v1-frozen`
+
+2. **Not supported (only an update including the body is possible)** —
+   since `/render --push` has already correctly uploaded both the body and
+   title, skip this entire step. If label/parent changes are needed, notify
+   the PM:
    ```
-   [cr] WARN: 연결된 wiki 커넥터가 본문 미수정 메타 갱신을 지원하지 않습니다.
-        본문 재push 위험을 피하기 위해 메타데이터 적용을 skip 합니다.
-        레이블·parent 변경이 필요하면 wiki UI 에서 직접 적용해주세요.
-        page_id={page_id}, 적용 권고 항목: title, parent, labels
+   [cr] WARN: The connected wiki connector does not support a metadata
+        update without body modification.
+        Skipping metadata application to avoid the risk of re-pushing the
+        body. If label/parent changes are needed, apply them directly in
+        the wiki UI.
+        page_id={page_id}, recommended items to apply: title, parent, labels
    ```
-   안내 후 reports/cr-error.log 에 INFO 레벨로 기록.
+   After notifying, log it to reports/cr-error.log at INFO level.
 
-**금지**: raw source(`drafts/{WO}.draft.md`)를 본문으로 하는 페이지 update 호출 —
-이는 publication 변환을 거치지 않은 raw source 를 wiki 정본 페이지에 덮어쓰므로
-HTML 주석·자기검증·DEC 마커가 정본 페이지에 노출됨. 어떤 경우에도 사용 금지.
+**Forbidden**: calling a page update using raw source
+(`drafts/{WO}.draft.md`) as the body — this would overwrite the wiki master
+page with raw source that has not gone through the publication conversion,
+exposing HTML comments, self-verification, and DEC markers on the master
+page. Never do this under any circumstances.
 
-성공 시 해당 draft 파일에 다음 필드를 추가한다 (frontmatter 가 아닌 본문
-하단 메타블록 — publication prefilter 가 자동 제거함):
+On success, add the following fields to the draft file (not in
+frontmatter, but in a meta block at the bottom of the body — the
+publication prefilter removes it automatically):
 ```
 **confluence_page_id**: `{page_id}`
 **confluence_url**: `{page_url}`
-**uploaded_at**: `{UTC 타임스탬프}`
+**uploaded_at**: `{UTC timestamp}`
 ```
 
-실패 시 `reports/cr-error.log`에 다음 형식으로 기록하고 다음 파일로 진행:
+On failure, log it to `reports/cr-error.log` in the following format and
+proceed to the next file:
 ```
-[FAIL] {WO_ID} | {오류 코드} | {오류 메시지} | {UTC 타임스탬프}
+[FAIL] {WO_ID} | {error code} | {error message} | {UTC timestamp}
 ```
 
 
-### 단계 4 — screen WO 페이지 메타데이터 적용
+### Step 4 — Apply metadata to screen WO pages
 
-screen 그룹 처리 — 단계 3 과 동일 패턴이되 다음 차이:
+Process the screen group — same pattern as step 3, with these differences:
 
-페이지 제목: `{WO_ID} — {화면명} ({Screen ID})`
-레이블: `{product}`, `screen`, `{Screen ID}`, `v1-frozen`
+Page title: `{WO_ID} — {screen name} ({Screen ID})`
+Labels: `{product}`, `screen`, `{Screen ID}`, `v1-frozen`
 
-연관 policy 페이지 링크는 publication 변환 단계에서 본문에 이미 포함되어 있다
-(`[[POL §X-Y]]` 마커 → Confluence 내부 링크). 본 단계에서 별도 본문 수정 불필요.
-
-
-### 단계 5 — 인덱스 페이지 갱신
-
-루트 페이지 본문을 업데이트한다.
-업로드 완료된 모든 페이지의 제목 + URL을 policy / screen 섹션으로 분리해 삽입한다.
-실패 건은 `[업로드 실패]` 표시와 함께 포함한다.
+Related policy page links are already included in the body during the
+publication conversion step (`[[POL §X-Y]]` marker → Confluence internal
+link). No separate body modification is needed in this step.
 
 
-### 단계 6 — local-only 저장 (--local-only 또는 Confluence 전체 실패 시)
+### Step 5 — Update the index page
 
-`reports/confluence-export/` 디렉토리를 생성한다.
-각 draft를 그대로 복사하고 파일명에 타임스탬프를 추가한다:
+Update the root page body.
+Insert the title + URL of every successfully uploaded page, split into
+policy / screen sections.
+Include failed items with an `[upload failed]` marker.
+
+
+### Step 6 — local-only storage (with --local-only, or if Confluence fails entirely)
+
+Create the `reports/confluence-export/` directory.
+Copy each draft as-is, adding a timestamp to the filename:
 `{WO_ID}_{YYYYMMDD}.draft.md`
-`reports/confluence-export/index.md`에 전체 파일 목록을 작성한다.
+Write the full file list to `reports/confluence-export/index.md`.
 
 
-### 단계 7 — session-log.md 기록
+### Step 7 — Record in session-log.md
 
-업로드 결과 요약을 `session-log.md`에 추가한다:
+Add an upload result summary to `session-log.md`:
 ```
-- {날짜} /cr 완료: 성공 {N}건 / 실패 {N}건, 루트 페이지: {URL}
+- {date} /cr complete: {N} succeeded / {N} failed, root page: {URL}
 ```
 
-실패 건이 있으면 `open-issues.md`에 P2로 등록한다.
+If there are any failures, register them as P2 in `open-issues.md`.
 
 
-## 결과 파일 목록
+## Output Files
 
-| 파일 | 변경 내용 |
+| File | Change |
 |---|---|
-| `drafts/*.draft.md` | confluence_page_id + confluence_url + uploaded_at 추가 |
-| `session-log.md` | 업로드 결과 요약 기록 |
-| `reports/cr-error.log` | 실패 건 기록 (실패 시에만 생성) |
-| `reports/confluence-export/` | local-only 모드 시 파일 복사본 |
+| `drafts/*.draft.md` | Add confluence_page_id + confluence_url + uploaded_at |
+| `session-log.md` | Record upload result summary |
+| `reports/cr-error.log` | Records failures (created only on failure) |
+| `reports/confluence-export/` | File copies, in local-only mode |
 
 
-## 실패 처리 원칙
+## Failure Handling Principles
 
-- 개별 파일 실패는 로그 기록 후 계속 진행한다.
-- wiki 커넥터 연결이 전체 실패하면 local-only 모드 전환을 제안한다.
-- 루트 페이지 생성 실패 시 즉시 중단하고 PM에게 권한 확인을 요청한다.
+- On individual file failure, log it and continue.
+- If the wiki connector connection fails entirely, suggest switching to
+  local-only mode.
+- If root page creation fails, stop immediately and ask the PM to check
+  permissions.

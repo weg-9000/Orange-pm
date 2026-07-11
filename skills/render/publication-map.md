@@ -1,90 +1,103 @@
-# Publication Map — Dossier ↔ Page 매핑 규약 (v2.1)
+# Publication Map — Dossier ↔ Page Mapping Convention (v2.1)
 
-> ## ⚠️ v2.1 — 발행 모드 2종 (fix-plan-dossier-publish-split)
+> ## ⚠️ v2.1 — 2 publish modes (fix-plan-dossier-publish-split)
 >
-> 발행 단위는 `graph/project-mode.json` 의 **`publication_mode`** 로 결정된다
-> (파일/키 없으면 `dossier-page`):
+> The publish unit is determined by **`publication_mode`** in `graph/project-mode.json`
+> (`dossier-page` if file/key absent):
 >
-> | publication_mode | 발행 단위 | transpose | 적용 § |
+> | publication_mode | Publish unit | transpose | Applicable § |
 > |---|---|---|---|
-> | **`dossier-page`** (기본) | 기능정의서 1개 = 페이지 1개 | 미호출 | §0 |
-> | **`split-deliverable`** | D2 정책정의서 / D3 화면설계서 2개 | **재활성** | §0-bis, §1~§9 |
+> | **`dossier-page`** (default) | 1 feature spec = 1 page | not called | §0 |
+> | **`split-deliverable`** | D2 policy definition / D3 screen design spec, 2 pages | **reactivated** | §0-bis, §1~§9 |
 >
-> - `dossier-page` 는 v2.0 정본(§0). DEC-BDB-008(작성 정본=Capability Dossier).
-> - `split-deliverable` 는 dossier §1→D2 / §2→D3 transpose 를 **재활성**한다.
->   따라서 아래 §1~§9 transpose 매트릭스는 **`split-deliverable` 모드에서 유효**하고,
->   `dossier-page` 모드에서는 DEPRECATED(미호출)다 — *조건부 활성*.
-> - §3-A 파생 뷰(D1 capability 인덱스·횡단 매트릭스)는 **두 모드 모두** 유효
->   (링크 대상만 모드별로 dossier 페이지 / D2·D3 페이지).
-> - 입력형(D1 요구사항·D5 타사조사)·누적형(D4 회의록)은 모드 무관 변동 없음.
+> - `dossier-page` is the v2.0 canonical (§0). DEC-BDB-008 (canonical authoring = Capability
+>   Dossier).
+> - `split-deliverable` **reactivates** the dossier §1→D2 / §2→D3 transpose.
+>   So the §1~§9 transpose matrix below is **valid in `split-deliverable` mode** and
+>   DEPRECATED (not called) in `dossier-page` mode — *conditionally active*.
+> - §3-A derived views (D1 capability index·cross-cutting matrix) are valid in **both**
+>   modes (only the link target differs per mode — dossier page / D2·D3 page).
+> - Input-type (D1 requirements·D5 third-party research)·cumulative-type (D4 meeting minutes)
+>   are unchanged regardless of mode.
 >
-> **`graph/project-mode.json` 작성 규약** (감사 2026-06-11 갭5 — 미문서화 해소):
+> **`graph/project-mode.json` authoring convention** (2026-06-11 audit gap 5 — resolving
+> undocumented behavior):
 > ```jsonc
 > {
 >   "track": "A",                              // A(cluster fanout) | legacy
->   "publication_mode": "split-deliverable"    // "dossier-page"(기본) | "split-deliverable"
+>   "publication_mode": "split-deliverable"    // "dossier-page"(default) | "split-deliverable"
 > }
 > ```
-> - 작성 주체: `/fanout --cluster-mode` 또는 PM 수동. 변경은 발행 전이어야 한다
->   (모드 전환 시 기존 페이지 계층은 `/cr` 로 재구성).
-> - 소비 주체(단일 소스 `_emit_common.read_publication_mode`): render SKILL ·
->   `render_sync_check.py` · `sync_emit.py`. 파일/키 부재 시 모두 `dossier-page` 가정.
-> - 동기화 최신성: split 모드의 D2/D3 는 assembled.md frontmatter `source_clusters`
->   (render_transpose 기록)의 기여 cluster 만으로 OUTDATED 를 판별한다.
+> - Written by: `/fanout --cluster-mode` or manually by the PM. Changes must occur before
+>   publishing
+>   (when switching modes, the existing page hierarchy is restructured via `/cr`).
+> - Consumers (single source `_emit_common.read_publication_mode`): the render SKILL ·
+>   `render_sync_check.py` · `sync_emit.py`. All assume `dossier-page` when the file/key is
+>   absent.
+> - Sync freshness: in split mode, D2/D3 determine OUTDATED only from the contributing
+>   clusters in the assembled.md frontmatter `source_clusters` (recorded by render_transpose).
 
-## §0. 정본 매핑 (v2.0 — dossier = page)
+## §0. Canonical mapping (v2.0 — dossier = page)
 
-| Work 산출물 | → Publication | 방식 | 페이지 |
+| Work output | → Publication | Method | Page |
 |---|---|---|---|
-| 각 dossier `cluster_{cluster_id}.draft.md` (`type: cluster_draft`, `wo_id: {PREFIX}-K-{cluster_id}`) | **기능정의서 페이지** | render_assemble→prefilter→md_to_storage (transpose 없음) | dossier 1개 = 페이지 1개 |
-| `inputs/requirements.md` | D1 요구사항정의서 | 직접 변환 | 1 |
-| `inputs/research.md` | D5 타사조사 | 직접 변환 | 1 |
-| `meetings/*.md` | D4 회의록 | 시간순 누적 | 1 |
+| Each dossier `cluster_{cluster_id}.draft.md` (`type: cluster_draft`, `wo_id: {PREFIX}-K-{cluster_id}`) | **feature spec page** | render_assemble→prefilter→md_to_storage (no transpose) | 1 dossier = 1 page |
+| `inputs/requirements.md` | D1 requirements definition | direct conversion | 1 |
+| `inputs/research.md` | D5 third-party research | direct conversion | 1 |
+| `meetings/*.md` | D4 meeting minutes | chronological accumulation | 1 |
 
-- 페이지 계층: `{product} 기획 / 기능정의서/ {dossier ...} + D1 + D4 + D5` (/cr 구성).
-- 챕터 명명·정렬: capability 알파벳 → cluster_id 자연 순 (cluster_index.json 순서).
-- 색상 cycling: dossier **페이지** 단위(안정 WO_ID 기반 — 챕터 재정렬 위험 해소).
-- 선택 발행: `/render --push {product} --only {WO_ID[,WO_ID]}` (viz 체크박스 백엔드).
+- Page hierarchy: `{product} Planning / Feature Specs / {dossier ...} + D1 + D4 + D5`
+  (configured by /cr).
+- Chapter naming·ordering: capability alphabetical → cluster_id natural order
+  (cluster_index.json order).
+- Color cycling: per dossier **page** (based on stable WO_ID — avoids the risk of chapter
+  reordering).
+- Selective publish: `/render --push {product} --only {WO_ID[,WO_ID]}` (viz checkbox
+  backend).
 
 ---
 
-## §0-bis. split-deliverable 매핑 (publication_mode: split-deliverable)
+## §0-bis. split-deliverable mapping (publication_mode: split-deliverable)
 
-| Work 산출물 | → Publication | 방식 | 페이지 |
+| Work output | → Publication | Method | Page |
 |---|---|---|---|
-| 모든 dossier 의 §1 (정책 결정) | **D2 정책정의서** | render_transpose --deliverable D2 → prefilter→md_to_storage | 1 |
-| 모든 dossier 의 §2 (화면 설계) | **D3 화면설계서** | render_transpose --deliverable D3 (+`--common-shell`) | 1 |
-| `inputs/requirements.md` / `inputs/research.md` / `meetings/*.md` | D1 / D5 / D4 | §0 과 동일 | 각 1 |
+| §1 (policy decisions) of every dossier | **D2 policy definition** | render_transpose --deliverable D2 → prefilter→md_to_storage | 1 |
+| §2 (screen design) of every dossier | **D3 screen design spec** | render_transpose --deliverable D3 (+`--common-shell`) | 1 |
+| `inputs/requirements.md` / `inputs/research.md` / `meetings/*.md` | D1 / D5 / D4 | same as §0 | 1 each |
 
-- 어셈블 산출물: `reports/render/02-policy.assembled.md` / `03-screen-design.assembled.md`.
-- meta 명명: `confluence-source/02-policy-{product}.meta.json` /
-  `03-screen-design-{product}.meta.json` (per-deliverable — /cr 1-D-split 생성).
-- D3 는 dossier `related_screens` 합집합으로 **화면 단위 챕터**를 우선 시도하고,
-  §2 화면 태깅(`### §2-1 {SCR-ID}`)이 없으면 cluster 단위로 fallback(WARN).
-- `is_common_shell: true` dossier 는 D3 §부록 A(공통 셸)로 분리(§8).
-- 선택 발행: `/render --push {product} --only D2|D3`.
-- ⚠️ §0/§5/§6 은 D2/D3 미반영(정책 §1 self-contained 전제). dossier 가
-  `deliverable_targets` 에서 D2/D3 를 빼면 해당 cluster 가 누락된다.
-
----
-
-## (이하 §1~§9 — transpose 모델 · `split-deliverable` 에서 활성 / `dossier-page` 에서 DEPRECATED)
-
-> **목적**: Track A 의 cluster work 산출물을 D2/D3 등으로 transpose 하는 규약.
-> `publication_mode: split-deliverable` 에서 **활성**(render_transpose.py::transpose),
-> `dossier-page` 에서는 미호출(§3-A 파생 뷰만 유효, 링크 대상=dossier 페이지).
+- Assembled output: `reports/render/02-policy.assembled.md` /
+  `03-screen-design.assembled.md`.
+- meta naming: `confluence-source/02-policy-{product}.meta.json` /
+  `03-screen-design-{product}.meta.json` (per-deliverable — created by /cr's 1-D-split
+  tier).
+- D3 first tries a **per-screen chapter** from the union of dossier `related_screens`,
+  falling back to a per-cluster chapter (WARN) if §2 has no screen tagging
+  (`### §2-1 {SCR-ID}`).
+- Dossiers with `is_common_shell: true` are separated into D3 §Appendix A (common shell)
+  (§8).
+- Selective publish: `/render --push {product} --only D2|D3`.
+- ⚠️ §0/§5/§6 aren't reflected in D2/D3 (premised on policy §1 being self-contained). If a
+  dossier removes D2/D3 from `deliverable_targets`, that cluster is omitted.
 
 ---
 
-## 1. 두 축 분리 (Work vs Publication)
+## (Below, §1~§9 — the transpose model · active in `split-deliverable` / DEPRECATED in `dossier-page`)
+
+> **Purpose**: the convention for transposing Track A's cluster work output into D2/D3 etc.
+> **Active** in `publication_mode: split-deliverable` (render_transpose.py::transpose),
+> not called in `dossier-page` (only §3-A derived views valid, link target = dossier page).
+
+---
+
+## 1. Separating the two axes (Work vs Publication)
 
 ```
-                          Publication 축 (Confluence)
+                          Publication axis (Confluence)
                                   ↓
                 ┌──────────────────────────────────────┐
-                │ D1 요구사항 │ D2 정책 │ D3 화면 │ D4 회의록 │ D5 타사조사 │ Dα etc │
+                │ D1 Requirements │ D2 Policy │ D3 Screen │ D4 Minutes │ D5 3rd-party │ Dα etc │
                 ├──────────────────────────────────────┤
-   Work 축      │  (입력형)    │ (출력형) │(출력형)│ (누적형) │  (입력형)   │(출력형)│
+   Work axis    │  (input-type)   │(output-type)│(output-type)│(cumulative-type)│(input-type)│(output-type)│
    (Cluster)    ├──────────────────────────────────────┤
    ─ Cluster_1  │     ─        │   §1     │   §2   │   ─      │     ─       │  §α   │
    ─ Cluster_2  │     ─        │   §1     │   §2   │   ─      │     ─       │  §α   │
@@ -93,89 +106,91 @@
 ```
 
 - **Cluster 4 sections** (`cluster-draft.md`):
-  - §1 정책 결정 → **D2 정책정의서 transpose 대상**
-  - §2 화면 설계 → **D3 화면설계서 transpose 대상**
-  - §3 데이터/의존성 → **publish 제외** (publication_prefilter 가 제거)
-  - §4 Open Questions / Upstream Feedback → **publish 제외** (`/integrate` 입력)
-- **Deliverable 분류**:
-  - **입력형** (D1, D5): Phase -1 산출물. transpose 없음. 그대로 publish.
-  - **출력형** (D2, D3, Dα): Phase 4 transpose 대상. cluster 섹션들을 어셈블.
-  - **누적형** (D4): 시간 축. `meetings/*.md` 시간순 어셈블 + cluster 태그 인덱스.
+  - §1 Policy decisions → **D2 policy definition transpose target**
+  - §2 Screen design → **D3 screen design spec transpose target**
+  - §3 Data/dependencies → **excluded from publish** (removed by publication_prefilter)
+  - §4 Open Questions / Upstream Feedback → **excluded from publish** (`/integrate` input)
+- **Deliverable classification**:
+  - **Input-type** (D1, D5): Phase -1 output. No transpose. Published as-is.
+  - **Output-type** (D2, D3, Dα): Phase 4 transpose target. Assembles cluster sections.
+  - **Cumulative-type** (D4): time axis. Chronological assembly of `meetings/*.md` +
+    cluster-tag index.
 
 ---
 
-## 2. Transpose 매트릭스 (정본 매핑 표)
+## 2. Transpose matrix (canonical mapping table)
 
-| Cluster Section | → Deliverable | 어셈블 방식 | 챕터 구조 |
+| Cluster Section | → Deliverable | Assembly method | Chapter structure |
 |---|---|---|---|
-| **§1 정책 결정** (각 cluster) | **D2 정책정의서** | cluster_id 순 어셈블 | "Capability {name} / Cluster {id} {cluster_name}" 챕터 |
-| **§2 화면 설계** (각 cluster) | **D3 화면설계서** | cluster_id 순 어셈블 + 공통 셸 부록 | "Capability {name} / Cluster {id}" 챕터 + 부록 |
-| **§α (있는 cluster 만)** | **Dα etc 카테고리** | type 별 별도 페이지 | 예: API 챕터, DB 챕터, 마이그레이션 챕터 |
-| §3, §4 | **publish 제외** | — | — |
+| **§1 Policy decisions** (each cluster) | **D2 policy definition** | assembled in cluster_id order | "Capability {name} / Cluster {id} {cluster_name}" chapter |
+| **§2 Screen design** (each cluster) | **D3 screen design spec** | assembled in cluster_id order + common-shell appendix | "Capability {name} / Cluster {id}" chapter + appendix |
+| **§α (clusters that have it only)** | **Dα etc category** | separate page per type | e.g. API chapter, DB chapter, migration chapter |
+| §3, §4 | **excluded from publish** | — | — |
 
-**어셈블 순서 (deterministic)**:
-1. capability 알파벳 순 (Pricing < Provisioning < ...)
-2. 같은 capability 내에서는 cluster_id 자연 순 (PR-01 < PR-02 < ...)
-3. 공통 셸 (G2-COMMON-*) 은 D3 부록 섹션으로 별도
-
----
-
-## 3. 입력형 / 누적형 처리
-
-### D1 요구사항정의서 (입력형 — Phase -1)
-- 원본: `inputs/requirements.md` (draft-req 산출)
-- publish: `md_to_storage` 직접 변환, transpose 없음
-- 업데이트 시점: Phase -1 또는 UPSTREAM_GAP 환류 (`/draft-req --upstream-feedback`)
-- cluster 참조: D1 의 각 FR 에 `cluster_ref` 메타로 어느 cluster 가 다루는지 cross-link
-
-### D5 타사조사 (입력형 — Phase -1)
-- 원본: `inputs/research.md` (draft-req 산출, research-auto 가 자동 채움)
-- publish: 그대로 변환
-- cluster 참조: cluster §1·§2 에서 `research_refs:` frontmatter 로 인용
-
-### D4 회의록 (누적형 — Phase 2~3 rolling)
-- 원본: `meetings/*.md` + `mtg-ledger.md`
-- publish: 시간 역순 어셈블 + cluster 태그 기반 인덱스 panel
-- 회의록 frontmatter `cluster_refs: [...]` 가 인덱스 생성 키
+**Assembly order (deterministic)**:
+1. Capability alphabetical order (Pricing < Provisioning < ...)
+2. Within the same capability, cluster_id natural order (PR-01 < PR-02 < ...)
+3. Common shell (G2-COMMON-*) is a separate D3 appendix section
 
 ---
 
-## 3-A. P3 파생 뷰 — cluster_map.json 인덱스에서 자동 합성 (DEC-C / DEC-F)
+## 3. Input-type / cumulative-type processing
 
-아래 두 뷰는 **손으로 작성하지 않는다.** `graph/cluster_map.json` 의 `fr_index` /
-`module_index` (SSoT — DEC-D) 에서 `render_transpose.py` 의 순수·결정적 함수로
-자동 합성된다. 재군집(threshold 조절/`/fanout`)으로 인덱스가 바뀌면 뷰가 자동
-추종(수기 0). 산문 고정 TOC 없음.
+### D1 Requirements Definition (input-type — Phase -1)
+- Source: `inputs/requirements.md` (draft-req output)
+- Publish: direct `md_to_storage` conversion, no transpose
+- Update timing: Phase -1 or UPSTREAM_GAP reflow (`/draft-req --upstream-feedback`)
+- Cluster reference: each D1 FR cross-links to whichever cluster covers it via the
+  `cluster_ref` metadata
 
-### (1) D1 capability group-by 뷰 (DEC-C)
+### D5 Third-party Research (input-type — Phase -1)
+- Source: `inputs/research.md` (draft-req output, auto-filled by research-auto)
+- Publish: converted as-is
+- Cluster reference: cited from cluster §1·§2 via `research_refs:` frontmatter
 
-`fr_index` ({`FR-id`: {`capability`, `cluster_id`}}) 를 capability 별로 묶어
-각 FR → 해당 기능정의서(cluster_id) 앵커로 cross-link.
+### D4 Meeting Minutes (cumulative-type — Phase 2~3 rolling)
+- Source: `meetings/*.md` + `mtg-ledger.md`
+- Publish: reverse-chronological assembly + cluster-tag-based index panel
+- Meeting frontmatter `cluster_refs: [...]` is the key generating the index
+
+---
+
+## 3-A. P3 derived views — auto-synthesized from the cluster_map.json index (DEC-C / DEC-F)
+
+The two views below are **never hand-written.** They're auto-synthesized by pure,
+deterministic functions in `render_transpose.py` from `graph/cluster_map.json`'s `fr_index` /
+`module_index` (SSoT — DEC-D). When re-clustering (adjusting threshold/`/fanout`) changes the
+index, the views auto-follow (0 manual edits). No fixed prose TOC.
+
+### (1) D1 capability group-by view (DEC-C)
+
+Groups `fr_index` ({`FR-id`: {`capability`, `cluster_id`}}) by capability and cross-links
+each FR to its feature-spec (cluster_id) anchor.
 
 ```python
 render_fr_capability_view(fr_index: dict[str, dict]) -> str
 ```
 
-정렬: capability 알파벳 순 → FR 자연 순. 샘플:
+Sort order: capability alphabetical → FR natural order. Sample:
 
 ```
-::: {.panel section="§D1 capability별 FR 묶음 (cluster_map.fr_index 파생)"}
-## §D1 capability별 FR 묶음 (cluster_map.fr_index 파생)
+::: {.panel section="§D1 FR groupings by capability (derived from cluster_map.fr_index)"}
+## §D1 FR groupings by capability (derived from cluster_map.fr_index)
 
 ### Pricing
 
-- **FR-101** → [기능정의서 PR-01](#PR-01)
-- **FR-103** → [기능정의서 PR-01](#PR-01)
+- **FR-101** → [Feature Spec PR-01](#PR-01)
+- **FR-103** → [Feature Spec PR-01](#PR-01)
 :::
 ```
 
-### (2) 횡단 관심사 매트릭스 뷰 (DEC-F)
+### (2) Cross-cutting concern matrix view (DEC-F)
 
-`module_index` ({`모듈DocId`: [{`cluster_id`, `capability`, `source`, `via`,
-`section`}, …]}) 에서 **공유 모듈마다** "어느 기능(cluster)이 이 모듈을 참조하나"를
-매트릭스 테이블로 합성. **어떤 모듈에도 일반적으로 동작**(이메일·로깅·인증 등 —
-특정 모듈 하드코딩 없음). 규칙(포맷·재시도·옵트아웃)은 모듈/알림 dossier 1곳,
-매트릭스는 트리거 역인덱스 파생 뷰.
+Synthesizes a matrix table from `module_index` ({`moduleDocId`: [{`cluster_id`,
+`capability`, `source`, `via`, `section`}, …]}) showing, per **shared module**, "which
+feature (cluster) references this module." **Works generically for any module** (email·
+logging·auth, etc. — no hardcoding of a specific module). Rules (format·retry·opt-out) live
+in one module/notification dossier; the matrix is a trigger reverse-index derived view.
 
 ```python
 render_cross_cutting_matrix(
@@ -184,14 +199,15 @@ render_cross_cutting_matrix(
 ) -> str
 ```
 
-정렬: 모듈 docId 알파벳 순 → 행은 capability → cluster_id 자연 순 → source → via.
-샘플:
+Sort order: module docId alphabetical → rows by capability → cluster_id natural order →
+source → via.
+Sample:
 
 ```
-::: {.panel section="§횡단 관심사 매트릭스 (cluster_map.module_index 파생)"}
-## §횡단 관심사 매트릭스 (cluster_map.module_index 파생)
+::: {.panel section="§Cross-cutting concern matrix (derived from cluster_map.module_index)"}
+## §Cross-cutting concern matrix (derived from cluster_map.module_index)
 
-### 이메일·SMS 발송 모듈 (DOC-EMAIL)
+### Email·SMS sending module (DOC-EMAIL)
 
 | capability | cluster_id | source | via | section |
 |---|---|---|---|---|
@@ -200,155 +216,166 @@ render_cross_cutting_matrix(
 :::
 ```
 
-테스트: `render_transpose_test.py` `TP3FrCapabilityView` / `TP3CrossCuttingMatrix`
-(그룹핑·결정적 정렬·빈 입력·다중 모듈).
+Tests: `render_transpose_test.py` `TP3FrCapabilityView` / `TP3CrossCuttingMatrix`
+(grouping·deterministic ordering·empty input·multiple modules).
 
 ---
 
-## 4. transpose() 함수 인터페이스 (구현 완료 — render_transpose.py)
+## 4. transpose() function interface (implementation complete — render_transpose.py)
 
-`scripts/render_transpose.py` (실제 시그니처 — 아래 의사코드는 사양 요약):
+`scripts/render_transpose.py` (actual signature — the pseudocode below is a spec summary):
 
 ```python
 def transpose(
-    cluster_drafts: list[Path],     # drafts/cluster_*.draft.md 목록
+    cluster_drafts: list[Path],     # list of drafts/cluster_*.draft.md
     deliverable_type: str,           # "D2" | "D3" | "Dα_{type}"
     *,
-    common_shell_clusters: list[Path] = None,  # G2-COMMON-* (D3 어셈블 시)
+    common_shell_clusters: list[Path] = None,  # G2-COMMON-* (during D3 assembly)
 ) -> str:
     """
-    cluster draft 들에서 해당 deliverable 섹션을 추출 → 단일 MD deliverable 생성.
+    Extract the target deliverable's section from cluster drafts → produce a single MD
+    deliverable.
 
-    동작:
-      1. 각 cluster_draft 의 frontmatter 검사 → deliverable_targets 에 포함되는지
-      2. 해당 cluster 의 매핑 섹션 추출:
+    Behavior:
+      1. Check each cluster_draft's frontmatter → is it included in deliverable_targets?
+      2. Extract that cluster's mapped section:
          - D2 → §1
-         - D3 → §2 + (D3 인 경우 공통 셸 부록)
+         - D3 → §2 + (for D3, common-shell appendix)
          - Dα → §α
-      3. capability + cluster_id 순 정렬
-      4. D{N} 양식 (templates/standard/D2_policy.md 등) 의 골격에 챕터로 끼워 넣기
-      5. frontmatter 갱신 (title, version, last_updated)
-      6. 결과 MD 반환 (md_to_storage 가 XML 로 변환할 입력)
+      3. Sort by capability + cluster_id
+      4. Insert as chapters into the D{N} template skeleton
+         (templates/standard/D2_policy.md, etc.)
+      5. Update frontmatter (title, version, last_updated)
+      6. Return the resulting MD (the input md_to_storage will convert to XML)
 
     Returns:
-      str — 어셈블된 MD source
+      str — the assembled MD source
     """
 ```
 
 ---
 
-## 5. cluster_draft frontmatter 의 transpose 메타
+## 5. transpose metadata in cluster_draft frontmatter
 
-`cluster-draft.md` frontmatter 의 다음 필드가 transpose 의 결정 입력:
+The following fields in `cluster-draft.md` frontmatter are transpose's decision inputs:
 
 ```yaml
 cluster:
-  capability: "Pricing"       # transpose 시 챕터 그룹화 키
-  cluster_id: "PR-01"         # 챕터 순서 키
-  cluster_name: "PlanMatrix"  # 챕터 제목 일부
+  capability: "Pricing"       # chapter grouping key during transpose
+  cluster_id: "PR-01"         # chapter ordering key
+  cluster_name: "PlanMatrix"  # part of the chapter title
 
 deliverable_targets:
-  - D2     # §1 → D2 어셈블
-  - D3     # §2 → D3 어셈블
-  - Da_api # §α → Dα_api 어셈블
+  - D2     # §1 → assembled into D2
+  - D3     # §2 → assembled into D3
+  - Da_api # §α → assembled into Dα_api
 
 related_screens:
-  - "SCR-001"  # D3 어셈블 시 부록 인덱스
+  - "SCR-001"  # appendix index during D3 assembly
   - "SCR-002"
 
 fr_refs:
-  - "FR-101"   # D1 의 어느 FR 을 다루는지 (D1 → cluster 역참조에 사용)
+  - "FR-101"   # which D1 FR this covers (used for D1 → cluster back-reference)
   - "FR-103"
 ```
 
 ---
 
-## 6. Track 분기 시 publication-map 적용
+## 6. Applying publication-map on Track branching
 
-Track A 만 publication-map 적용. Track B/C 는 단일 deliverable 직선 경로.
+Only Track A applies publication-map. Track B/C is a direct single-deliverable path.
 
-| Track | publication-map 적용 | 비고 |
+| Track | publication-map applied | Notes |
 |---|---|---|
-| A — Full Product | ✓ 전체 적용 | cluster_drafts/ → D1~D5+α transpose |
-| B — Single Deliverable | ✗ 우회 | 단일 draft → 단일 deliverable 직접 publish |
-| C — Template Copy | ✗ 우회 | 양식 추출 + 직접 publish |
+| A — Full Product | ✓ fully applied | cluster_drafts/ → D1~D5+α transpose |
+| B — Single Deliverable | ✗ bypassed | single draft → direct single-deliverable publish |
+| C — Template Copy | ✗ bypassed | template extraction + direct publish |
 
-→ render SKILL.md 의 Track 자동 감지 (Phase 4 R6) 가 publication-map 발동 여부 결정.
+→ The render SKILL.md's Track auto-detection (Phase 4 R6) determines whether
+publication-map is triggered.
 
 ---
 
-## 7. 챕터 명명 컨벤션 (D2/D3 어셈블 시)
+## 7. Chapter naming convention (during D2/D3 assembly)
 
-각 cluster 챕터는 다음 형식으로 명명 — TOC 생성·검색 일관성:
+Each cluster chapter is named in the following format — for TOC generation·search
+consistency:
 
 ```
 §{N} {Capability} / {ClusterName} ({cluster_id})
 
-예:
+e.g.
 §1 Pricing / PlanMatrix (G2-K-PR-01)
 §2 Pricing / PriceCalculator (G2-K-PR-02)
 §3 Provisioning / InstanceCatalog (G2-K-PV-01)
 ...
 ```
 
-§N 은 transpose 시 deliverable 내부 자연 순서 (위 §2 정렬 규칙). cluster_id 가
-변경되지 않는 한 챕터 번호 안정성 유지 (색상 cycling 의 path 안정성에도 영향).
+§N is the natural internal order within the deliverable during transpose (the §2 sort rule
+above). Chapter number stability is maintained as long as cluster_id doesn't change (also
+affects color cycling's path stability).
 
 ---
 
-## 8. 공통 셸 (G2-COMMON-*) 처리
+## 8. Handling the common shell (G2-COMMON-*)
 
-D3 화면설계서에는 공통 셸 (NavShell / AuthFlow 등) 이 별도 부록으로 배치:
+The D3 screen design spec places the common shell (NavShell / AuthFlow, etc.) as a separate
+appendix:
 
 ```
-D3 화면설계서
+D3 Screen Design Spec
 ├─ Capability 1 / Cluster 1.1
 ├─ Capability 1 / Cluster 1.2
 ├─ ...
 ├─ Capability N / Cluster N.M
-└─ 부록 A — 공통 셸
+└─ Appendix A — Common Shell
    ├─ NavShell (G2-COMMON-01)
    ├─ AuthFlow (G2-COMMON-02)
    └─ ...
 ```
 
-공통 셸은 `deliverable_targets: [D3]` + `is_common_shell: true` frontmatter 표시.
+The common shell is marked with `deliverable_targets: [D3]` + `is_common_shell: true`
+frontmatter.
 
 ---
 
-## 9. 챕터 순서 변경 시 색상 cycling 영향
+## 9. Impact of chapter reordering on color cycling
 
-⚠ **주의**: cluster 군집 알고리즘 v2 등으로 챕터 순서가 재정렬되면 색상 cycling 의 path 가 모두 바뀌어 "전체 이동" 으로 보일 위험 (사양 §3.3).
+⚠ **Note**: if chapter order is rearranged due to e.g. a cluster-algorithm v2 change, all
+color-cycling paths change, risking the appearance of a "wholesale move" (spec §3.3).
 
-**완화 정책**:
-- cluster_id 는 1회 부여 후 안정성 유지 (군집 결과가 달라져도 ID 재사용)
-- 알고리즘 변경 시 PM 명시 `/render --color-reset` 권고 — 신규 baseline 으로 시작
-- 챕터 순서 정렬 키는 `capability + cluster_id` 로 고정 (사람 정렬 의도 아닌 자동 안정)
-
----
-
-## 10. 구현 현황 / 남은 갭
-
-Phase 5F (`transpose()` — `render_transpose.py`) + Phase 5C (`fanout_dag.py
-_iter_cluster_nodes`) 완성으로 본 매핑은 **실행 가능**하다.
-
-완료:
-- ✓ 매핑 규약 SSoT 확정 (§2 transpose 매트릭스)
-- ✓ cluster_draft 4-section 양식 (5E) 와 정합
-- ✓ Phase 4 R6 의 Track 자동 감지와 일관
-- ✓ transpose() 코드 구현 (`render_transpose.py`, 테스트 `render_transpose_test.py`)
-- ✓ /render 단계 3-A 배선 (D2/D3 실행 + md_to_storage)
-
-- ✓ **§α → Dα 어셈블 활성화**: `cluster-draft.md` 에 §α-API / §α-DB / §α-MIG
-  **선택 패널** 추가 → 기술 deliverable 이 있는 cluster 가 §α 를 작성하고
-  `deliverable_targets` 에 `Da_api|Da_db|Da_migration` 등재하면 type 별 별도
-  페이지로 어셈블된다(render_transpose_test 가드). §α 없는 cluster 는 exit 2
-  안전 skip — D2/D3 와 독립.
+**Mitigation policy**:
+- cluster_id is assigned once and kept stable (reused even if clustering results change)
+- On algorithm change, recommend the PM explicitly run `/render --color-reset` — start a new
+  baseline
+- The chapter-order sort key is fixed to `capability + cluster_id` (automatic stability, not
+  human sorting intent)
 
 ---
 
-## 11. 변경 이력
+## 10. Implementation status / remaining gaps
 
-| 버전 | 일자 | 변경 |
+With Phase 5F (`transpose()` — `render_transpose.py`) + Phase 5C (`fanout_dag.py
+_iter_cluster_nodes`) complete, this mapping is **executable**.
+
+Complete:
+- ✓ Mapping convention SSoT confirmed (§2 transpose matrix)
+- ✓ Consistent with the cluster_draft 4-section template (5E)
+- ✓ Consistent with the Phase 4 R6 Track auto-detection
+- ✓ transpose() code implemented (`render_transpose.py`, tested in
+  `render_transpose_test.py`)
+- ✓ /render step 3-A wired (D2/D3 execution + md_to_storage)
+
+- ✓ **§α → Dα assembly activated**: added §α-API / §α-DB / §α-MIG **optional panels** to
+  `cluster-draft.md` → clusters with technical deliverables write §α and register
+  `Da_api|Da_db|Da_migration` etc. in `deliverable_targets` to get assembled into a separate
+  page per type (guarded by render_transpose_test). Clusters without §α exit 2 safely
+  skipped — independent of D2/D3.
+
+---
+
+## 11. Change history
+
+| Version | Date | Change |
 |---|---|---|
-| 1.0 | 2026-05-30 | Phase 5G — cluster ↔ deliverable 매핑 SSoT 수립 |
+| 1.0 | 2026-05-30 | Phase 5G — established cluster ↔ deliverable mapping SSoT |

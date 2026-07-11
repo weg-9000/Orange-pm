@@ -1,46 +1,47 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Markdown → Confluence Storage Format(XHTML) 결정적 변환기.
+"""Markdown → Confluence Storage Format (XHTML) deterministic converter.
 
-본 모듈은 publication-targeted MD(단일 SSoT)를 Confluence storage format XML 로
-변환한다. 사양 SSoT는 ``orange-pm-plugin/skills/render/publication-syntax.md`` 다.
-구현은 정규식 + 미니 상태머신(외부 MD 라이브러리 없음)으로 결정성·재현성을 보장
-한다 (동일 MD → 동일 바이트 XML, §9).
+This module converts publication-targeted MD (single SSoT) to Confluence
+storage format XML. The spec SSoT is
+``orange-pm-plugin/skills/render/publication-syntax.md``. The implementation
+uses regex + a mini state machine (no external MD library) to guarantee
+determinism/reproducibility (identical MD → byte-identical XML, §9).
 
-지원 입력 구문 (사양 §3-§6):
+Supported input syntax (spec §3-§6):
     1. Frontmatter (YAML)
         - title / wo_id / type / layer / version / last_updated
         - publication.header   : info macro (style/body)
         - publication.meta     : layout(single|two_equal|three_equal) + cells
         - publication.color_state (Phase 3 — pass-through)
-    2. Fenced div 블록
+    2. Fenced div blocks
         - ``::: {.panel section="..." [style="common|product|tbd|warning|info"]}``
-            → layout-section single + panel macro (자동 spacer 후행)
-        - ``::: {.info|.warning|.note|.tip}`` → 단순 콜아웃 매크로
-        - ``::: {.expand title="..."}`` → expand 매크로
-    3. 표준 MD
-        - 헤딩 h1~h6, **bold**/_em_, ul/ol/li, blockquote, hr, paragraph
-        - 표: relative-table wrapped, colgroup 균등 분배(기본) +
-              ``<!-- col-widths: 15%, 85% -->`` directive 지원
-        - 코드블록: structured-macro code + plain-text-body CDATA
-    4. 인라인 매크로
+            → layout-section single + panel macro (auto trailing spacer)
+        - ``::: {.info|.warning|.note|.tip}`` → simple callout macro
+        - ``::: {.expand title="..."}`` → expand macro
+    3. Standard MD
+        - headings h1~h6, **bold**/_em_, ul/ol/li, blockquote, hr, paragraph
+        - tables: relative-table wrapped, even colgroup distribution (default) +
+              ``<!-- col-widths: 15%, 85% -->`` directive support
+        - code blocks: structured-macro code + plain-text-body CDATA
+    4. Inline macros
         - ``[[page:Title]]`` → ac:link + ri:page
         - ``{{toc}}`` / ``{{change_history N}}`` → structured-macro
         - ``[text](url)`` → ``<a href="url">``
-        - ``{{PLACEHOLDER}}`` (PRODUCT_NAME/DOC_ID/VERSION/DATE 등) — 텍스트 그대로
+        - ``{{PLACEHOLDER}}`` (PRODUCT_NAME/DOC_ID/VERSION/DATE, etc.) — passed through as text
 
-Phase 3 예약 (placeholder만, 본 단계는 텍스트 통과):
-    - 색상 span ``[text]{.color-green}`` / ``{.color-blue}``
+Reserved for Phase 3 (placeholder only, this phase passes text through):
+    - color span ``[text]{.color-green}`` / ``{.color-blue}``
 
 CLI:
     python md_to_storage.py --input X.md --output X.xml \
         [--style-substitute] [--validate]
 
 exit code:
-    0 = 성공
-    1 = MD 파싱 실패
-    2 = Lint FAIL (--validate 시)
-    3 = I/O 오류
+    0 = success
+    1 = MD parse failure
+    2 = Lint FAIL (with --validate)
+    3 = I/O error
 """
 from __future__ import annotations
 
@@ -51,14 +52,14 @@ from pathlib import Path
 from typing import Any
 
 try:
-    import yaml  # PyYAML 6.0.x 가정 (stdlib 외 유일 의존)
-except Exception:  # pragma: no cover - PyYAML 부재 시 frontmatter fallback
+    import yaml  # assumes PyYAML 6.0.x (only non-stdlib dependency)
+except Exception:  # pragma: no cover - frontmatter fallback when PyYAML is absent
     yaml = None  # type: ignore[assignment]
 
 
-# ── 상수 / 매핑 ───────────────────────────────────────────────────────────────
+# ── Constants / mappings ──────────────────────────────────────────────────────
 
-# 사양 §3.1 — panel style 매핑 (style 값 → 파라미터 dict)
+# spec §3.1 — panel style mapping (style value → parameter dict)
 PANEL_STYLE_MAP: dict[str, dict[str, str]] = {
     "common":  {"borderColor": "#24FE00", "titleColor": "#002FD5",
                 "titleBGColor": "24FE00", "borderStyle": "none"},
@@ -72,7 +73,7 @@ PANEL_STYLE_MAP: dict[str, dict[str, str]] = {
                 "titleBGColor": "1890FF", "borderStyle": "none"},
 }
 
-# 사양 §6 — 색상 span (Phase 3 예약, 본 단계는 텍스트 통과)
+# spec §6 — color span (reserved for Phase 3, this phase passes text through)
 COLOR_SPAN_MAP: dict[str, str] = {
     "color-green": "rgb(0,176,80)",
     "color-blue":  "rgb(0,80,229)",
@@ -83,7 +84,7 @@ LAYOUT_TYPES = {"single", "two_equal", "three_equal"}
 
 INDENT = "  "
 
-# ── 정규식 ────────────────────────────────────────────────────────────────────
+# ── Regexes ───────────────────────────────────────────────────────────────────
 
 FRONTMATTER_RE = re.compile(r"\A---\s*\n(.*?)\n---\s*\n", re.DOTALL)
 FENCED_DIV_OPEN_RE = re.compile(r"^:::\s*\{([^}]+)\}\s*$")
@@ -117,9 +118,9 @@ ATTR_KV_RE = re.compile(r'(\w+)\s*=\s*"([^"]*)"')
 
 
 def _parse_frontmatter(text: str) -> tuple[dict, str]:
-    """YAML frontmatter 파싱 → (dict, body). 없으면 ({}, text).
+    """Parse YAML frontmatter → (dict, body). Returns ({}, text) if absent.
 
-    PyYAML 부재 시 매우 한정적 fallback (top-level scalar only).
+    Very limited fallback when PyYAML is absent (top-level scalars only).
     """
     m = FRONTMATTER_RE.match(text)
     if not m:
@@ -150,7 +151,7 @@ def _parse_frontmatter(text: str) -> tuple[dict, str]:
 
 
 def _xml_escape(text: str) -> str:
-    """XML 텍스트 escape (& < > 만; "는 속성에서 별도 처리)."""
+    """Escape XML text (& < > only; " is handled separately for attributes)."""
     return (
         text.replace("&", "&amp;")
         .replace("<", "&lt;")
@@ -159,7 +160,7 @@ def _xml_escape(text: str) -> str:
 
 
 def _xml_attr_escape(text: str) -> str:
-    """XML 속성 값 escape (& < > " ')."""
+    """Escape XML attribute value (& < > " ')."""
     return (
         text.replace("&", "&amp;")
         .replace("<", "&lt;")
@@ -172,9 +173,10 @@ def _xml_attr_escape(text: str) -> str:
 
 
 def _convert_inline(text: str) -> str:
-    """인라인 변환: 매크로 → 링크 → strong → em 순서로 적용.
+    """Inline conversion: applies macro → link → strong → em, in that order.
 
-    매크로는 원본 텍스트에 placeholder(\\x00..\\x00) 로 보존 후 escape 회피.
+    Macros are preserved in the source text as placeholders (\\x00..\\x00) to
+    avoid being mangled by escaping.
     """
     placeholders: list[str] = []
 
@@ -188,7 +190,7 @@ def _convert_inline(text: str) -> str:
         return _ph(f'<ac:link><ri:page ri:content-title="{_xml_attr_escape(title)}"/></ac:link>')
     text = PAGE_LINK_RE.sub(_page_repl, text)
 
-    # 2. change_history (먼저 — toc 가 substring match 하지 않도록)
+    # 2. change_history (first — so toc doesn't match as a substring)
     def _ch_repl(m: re.Match) -> str:
         n = m.group(1)
         return _ph(
@@ -204,29 +206,29 @@ def _convert_inline(text: str) -> str:
         text,
     )
 
-    # 4. 색상 span (Phase 3 — 본 단계는 text pass-through; 사양 §6 hex 사용)
+    # 4. color span (Phase 3 — this phase is a text pass-through; spec §6 uses hex)
     def _color_repl(m: re.Match) -> str:
         inner, cls = m.group(1), m.group(2)
         color = COLOR_SPAN_MAP.get(cls)
         if color is None:
-            return m.group(0)  # 미정의 클래스는 원문 보존
+            return m.group(0)  # undefined class — keep the original text
         return _ph(f'<span style="color: {color}">{_xml_escape(inner)}</span>')
     text = COLOR_SPAN_RE.sub(_color_repl, text)
 
-    # 5. 일반 링크 [text](url)
+    # 5. plain link [text](url)
     def _link_repl(m: re.Match) -> str:
         label, url = m.group(1), m.group(2)
         return _ph(f'<a href="{_xml_attr_escape(url)}">{_xml_escape(label)}</a>')
     text = LINK_RE.sub(_link_repl, text)
 
-    # 6. XML escape (placeholder 마커는 \x00 이므로 영향 없음)
+    # 6. XML escape (placeholder markers use \x00 so they're unaffected)
     text = _xml_escape(text)
 
     # 7. strong / em
     text = STRONG_RE.sub(lambda m: f"<strong>{m.group(1)}</strong>", text)
     text = EM_RE.sub(lambda m: f"<em>{m.group(1)}</em>", text)
 
-    # 8. placeholder 복원
+    # 8. restore placeholders
     def _restore(m: re.Match) -> str:
         idx = int(m.group(1))
         return placeholders[idx]
@@ -246,7 +248,7 @@ class _Line:
 
 
 def _split_table_row(line: str) -> list[str]:
-    """| a | b | → ['a', 'b'] (전후 공백·외곽 | 제거)."""
+    """| a | b | → ['a', 'b'] (trims whitespace, strips outer |)."""
     s = line.strip()
     if s.startswith("|"):
         s = s[1:]
@@ -266,17 +268,17 @@ def _render_table(
     col_widths: list[str] | None,
     indent: int,
 ) -> list[str]:
-    """표 XHTML 렌더링 (사양 §5, §5.1)."""
+    """Render table XHTML (spec §5, §5.1)."""
     n_cols = len(header) if header else (len(rows[0]) if rows else 0)
     if n_cols == 0:
         return []
     if col_widths and len(col_widths) == n_cols:
         widths = col_widths
     else:
-        # 균등 분배 — 100 / n (정수 보장 위해 마지막 칸 보정)
+        # even distribution — 100 / n (last column absorbs remainder for an integer total)
         base = 100 // n_cols
         widths = [f"{base}%"] * n_cols
-        # remainder 보정: 마지막 컬럼에 잔여
+        # remainder correction: give leftover to the last column
         remainder = 100 - base * n_cols
         if remainder:
             widths[-1] = f"{base + remainder}%"
@@ -300,7 +302,7 @@ def _render_table(
     if rows:
         out.append(f"{ind}{INDENT}<tbody>")
         for row in rows:
-            # 셀 수 부족 시 빈 셀로 패딩
+            # pad with empty cells if the row has fewer cells than columns
             padded = row + [""] * (n_cols - len(row))
             out.append(f"{ind}{INDENT * 2}<tr>")
             for cell in padded[:n_cols]:
@@ -312,7 +314,7 @@ def _render_table(
 
 
 def _render_code_block(language: str, content: str, indent: int) -> list[str]:
-    """코드블록 → ac:structured-macro code + CDATA (사양 §3.5)."""
+    """Code block → ac:structured-macro code + CDATA (spec §3.5)."""
     ind = INDENT * indent
     out = [f'{ind}<ac:structured-macro ac:name="code" ac:schema-version="1">']
     if language:
@@ -320,7 +322,7 @@ def _render_code_block(language: str, content: str, indent: int) -> list[str]:
             f'{ind}{INDENT}<ac:parameter ac:name="language">'
             f'{_xml_escape(language)}</ac:parameter>'
         )
-    # CDATA — 내용 안에 ]]> 있을 시 분할
+    # CDATA — split if the content contains ]]>
     safe = content.replace("]]>", "]]]]><![CDATA[>")
     out.append(
         f'{ind}{INDENT}<ac:plain-text-body><![CDATA[{safe}]]></ac:plain-text-body>'
@@ -330,10 +332,11 @@ def _render_code_block(language: str, content: str, indent: int) -> list[str]:
 
 
 def _render_list(items: list[tuple[int, str, str]], indent: int) -> list[str]:
-    """리스트 렌더링.
+    """Render a list.
 
     items: [(depth_level, ordered_tag, text), ...]  depth_level 0=top.
-    동일 depth/태그 연속을 하나의 <ul>/<ol>로 묶고, 더 깊은 들여쓰기는 재귀 nest.
+    Groups a run of the same depth/tag into a single <ul>/<ol>; deeper
+    indentation is nested recursively.
     """
     out: list[str] = []
     _render_list_recursive(items, 0, 0, indent, out)
@@ -347,7 +350,7 @@ def _render_list_recursive(
     indent: int,
     out: list[str],
 ) -> int:
-    """items[start:] 에서 depth==depth 인 연속을 처리. 처리한 마지막 인덱스+1 반환."""
+    """Process the run in items[start:] where depth==depth. Returns the last processed index + 1."""
     if start >= len(items):
         return start
     ind = INDENT * indent
@@ -359,11 +362,11 @@ def _render_list_recursive(
         if d < depth or (d == depth and t != tag):
             break
         if d > depth:
-            # 깊은 항목 — 직전 <li> 닫기 전에 nested list 삽입
-            # 가장 가까운 li 의 닫는 태그를 제거하고 nested 리스트 + 재닫기
+            # Deeper item — insert a nested list before closing the preceding <li>
+            # Strip the closing tag off the nearest <li> and re-append after the nested list + re-close
             if out and out[-1].endswith("</li>"):
                 last = out.pop()
-                # last 형식: f"{ind}{INDENT}<li>...</li>"  → "</li>" 떼고 추가
+                # last format: f"{ind}{INDENT}<li>...</li>"  -> strip "</li>" then re-append
                 base = last[:-5]  # remove '</li>'
                 out.append(base)
             i = _render_list_recursive(items, i, d, indent + 2, out)
@@ -377,10 +380,11 @@ def _render_list_recursive(
 
 
 def _convert_block_lines(lines: list[str], indent: int) -> list[str]:
-    """블록 라인 리스트 → XHTML 라인 리스트 (fenced div 제외, 그 내부에서만 호출).
+    """Block line list -> XHTML line list (excludes fenced divs; only called from inside one).
 
-    Pure block-level converter. 코드블록 / 표 / 리스트 / blockquote / heading /
-    hr / paragraph 만 처리. fenced div 는 상위 _convert_body 에서 분기.
+    Pure block-level converter. Handles only code blocks / tables / lists /
+    blockquotes / headings / hr / paragraphs. Fenced divs are dispatched by
+    the parent _convert_body.
     """
     out: list[str] = []
     i = 0
@@ -390,20 +394,20 @@ def _convert_block_lines(lines: list[str], indent: int) -> list[str]:
         line = lines[i]
         stripped = line.strip()
 
-        # col-widths directive — 다음 table 에 적용
+        # col-widths directive — applies to the next table
         cw = COLWIDTHS_DIRECTIVE_RE.match(line)
         if cw:
             pending_col_widths = _parse_col_widths(cw.group(1))
             i += 1
             continue
 
-        # 빈 줄 → spacer (사양 §5: 빈 줄 → <p><br/></p>)
+        # blank line -> spacer (spec §5: blank line -> <p><br/></p>)
         if not stripped:
             out.append(f"{INDENT * indent}<p><br/></p>")
             i += 1
             continue
 
-        # 코드 fence
+        # code fence
         cf = CODE_FENCE_RE.match(line)
         if cf:
             lang = cf.group(1)
@@ -436,7 +440,7 @@ def _convert_block_lines(lines: list[str], indent: int) -> list[str]:
             i += 1
             continue
 
-        # 표
+        # table
         if "|" in line and i + 1 < n and TABLE_SEPARATOR_RE.match(lines[i + 1]):
             header = _split_table_row(line)
             i += 2  # skip header + separator
@@ -452,7 +456,7 @@ def _convert_block_lines(lines: list[str], indent: int) -> list[str]:
             pending_col_widths = None
             continue
 
-        # 리스트
+        # list
         ul = UL_RE.match(line)
         ol = OL_RE.match(line)
         if ul or ol:
@@ -462,7 +466,7 @@ def _convert_block_lines(lines: list[str], indent: int) -> list[str]:
                 m_ol = OL_RE.match(lines[i])
                 if not m_ul and not m_ol:
                     if not lines[i].strip():
-                        # 빈 줄로 리스트 종료
+                        # a blank line ends the list
                         break
                     break
                 m = m_ul or m_ol
@@ -495,14 +499,14 @@ def _convert_block_lines(lines: list[str], indent: int) -> list[str]:
             out.append(f"{ind}</blockquote>")
             continue
 
-        # paragraph — 빈 줄까지 누적
+        # paragraph — accumulate until a blank line
         para_lines: list[str] = [stripped]
         i += 1
         while i < n:
             nxt = lines[i]
             if not nxt.strip():
                 break
-            # 다른 블록의 시작이면 stop
+            # stop if another block starts
             if (HEADING_RE.match(nxt) or HR_RE.match(nxt)
                     or CODE_FENCE_RE.match(nxt) or UL_RE.match(nxt)
                     or OL_RE.match(nxt) or BLOCKQUOTE_RE.match(nxt)
@@ -510,7 +514,7 @@ def _convert_block_lines(lines: list[str], indent: int) -> list[str]:
                     or FENCED_DIV_CLOSE_RE.match(nxt)
                     or COLWIDTHS_DIRECTIVE_RE.match(nxt)):
                 break
-            # 표 시작?
+            # does a table start here?
             if ("|" in nxt and i + 1 < n
                     and TABLE_SEPARATOR_RE.match(lines[i + 1])):
                 break
@@ -537,7 +541,7 @@ def _emit_panel(
     inner_lines: list[str],
     indent: int,
 ) -> list[str]:
-    """Panel 매크로 → layout-section single + cell wrap (사양 §3.1, §7)."""
+    """Panel macro -> layout-section single + cell wrap (spec §3.1, §7)."""
     style_params = PANEL_STYLE_MAP.get(style, PANEL_STYLE_MAP["common"])
     ind = INDENT * indent
     out: list[str] = []
@@ -547,8 +551,8 @@ def _emit_panel(
         f'{ind}{INDENT * 2}<ac:structured-macro ac:name="panel"'
         f' ac:schema-version="1">'
     )
-    # 파라미터 — 사양 §9 (속성 알파벳 순) 준수 위해 정렬
-    # panel 파라미터 자체는 결정성 위해 정렬된 키 순서로 emit
+    # Parameters — sorted to comply with spec §9 (alphabetical attribute order)
+    # panel parameters themselves are emitted in sorted key order for determinism
     for key in sorted(style_params.keys()):
         out.append(
             f'{ind}{INDENT * 3}<ac:parameter ac:name="{key}">'
@@ -569,7 +573,7 @@ def _emit_panel(
 
 
 def _emit_spacer(indent: int) -> list[str]:
-    """Panel 간 자동 spacer (사양 §7)."""
+    """Automatic spacer between panels (spec §7)."""
     ind = INDENT * indent
     return [
         f'{ind}<ac:layout-section ac:type="single">',
@@ -579,7 +583,7 @@ def _emit_spacer(indent: int) -> list[str]:
 
 
 def _emit_callout(name: str, inner_lines: list[str], indent: int) -> list[str]:
-    """info/warning/note/tip → 단순 macro (사양 §3.2). layout 래퍼 없음."""
+    """info/warning/note/tip -> a simple macro (spec §3.2). No layout wrapper."""
     ind = INDENT * indent
     out = [
         f'{ind}<ac:structured-macro ac:name="{name}" ac:schema-version="1">',
@@ -592,7 +596,7 @@ def _emit_callout(name: str, inner_lines: list[str], indent: int) -> list[str]:
 
 
 def _emit_expand(title: str, inner_lines: list[str], indent: int) -> list[str]:
-    """Expand 매크로 (사양 §3.3)."""
+    """Expand macro (spec §3.3)."""
     ind = INDENT * indent
     out = [
         f'{ind}<ac:structured-macro ac:name="expand" ac:schema-version="1">',
@@ -607,9 +611,9 @@ def _emit_expand(title: str, inner_lines: list[str], indent: int) -> list[str]:
 
 
 def _convert_body(body: str, indent: int) -> list[str]:
-    """MD 본문 → XML 라인. fenced div 분기 + 사이 사이 일반 블록 처리.
+    """MD body -> XML lines. Dispatches fenced divs and handles plain blocks in between.
 
-    Panel 간 자동 spacer 삽입 (사양 §7).
+    Inserts an automatic spacer between panels (spec §7).
     """
     raw_lines = body.splitlines()
     out: list[str] = []
@@ -621,9 +625,10 @@ def _convert_body(body: str, indent: int) -> list[str]:
         nonlocal just_emitted_panel
         if not buf:
             return
-        # 본문 일반 블록 — 자체 layout 래퍼 없음, 직접 emit
+        # Plain body block — no layout wrapper of its own, emit directly
         rendered = _convert_block_lines(buf, indent)
-        # spacer 가 마지막에 있고 본문이 빈 줄로만 구성된 경우 압축 (멱등)
+        # Collapse the case where a spacer is last and the body is only
+        # blank lines (idempotent)
         if rendered:
             out.extend(rendered)
             just_emitted_panel = False
@@ -637,10 +642,10 @@ def _convert_body(body: str, indent: int) -> list[str]:
             plain_buf.append(line)
             i += 1
             continue
-        # fenced div 시작 — 우선 plain 비움
+        # fenced div starts — flush the plain buffer first
         _flush_plain(plain_buf)
         classes, kvs = _parse_div_attrs(m_open.group(1))
-        # 매칭 close 찾기 (nested fenced div 1단계만 허용)
+        # find the matching close (only one level of nested fenced div is allowed)
         depth = 1
         body_start = i + 1
         j = body_start
@@ -655,7 +660,7 @@ def _convert_body(body: str, indent: int) -> list[str]:
             j += 1
         inner_lines = raw_lines[body_start:j]
         i = j + 1  # consume close
-        # 분기
+        # dispatch
         primary = classes[0] if classes else ""
         if primary == "panel":
             section = kvs.get("section", "")
@@ -671,18 +676,18 @@ def _convert_body(body: str, indent: int) -> list[str]:
             out.extend(_emit_expand(kvs.get("title", ""), inner_lines, indent))
             just_emitted_panel = False
         else:
-            # 미지원 클래스 — 단순 div pass-through (텍스트 보존)
+            # unsupported class — simple div pass-through (preserves the text)
             out.extend(_convert_block_lines(inner_lines, indent))
             just_emitted_panel = False
 
     _flush_plain(plain_buf)
-    # 마지막 panel 뒤 spacer (사양 §7 — panel 후행 spacer 보장)
+    # spacer after the last panel (spec §7 — guarantees a trailing panel spacer)
     if just_emitted_panel:
         out.extend(_emit_spacer(indent))
     return out
 
 
-# ── Frontmatter publication 영역 → XML ───────────────────────────────────────
+# ── Frontmatter publication section -> XML ──────────────────────────────────
 
 
 def _emit_header_info(header: dict, indent: int) -> list[str]:
@@ -703,9 +708,9 @@ def _emit_header_info(header: dict, indent: int) -> list[str]:
 
 
 def _emit_meta(meta: dict, indent: int) -> list[str]:
-    """publication.meta → layout-section {layout} + cells.
+    """publication.meta -> layout-section {layout} + cells.
 
-    cells[].panel.body / cells[].change_history N 지원.
+    Supports cells[].panel.body / cells[].change_history N.
     """
     layout = (meta.get("layout") or "single").strip()
     if layout not in LAYOUT_TYPES:
@@ -721,8 +726,9 @@ def _emit_meta(meta: dict, indent: int) -> list[str]:
             p = cell["panel"]
             title = p.get("title", "")
             body_md = (p.get("body") or "").splitlines()
-            # meta panel 은 style 미지정 — 기본 common
-            # layout-cell 안에 panel macro 직접 (외곽 layout-section 은 이미 있음)
+            # meta panels don't specify a style — default to common
+            # panel macro goes directly inside the layout-cell (the outer
+            # layout-section already exists)
             style_params = PANEL_STYLE_MAP["common"]
             sub = INDENT * (indent + 2)
             out.append(
@@ -759,11 +765,11 @@ def _emit_meta(meta: dict, indent: int) -> list[str]:
     return out
 
 
-# ── Style substitution (placeholder 치환) ───────────────────────────────────
+# ── Style substitution (placeholder substitution) ───────────────────────────
 
 
 def _substitute_placeholders(text: str, mapping: dict[str, str]) -> str:
-    """{{KEY}} → mapping[KEY] (정의된 키만)."""
+    """{{KEY}} -> mapping[KEY] (defined keys only)."""
     def _repl(m: re.Match) -> str:
         key = m.group(1)
         return mapping.get(key, m.group(0))
@@ -774,16 +780,16 @@ def _substitute_placeholders(text: str, mapping: dict[str, str]) -> str:
 
 
 def convert(text: str, *, style_substitute: bool = False) -> str:
-    """MD 정본 → Confluence storage XML 문자열.
+    """MD source -> Confluence storage XML string.
 
-    Returns: XML 문자열 (말미 개행 포함).
-    Raises: ValueError — frontmatter YAML 오류 등.
+    Returns: an XML string (with a trailing newline).
+    Raises: ValueError — for frontmatter YAML errors, etc.
     """
     fm, body = _parse_frontmatter(text)
     pub = fm.get("publication") if isinstance(fm.get("publication"), dict) else {}
 
     if style_substitute:
-        # publication 단계 placeholder 치환 (사양 §12 --style-substitute)
+        # publication-stage placeholder substitution (spec §12 --style-substitute)
         mapping: dict[str, str] = {}
         if "title" in fm and isinstance(fm["title"], str):
             mapping["TITLE"] = fm["title"]
@@ -791,11 +797,12 @@ def convert(text: str, *, style_substitute: bool = False) -> str:
             v = fm.get(k)
             if v is not None:
                 mapping[k.upper().replace("LAST_UPDATED", "DATE")] = str(v)
-        # PRODUCT_NAME 추출 — title 의 마지막 {{...}} 가능, but 보수적으로 미설정.
+        # PRODUCT_NAME extraction — could come from a trailing {{...}} in
+        # title, but conservatively left unset for now.
         body = _substitute_placeholders(body, mapping)
 
     out: list[str] = ['<ac:layout>']
-    # frontmatter publication 영역 emit
+    # emit the frontmatter publication section
     if isinstance(pub, dict):
         header = pub.get("header")
         if isinstance(header, dict):
@@ -803,11 +810,11 @@ def convert(text: str, *, style_substitute: bool = False) -> str:
         meta = pub.get("meta")
         if isinstance(meta, dict):
             out.extend(_emit_meta(meta, indent=1))
-        # spacer 1개 (header/meta 와 본문 panel 사이)
+        # one spacer (between header/meta and the body panel)
         if isinstance(header, dict) or isinstance(meta, dict):
             out.extend(_emit_spacer(indent=1))
 
-    # 본문 변환
+    # convert the body
     out.extend(_convert_body(body, indent=1))
     out.append('</ac:layout>')
     return "\n".join(out) + "\n"
@@ -818,42 +825,43 @@ def convert(text: str, *, style_substitute: bool = False) -> str:
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(
-        description="MD → Confluence Storage Format XHTML 변환기"
+        description="MD -> Confluence Storage Format XHTML converter"
     )
     ap.add_argument("--input", required=True, type=Path,
-                    help="입력 MD 파일")
+                    help="Input MD file")
     ap.add_argument("--output", required=True, type=Path,
-                    help="출력 XML 파일")
+                    help="Output XML file")
     ap.add_argument(
         "--style-substitute", action="store_true",
-        help="{{PRODUCT_NAME}} 등 placeholder 치환 (publication 단계 전용)"
+        help="Substitute placeholders like {{PRODUCT_NAME}} (publication stage only)"
     )
     ap.add_argument(
         "--validate", action="store_true",
-        help="입력 MD 에 lint_publication_syntax 를 실행하고 FAIL 시 exit 2"
+        help="Run lint_publication_syntax on the input MD and exit 2 on FAIL"
     )
     args = ap.parse_args(argv)
 
     if not args.input.is_file():
-        print(f"[md_to_storage] FAIL: 입력 파일 없음 — {args.input}",
+        print(f"[md_to_storage] FAIL: input file not found — {args.input}",
               file=sys.stderr)
         return 3
     try:
         text = args.input.read_text(encoding="utf-8")
     except OSError as e:
-        print(f"[md_to_storage] FAIL: 입력 읽기 — {e}", file=sys.stderr)
+        print(f"[md_to_storage] FAIL: reading input — {e}", file=sys.stderr)
         return 3
     try:
         result = convert(text, style_substitute=args.style_substitute)
     except Exception as e:
-        print(f"[md_to_storage] FAIL: 변환 오류 — {e}", file=sys.stderr)
+        print(f"[md_to_storage] FAIL: conversion error — {e}", file=sys.stderr)
         return 1
 
     if args.validate:
-        # 변환 성공 + publication-lint 통과를 함께 검증 (exit 2 = Lint FAIL).
-        # lint 는 변환 산출물이 아니라 입력 MD 정본에 대해 실행한다.
+        # Validates both a successful conversion and a passing
+        # publication-lint (exit 2 = Lint FAIL). Lint runs against the
+        # input MD source, not the conversion output.
         try:
-            from lint_publication_syntax import lint_file  # 동일 디렉터리 모듈
+            from lint_publication_syntax import lint_file  # module in the same directory
         except ImportError:
             _here = str(Path(__file__).resolve().parent)
             if _here not in sys.path:
@@ -862,7 +870,7 @@ def main(argv: list[str] | None = None) -> int:
         try:
             findings = lint_file(args.input)
         except OSError as e:
-            print(f"[md_to_storage] FAIL: lint 입력 읽기 — {e}", file=sys.stderr)
+            print(f"[md_to_storage] FAIL: reading lint input — {e}", file=sys.stderr)
             return 3
         fails = [f for f in findings if f.level == "FAIL"]
         if fails:
@@ -878,9 +886,9 @@ def main(argv: list[str] | None = None) -> int:
         args.output.parent.mkdir(parents=True, exist_ok=True)
         args.output.write_text(result, encoding="utf-8")
     except OSError as e:
-        print(f"[md_to_storage] FAIL: 출력 쓰기 — {e}", file=sys.stderr)
+        print(f"[md_to_storage] FAIL: writing output — {e}", file=sys.stderr)
         return 3
-    print(f"[md_to_storage] OK: {args.input} → {args.output}", file=sys.stderr)
+    print(f"[md_to_storage] OK: {args.input} -> {args.output}", file=sys.stderr)
     return 0
 
 

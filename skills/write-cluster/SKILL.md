@@ -1,11 +1,10 @@
 ---
 name: write-cluster
 description: >-
-  cluster draft(Track A · type cluster_draft)의 4패널(§1 정책결정 / §2 화면설계 / §3 데이터·의존성 / §4 Open Questions)을 무손실 원칙으로 작성한다. 패널 골격은 고정(transpose 라우팅 계약 §1→D2 정책정의서·§2→D3 화면설계서), 패널 내부 내용은 원문 사실 전수 가변. publication-syntax 준수(`::: {.panel}`·색상 cycling 자동)와 lint·round-trip 검증을 거친다. node policy WO 는 /write, screen WO 는 /flow 를 사용한다.
+  Writes the 4 panels (§1 Policy Decisions / §2 Screen Design / §3 Data & Dependencies / §4 Open Questions) of a cluster draft (Track A · type cluster_draft) under the lossless principle. The panel skeleton is fixed (transpose routing contract: §1→D2 policy document · §2→D3 screen design spec); the content inside each panel is fully variable to match the source facts. Complies with publication-syntax (`::: {.panel}` · automatic color cycling) and passes lint / round-trip validation. Node policy WOs use /write, node screen WOs use /flow.
 triggers:
   - "write cluster"
-  - "cluster 작성"
-  - "클러스터 초안"
+  - "cluster draft"
   - "write-cluster"
 phase: 2
 effort: high
@@ -13,265 +12,309 @@ model: opus
 user-invocable: true
 ---
 
-## Bootstrap 캐시 가드 (개선안 F — CONTEXT_OPTIMIZATION.md)
+## Bootstrap Cache Guard (Improvement F — CONTEXT_OPTIMIZATION.md)
 
-세션 첫 진입 시 `CONTEXT/_session-bootstrap.md` 를 1회만 로드한다.
-이미 같은 세션에서 본 파일을 읽었다면 재독을 금지한다.
-캐시가 없거나 stale 이면 다음 명령으로 갱신한 뒤 진행한다:
+On first entry to a session, load `CONTEXT/_session-bootstrap.md` exactly once.
+If this file has already been read in the same session, do not re-read it.
+If the cache is missing or stale, refresh it with the following command before proceeding:
 
 ```bash
 python ${CLAUDE_PLUGIN_ROOT}/scripts/build_bootstrap.py --hub-root .
 ```
 
-본 가드는 layer-config / about-pm / project-rules / brand-voice /
-doc-layer-schema / team-members 6개 원본 파일 재로드를 대체한다.
+This guard replaces re-loading the 6 source files: layer-config / about-pm /
+project-rules / brand-voice / doc-layer-schema / team-members.
 
 
-## 적용 범위 — Track A cluster 작업 단위
+## Scope — Track A cluster work unit
 
-본 skill 은 `type: cluster_draft` 인 `drafts/cluster_{cluster_id}.draft.md` 한 개를
-in-place 작성한다. cluster 모드는 screen WO 트랙을 폐기(Phase 5I)하고 §2 가 화면
-설계를 책임지므로, **한 cluster draft 가 정책(§1)·화면(§2)을 함께** 담는다.
+This skill writes a single `drafts/cluster_{cluster_id}.draft.md` file (with
+`type: cluster_draft`) in place. Cluster mode retires the screen WO track
+(Phase 5I) and §2 takes over responsibility for screen design, so **a single
+cluster draft holds both policy (§1) and screen (§2)** together.
 
-- 양식 SSoT: `orange-pm-plugin/templates/standard/cluster-draft.md`,
+- Format SSoT: `orange-pm-plugin/templates/standard/cluster-draft.md`,
   `orange-pm-plugin/skills/render/publication-syntax.md`,
-  `orange-pm-plugin/skills/render/publication-map.md`(transpose 매핑).
-- node policy WO(`type: policy`)는 `/write`, node screen WO(`type: screen`)는 `/flow`.
+  `orange-pm-plugin/skills/render/publication-map.md` (transpose mapping).
+- Node policy WOs (`type: policy`) use `/write`; node screen WOs (`type: screen`) use `/flow`.
 
 
-## 설계 원칙 — 고정 골격 + 가변 내용 (가장 중요)
+## Design Principle — Fixed Skeleton + Variable Content (most important)
 
-| 층위 | 고정/가변 | 규칙 |
+| Layer | Fixed/Variable | Rule |
 |---|---|---|
-| 양식(syntax) | **고정** | `::: {.panel section="..."}` 펜스드 div. 색상 span 수기 금지(자동 cycling). lint 강제 |
-| 골격(핵심 4패널) | **고정** | §1 정책결정 / §2 화면설계 / §3 데이터·의존성 / §4 OQ. transpose 라우팅 계약(§1→D2·§2→D3·§3§4 publish 제외)이라 절대 변경 금지 |
-| §α 기술 패널 | **선택** | §α-API/§α-DB/§α-MIG → Dα. 해당 기술 deliverable 있을 때만 추가, 없으면 삭제(유일하게 추가·삭제 허용되는 패널) |
-| 목차(deliverable TOC) | 파생 | D2/D3 챕터는 publication-map 이 cluster 구성에서 자동 조립(capability 알파벳→cluster_id 순). 본 skill 이 손대지 않음 |
-| 내용(패널 내부) | **가변** | doc-layer-schema 무손실 재구성 원칙. 하위 섹션(§1-1 등)은 권장 기본값일 뿐, 원문 정책/화면 사실 분량만큼 가변 확장. 빈 표 억지 채움·사실 생략 금지 |
+| Format (syntax) | **Fixed** | `::: {.panel section="..."}` fenced div. No hand-written color spans (automatic cycling). Enforced by lint |
+| Skeleton (core 4 panels) | **Fixed** | §1 Policy Decisions / §2 Screen Design / §3 Data & Dependencies / §4 OQ. Must never be changed — this is the transpose routing contract (§1→D2 · §2→D3 · §3/§4 excluded from publish) |
+| §α technical panel | **Optional** | §α-API/§α-DB/§α-MIG → Dα. Add only when that technical deliverable exists; delete otherwise (the only panel where adding/deleting is allowed) |
+| TOC (deliverable TOC) | Derived | D2/D3 chapters are auto-assembled by publication-map from the cluster composition (ordered by capability alphabet → cluster_id). This skill does not touch it |
+| Content (inside panels) | **Variable** | Follows the doc-layer-schema lossless-reconstruction principle. Subsections (§1-1, etc.) are just a recommended default — expand or contract them to match the volume of source policy/screen facts. Do not force-fill empty tables or omit facts |
 
-> **무손실 원칙(최우선)**: 원문/입력의 모든 정책 사실·수치·케이스·예외·UI 문구·표를
-> 하나도 버리지 않는다. 어디에도 안 맞는 사실은 §3 말미 `### 미분류 원문 사실` 에 원문
-> 그대로 보존. 창작 금지 → `[확인 필요: {무엇}]`. 원문 모순 → `[정책 충돌 — {항목}]` 양쪽 보존.
-
-
-## 공통 참조 가드 (C0·C-PIN·C-PIMPACT — gates/master-derivation-gate.md SSoT)
-
-작성 전 적용한다.
-
-1. **B 재작성 금지**: G2-A/B 에 이미 있는 정책은 `B-headings-index.json` 으로 후보 §만
-   식별(원문 전체 로드 금지). 이미 있으면 `[{doc_id} §X] 참조` 링크로만. 본문 재출력은
-   render_assemble(C-RENDER)가 완전판에서 인라인 전개한다.
-2. **A 어휘 준수**: `CONTEXT/reference-docs/{ACTIVE_PREFIX}/A/` G2-A-001 용어 사전 기준. 미등재 어휘는
-   `[TBD:{어휘}]` 태그(작성 후 open-issues.md P1).
-3. **수치·산식 비재기재**: 단가·요율·임계값은 `inputs/spec-catalog.md` 변수ID 참조
-   (`[[spec-catalog {변수ID}]]`). 산식은 G2-B 상품요금결제정책 §파생 — 구조만, §링크 병기.
-4. **C-PIN**: frontmatter `inherits_from` / (있으면) `referenced_master` 에 Delta 기준
-   공통 핀. master-id-map.yml 권위 ID.
-5. **C-PIMPACT**: §1 정책 §를 §2 화면이 참조할 때 `[[POL §X-Y]]` 표준 마커만 사용.
+> **Lossless principle (top priority)**: Do not discard a single policy fact,
+> figure, case, exception, UI copy line, or table from the source/input. Any
+> fact that fits nowhere else is preserved verbatim under `### Unclassified
+> Source Facts` at the end of §3. No invention — use `[needs-confirmation:
+> {what}]`. Source contradictions → preserve both sides as `[policy conflict
+> — {item}]`.
 
 
-## 입출력
+## Common Reference Guard (C0 · C-PIN · C-PIMPACT — gates/master-derivation-gate.md SSoT)
 
-- **입력**: `PROJECTS/{product}/drafts/cluster_{cluster_id}.draft.md`
-  (fanout --cluster-mode 가 만든 셸 — frontmatter `status: empty`, `type: cluster_draft`,
-  본문에 `::: {.panel}` 4패널 스캐폴딩 + `{{...}}` placeholder 포함)
-- **출력**: 동일 파일 in-place 수정 (`status: empty → ai-draft`, placeholder 를 실제
-  내용으로 치환, 패널 골격·`section=` 속성 보존)
+Apply before writing.
+
+1. **Do not rewrite B**: For policies already present in G2-A/B, identify only
+   candidate §s via `B-headings-index.json` (do not load the full source). If
+   already present, reference it only via a `[{doc_id} §X] reference` link.
+   render_assemble (C-RENDER) inlines the full body from the complete version
+   at publish time.
+2. **Follow A terminology**: Use `CONTEXT/reference-docs/{ACTIVE_PREFIX}/A/`
+   G2-A-001 glossary as the standard. Tag unregistered terms as
+   `[TBD:{term}]` (log to open-issues.md P1 after writing).
+3. **Do not re-state numbers/formulas**: For unit prices, rates, and
+   thresholds, reference the variable ID in `inputs/spec-catalog.md`
+   (`[[spec-catalog {variable_id}]]`). Formulas are derived from G2-B Product
+   Pricing & Billing Policy §— structure only, alongside a § link.
+4. **C-PIN**: Pin the common reference in frontmatter `inherits_from` / (if
+   present) `referenced_master`, based on the delta. Use the authoritative ID
+   from master-id-map.yml.
+5. **C-PIMPACT**: When §2 screen content references a §1 policy §, use only
+   the standard `[[POL §X-Y]]` marker.
 
 
-## 전제조건 검사
+## Input/Output
 
-1. `drafts/cluster_{cluster_id}.draft.md` 존재 확인. 없으면
-   `/fanout {product} --cluster-mode`(+ 선행 `cluster_identify.py`) 안내 후 중단.
+- **Input**: `PROJECTS/{product}/drafts/cluster_{cluster_id}.draft.md`
+  (the shell created by fanout --cluster-mode — frontmatter `status: empty`,
+  `type: cluster_draft`, body contains the `::: {.panel}` 4-panel scaffolding
+  + `{{...}}` placeholders)
+- **Output**: the same file modified in place (`status: empty → ai-draft`,
+  placeholders replaced with actual content, panel skeleton and `section=`
+  attributes preserved)
 
-2. frontmatter `type` 확인:
-   - `type: cluster_draft` → 진행.
-   - `type: policy` → `/write {WO_ID}` 안내 후 중단.
-   - `type: screen` → `/flow {product} {screen_id}` 안내 후 중단.
 
-3. **status 분기 (안 A 라이프사이클 — /write 와 동일 규칙):**
-   - `empty` → 정상 진입. 작성 후 `ai-draft` 전환.
-   - `ai-draft` → 재작성 경고 후 (Y/N).
+## Precondition Checks
+
+1. Confirm `drafts/cluster_{cluster_id}.draft.md` exists. If not, direct the
+   user to `/fanout {product} --cluster-mode` (+ prerequisite
+   `cluster_identify.py`) and stop.
+
+2. Check frontmatter `type`:
+   - `type: cluster_draft` → proceed.
+   - `type: policy` → direct to `/write {WO_ID}` and stop.
+   - `type: screen` → direct to `/flow {product} {screen_id}` and stop.
+
+3. **Status branching (Option A lifecycle — same rule as /write):**
+   - `empty` → proceed normally. Switch to `ai-draft` after writing.
+   - `ai-draft` → warn about overwrite, then (Y/N).
      ```
-     ⚠️ 이 cluster draft 는 이미 ai-draft 입니다. 재작성 시 본문이 덮어쓰여집니다. (Y/N)
+     ⚠️ This cluster draft is already ai-draft. Rewriting will overwrite the body. (Y/N)
      ```
-   - `human-reviewed` → `--force` 없으면 거부.
-   - `frozen` → 거부(새 DEC + 새 버전 필요).
-   - status 누락 → `/fanout --cluster-mode` 재실행(셸이 status: empty 포함)으로 갱신 안내.
+   - `human-reviewed` → reject unless `--force` is given.
+   - `frozen` → reject (requires a new DEC + new version).
+   - status missing → direct the user to re-run `/fanout --cluster-mode`
+     (the shell includes status: empty) to refresh.
 
-4. `decisions.md` 존재 확인(DEC 충돌 대조용). 없으면 생성 요청 후 중단.
+4. Confirm `decisions.md` exists (for cross-checking DEC conflicts). If
+   missing, request its creation and stop.
 
-5. `CONTEXT/layer-config.md` PREFIX + `CONTEXT/reference-docs/{ACTIVE_PREFIX}/A|B/` 로드(캐시·발췌 우선,
-   /write 단계 1 의 B-summary·B-headings-index 규칙 동일 적용).
-
-
-## 단계 1 — cluster 컨텍스트 수집
-
-frontmatter 의 graph-gen 산출 메타를 읽는다(수동 수정 금지):
-- `cluster.capability` / `cluster_id` / `cluster_name`, `members`(소속 policy 노드)
-- `fr_refs`(D1 요구사항 인용 — link only), `domain_objects`, `policy_axes`
-- `primary_screen` / `related_screens`(§2 화면 설계 기준)
-- `inherits_from`(상위 B 공통·상위 cluster), `research_refs`(D5 — link only)
-- `deliverable_targets`(보통 D2·D3, Dα 있으면 §α)
-
-members 각 policy 노드의 원천(requirements.md FR, decisions.md 결정, 회의 위임)을 수집해
-무손실 작성 입력으로 삼는다.
+5. Load `CONTEXT/layer-config.md` PREFIX +
+   `CONTEXT/reference-docs/{ACTIVE_PREFIX}/A|B/` (prefer cache/excerpts —
+   apply the same B-summary/B-headings-index rule as /write Step 1).
 
 
-## 단계 2 — Delta/내용 범위 PM 확인 (단일 체크포인트)
+## Step 1 — Gather Cluster Context
 
-다음 표를 출력하고 PM 확인을 받는다(직렬 프롬프트 추가 금지 — 한 번에):
+Read the graph-gen-produced metadata in frontmatter (do not edit manually):
+- `cluster.capability` / `cluster_id` / `cluster_name`, `members` (member policy nodes)
+- `fr_refs` (D1 requirements citations — link only), `domain_objects`, `policy_axes`
+- `primary_screen` / `related_screens` (basis for §2 screen design)
+- `inherits_from` (parent B common / parent cluster), `research_refs` (D5 — link only)
+- `deliverable_targets` (usually D2/D3; §α if Dα exists)
+
+Gather the source material for each member policy node (requirements.md FRs,
+decisions.md decisions, meeting delegations) as input for lossless writing.
+
+
+## Step 2 — PM Confirmation of Delta/Content Scope (single checkpoint)
+
+Print the following table and get PM confirmation (do not add serial
+prompts — do it in one shot):
 
 ```
-Cluster 작성 범위 — {capability}/{cluster_id} {cluster_name}
+Cluster writing scope — {capability}/{cluster_id} {cluster_name}
 
-┌─ §1 정책결정 (→D2) — B 상속(재작성 금지·링크) / 이 cluster Delta 정책 ─┐
-│  상속: {inherits_from §요약}  →  [{doc_id} §X 참조]                       │
-│  Delta: {requirements·decisions 기반 cluster 고유 정책 후보, [TBD] 포함}  │
-├─ §2 화면설계 (→D3) — primary/related_screens 4-state·마이크로카피 ───────┤
-│  화면: {primary_screen, related_screens}                                  │
-└──────────────────────────────────────────────────────────────────────────┘
+┌─ §1 Policy Decisions (→D2) — B inheritance (no rewrite, link only) / this cluster's Delta policy ─┐
+│  Inherited: {inherits_from § summary}  →  [{doc_id} §X reference]                                  │
+│  Delta: {cluster-specific policy candidates from requirements/decisions, incl. [TBD]}              │
+├─ §2 Screen Design (→D3) — 4-state & microcopy for primary/related_screens ──────────────────────────┤
+│  Screens: {primary_screen, related_screens}                                                        │
+└──────────────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
-PM 확인 없이 단계 3 진행 금지.
+Do not proceed to Step 3 without PM confirmation.
 
 
-## 단계 3 — 4패널 작성 (골격 고정 · 내용 무손실)
+## Step 3 — Write the 4 Panels (fixed skeleton · lossless content)
 
-`::: {.panel section="..."}` 펜스드 div 와 `## §N` 헤딩, `section=` 속성을 **보존**하고
-패널 내부의 `{{...}}` placeholder 와 예시 표를 실제 내용으로 치환한다. 하위 섹션은
-원문 분량만큼 가변 확장(고정 개수 아님). 패널을 추가·삭제·재배치하지 않는다.
+**Preserve** the `::: {.panel section="..."}` fenced div, the `## §N`
+headings, and the `section=` attribute, and replace the `{{...}}`
+placeholders and example tables inside each panel with actual content.
+Subsections expand or contract to match the volume of source material (not
+a fixed count). Do not add, delete, or reorder panels.
 
-### §1 정책 결정 (→ D2 정책정의서)
-- `### §1-1 정책 범위/적용 조건`, `### §1-2 핵심 규칙`(POL-N 표), `### §1-3 상태/라이프사이클`,
-  `### §1-4 오류/예외` 를 기본 골격으로, 원문 정책 수만큼 하위섹션 확장.
-- 상태×액션은 §1-3 에 매트릭스로(전 상태 커버 — critique AXIS-09). 이 매트릭스는
-  추후 `/bdd` 가 수용 기준(.feature)으로 결정적 변환하므로 셀을 비우지 말 것.
-- B 공통은 `[{doc_id} §X 참조]`, 수치는 `[[spec-catalog {변수ID}]]`. A 어휘 준수.
-- 케이스 분기 전수: 정상/실패/취소/타임아웃/0개/중복/동시(AXIS-03).
+### §1 Policy Decisions (→ D2 Policy Document)
+- Use `### §1-1 Policy Scope/Applicability`, `### §1-2 Core Rules` (POL-N
+  table), `### §1-3 State/Lifecycle`, `### §1-4 Errors/Exceptions` as the
+  default skeleton, expanding subsections to match the number of source
+  policies.
+- Represent state × action as a matrix in §1-3 (cover every state — critique
+  AXIS-09). This matrix is later deterministically converted by `/bdd` into
+  acceptance criteria (.feature), so do not leave cells blank.
+- For B common content use `[{doc_id} §X reference]`; for figures use
+  `[[spec-catalog {variable_id}]]`. Follow A terminology.
+- Cover every case branch: success/failure/cancellation/timeout/zero-count/
+  duplicate/concurrent (AXIS-03).
 
-### §2 화면 설계 (→ D3 화면설계서)
-- `### §2-1 주요 화면/ID`, `### §2-2 화면 구성/컴포넌트`, `### §2-3 인터랙션/정책 연결`,
-  `### §2-4 빈상태/오류 화면`, `### §2-5 디자인 토큰(공통 셸 참조)`.
-- 화면별 4-state(idle/loading/success/error) + 마이크로카피 실제 문구(플레이스홀더 토큰 금지).
-- §1 정책이 화면에 어떻게 노출되는지 `[[POL §X-Y]]` 마커로 결합(§2-3).
-- 디자인 토큰 재정의 금지 — 공통 셸 cluster(G2-COMMON-*) 참조만(SSoT 경계).
+### §2 Screen Design (→ D3 Screen Design Spec)
+- `### §2-1 Key Screens/IDs`, `### §2-2 Screen Layout/Components`,
+  `### §2-3 Interactions/Policy Links`, `### §2-4 Empty/Error States`,
+  `### §2-5 Design Tokens (common shell reference)`.
+- For each screen, cover the 4 states (idle/loading/success/error) with
+  actual microcopy text (no placeholder tokens).
+- Link how §1 policy is exposed on screen using the `[[POL §X-Y]]` marker
+  (§2-3).
+- Do not redefine design tokens — reference only the common shell cluster
+  (G2-COMMON-*) (SSoT boundary).
 
-### §α 기술 산출물 (선택 — API/DB/마이그레이션 있는 cluster 만 → Dα)
-- 이 cluster 가 API 노출/신규 스키마/데이터 이행을 가질 때만 작성. 없으면 §α 패널을
-  **통째로 삭제**(빈 placeholder 잔존 금지 — lint L5).
-- `::: {.panel section="§α-API ..."}` / `§α-DB` / `§α-MIG` — section 라벨은 `§α` 로
-  시작하고 type 키워드(API/DB/마이그레이션)를 포함해야 render_transpose 가 Dα 별
-  페이지로 추출한다(템플릿 라벨 그대로 사용).
-- 작성 시 frontmatter `deliverable_targets` 에 대응 `Da_api`/`Da_db`/`Da_migration`
-  를 추가한다(없으면 발행 대상 제외).
-- §α 는 **발행 정본**, §3 데이터 모델은 **내부 스케치** — 스키마 정본은 §α-DB 에만
-  두고 §3 은 참조(SSoT 중복 금지).
+### §α Technical Deliverables (optional — only for clusters with API/DB/migration → Dα)
+- Write this only when the cluster has an exposed API / new schema / data
+  migration. Otherwise, **delete the §α panel entirely** (no leftover empty
+  placeholders — lint L5).
+- `::: {.panel section="§α-API ..."}` / `§α-DB` / `§α-MIG` — the section
+  label must start with `§α` and include a type keyword (API/DB/migration)
+  so render_transpose can extract it into the corresponding Dα page (use the
+  template label as-is).
+- When written, add the corresponding `Da_api`/`Da_db`/`Da_migration` to
+  frontmatter `deliverable_targets` (otherwise it is excluded from
+  publishing).
+- §α is the **published source of truth**; the §3 data model is an
+  **internal sketch** — keep the authoritative schema only in §α-DB, with §3
+  referencing it (no SSoT duplication).
 
-### §3 데이터/의존성 (내부용 · publish 제외)
-- 데이터 모델(mermaid classDiagram), 외부 의존(다른 cluster·API·인프라), 성능 고려.
-- 무손실 잔여: 어디에도 안 맞는 원문 사실은 `### 미분류 원문 사실` 에 원문 그대로 보존.
+### §3 Data/Dependencies (internal use · excluded from publish)
+- Data model (mermaid classDiagram), external dependencies (other
+  clusters/APIs/infrastructure), performance considerations.
+- Lossless remainder: preserve verbatim, under `### Unclassified Source
+  Facts`, any source fact that fits nowhere else.
 
-### §4 Open Questions / Upstream Feedback (내부용 · publish 제외)
-- `### §4-1 Open Questions`(OQ-N 표, 자체 해결 가능).
-- `### §4-2 Upstream Feedback` — `/integrate` 가 자동 인식하는 BLOCK 카테고리로 분류:
-  `#### REQ_MISSING`(D1 추가) / `#### POLICY_CONFLICT`(DEC 신규) /
-  `#### RESEARCH_GAP`(D5 보강) / `#### TERM_AMBIGUOUS`(terms/spec-catalog).
-- `### §4-3 결정 trail` — cluster 작성 중 PM 결정. DEC 등재 대상은 decisions.md DEC 표에
-  `⬜` 후보 행 등재(스키마 [[CONTEXT/dec-schema]], 승인은 /dec-approve).
+### §4 Open Questions / Upstream Feedback (internal use · excluded from publish)
+- `### §4-1 Open Questions` (OQ-N table, resolvable independently).
+- `### §4-2 Upstream Feedback` — classify into the BLOCK categories that
+  `/integrate` auto-recognizes: `#### REQ_MISSING` (add to D1) /
+  `#### POLICY_CONFLICT` (new DEC) / `#### RESEARCH_GAP` (augment D5) /
+  `#### TERM_AMBIGUOUS` (terms/spec-catalog).
+- `### §4-3 Decision Trail` — PM decisions made while writing the cluster.
+  Decisions that need a DEC entry are logged as `⬜` candidate rows in the
+  decisions.md DEC table (schema [[CONTEXT/dec-schema]]; approval via
+  /dec-approve).
 
-**색상/placeholder 규칙**: 색상 span(`[..]{.color-*}`) 수기 작성 금지 — publish 시
-apply_color_cycling.py 자동 산출. `{{...}}` placeholder 는 전수 치환(미치환 시 lint L5 WARN).
+**Color/placeholder rules**: Do not hand-write color spans (`[..]{.color-*}`)
+— apply_color_cycling.py generates them automatically at publish time.
+Replace every `{{...}}` placeholder (unreplaced ones trigger lint L5 WARN).
 
 
-## 단계 4 — 검증 (lint → storage 변환 → split 점검)
+## Step 4 — Validation (lint → storage conversion → split check)
 
-작성 직후 순서대로 실행한다.
+Run these in order immediately after writing.
 
-1. **Publication 문법 lint** (FAIL=차단):
+1. **Publication syntax lint** (FAIL = blocking):
    ```bash
    python ${CLAUDE_PLUGIN_ROOT}/scripts/lint_publication_syntax.py --input drafts/cluster_{cluster_id}.draft.md
    ```
-   - L1 panel 클래스 허용목록 / L2 panel `section=` 필수 / L3 style 허용 / L6 색상 span
-     nested 금지 / L7 표 컬럼 일관성 = **FAIL 이면 수정 후 재실행**. L4/L5 는 WARN.
+   - L1 panel class allowlist / L2 panel `section=` required / L3 allowed
+     styles / L6 no nested color spans / L7 table column consistency =
+     **fix and re-run if FAIL**. L4/L5 are WARN.
 
-2. **Storage 변환 + lint 게이트** (FAIL=차단):
+2. **Storage conversion + lint gate** (FAIL = blocking):
    ```bash
    python ${CLAUDE_PLUGIN_ROOT}/scripts/md_to_storage.py --input drafts/cluster_{cluster_id}.draft.md --output /tmp/cluster_{cluster_id}.xml --validate
    ```
-   - MD → storage XML 변환을 수행하고, `--validate` 가 입력 MD 에 publication-lint
-     를 다시 실행한다(1단계와 동일 규칙). exit 1=변환 실패 / exit 2=lint FAIL.
-   - 실패 시 해당 위치를 수정 후 재실행한다.
+   - Converts MD → storage XML, and `--validate` re-runs publication-lint on
+     the input MD (same rules as step 1). exit 1 = conversion failure /
+     exit 2 = lint FAIL.
+   - On failure, fix the location and re-run.
 
-3. **분할 임계 점검** (권고 — 비차단):
+3. **Split threshold check** (advisory — non-blocking):
    ```bash
    python ${CLAUDE_PLUGIN_ROOT}/scripts/lazy_split_check.py --drafts drafts/cluster_{cluster_id}.draft.md
    ```
-   본문 >1500줄 / §1+§2 항목 >8 / R2 BLOCK 누적 >5 초과 시 child cluster 분할 권고
-   (`G2-K-{id}-a/-b`). PM 승인 후 처리.
+   If the body exceeds 1500 lines / §1+§2 items exceed 8 / accumulated R2
+   BLOCKs exceed 5, a child-cluster split is recommended
+   (`G2-K-{id}-a/-b`). Proceed only after PM approval.
 
-> round-trip 골든(`round_trip_test.py`)은 변환기 회귀 테스트(CI)다 — 개별 draft 작성
-> 단계가 아니라 변환기 변경 시 실행한다.
-
-
-## 단계 5 — 자기 검증 체크리스트
-
-- [ ] 무손실: 원문 정책·화면 사실 전수 매핑(누락 0, 미분류는 §3 보존, 모순은 [정책 충돌] 양쪽)
-- [ ] 핵심 4패널(§1~§4) 골격·`section=` 속성 보존, 재배치 없음 (§α 만 선택적 추가/삭제)
-- [ ] §α 작성 시 frontmatter `deliverable_targets` 에 Da_* 등재 / 미작성 시 §α 패널 삭제
-- [ ] §1-3 상태×액션 매트릭스 전 상태 커버(빈 셀 없음 — /bdd 변환 대비)
-- [ ] §2 4-state·마이크로카피 실제 문구(플레이스홀더 토큰 0)
-- [ ] B 재작성 0 — `[{doc_id} §X 참조]` 링크만 / 수치는 [[spec-catalog]] 변수ID
-- [ ] A 어휘 준수(이탈 시 [TBD:] + open-issues P1)
-- [ ] `[[POL §X-Y]]` 표준 마커만(§2-3 정책 결합)
-- [ ] `{{...}}` placeholder 전수 치환(lint L5 WARN 0)
-- [ ] lint FAIL 0 · md_to_storage --validate 통과
-- [ ] §4 Upstream Feedback 카테고리 분류 / 결정은 DEC 후보 등재
-- [ ] decisions.md 정본(`승인=✅`) 위반 없음
+> The round-trip golden test (`round_trip_test.py`) is a converter
+> regression test (CI) — run it when the converter changes, not as part of
+> writing an individual draft.
 
 
-## 단계 6 — frontmatter status 전환 (안 A)
+## Step 5 — Self-Verification Checklist
 
-자기 검증 통과 후 in-place 갱신:
-- `status: empty` → `status: ai-draft` (재작성 케이스는 ai-draft 유지)
-- `last_updated: {YYYY-MM-DD}` 갱신
-- cluster 메타(capability/cluster_id/members 등)·`color_state: null` 은 수정 금지.
+- [ ] Lossless: every source policy/screen fact is mapped (0 omissions, unclassified facts preserved in §3, contradictions kept as [policy conflict] on both sides)
+- [ ] Core 4-panel (§1–§4) skeleton and `section=` attributes preserved, no reordering (only §α may be optionally added/deleted)
+- [ ] If §α is written, `Da_*` is registered in frontmatter `deliverable_targets` / if not written, the §α panel is deleted
+- [ ] §1-3 state × action matrix covers every state (no empty cells — for /bdd conversion)
+- [ ] §2 4-state and microcopy use actual text (0 placeholder tokens)
+- [ ] 0 B rewrites — only `[{doc_id} §X reference]` links / figures use [[spec-catalog]] variable IDs
+- [ ] A terminology followed (deviations tagged [TBD:] + logged to open-issues P1)
+- [ ] Only the standard `[[POL §X-Y]]` marker used (§2-3 policy linkage)
+- [ ] Every `{{...}}` placeholder replaced (lint L5 WARN = 0)
+- [ ] 0 lint FAILs · md_to_storage --validate passes
+- [ ] §4 Upstream Feedback classified by category / decisions logged as DEC candidates
+- [ ] No violations of decisions.md source of truth (`approved=✅`)
 
 
-## 단계 7 — 완료 보고 및 session-log
+## Step 6 — Frontmatter Status Transition (Option A)
+
+After passing self-verification, update in place:
+- `status: empty` → `status: ai-draft` (rewrite cases keep ai-draft)
+- Update `last_updated: {YYYY-MM-DD}`
+- Do not modify cluster metadata (capability/cluster_id/members, etc.) or
+  `color_state: null`.
+
+
+## Step 7 — Completion Report and session-log
 
 ```
-/write-cluster 완료 — {capability}/{cluster_id}
+/write-cluster complete — {capability}/{cluster_id}
 
   draft: drafts/cluster_{cluster_id}.draft.md  (status: ai-draft)
-  §1 정책 규칙: {N}건 / §2 화면: {N}개
-  lint: FAIL 0 / storage --validate: OK / split: {권고 유무}
-  TBD: {N} (open-issues P1) · 정책충돌: {N} (P0) · DEC 후보: {N}
-  Upstream Feedback: REQ_MISSING {N}·POLICY_CONFLICT {N}·RESEARCH_GAP {N}·TERM_AMBIGUOUS {N}
+  §1 policy rules: {N} / §2 screens: {N}
+  lint: FAIL 0 / storage --validate: OK / split: {recommended or not}
+  TBD: {N} (open-issues P1) · policy conflicts: {N} (P0) · DEC candidates: {N}
+  Upstream Feedback: REQ_MISSING {N} · POLICY_CONFLICT {N} · RESEARCH_GAP {N} · TERM_AMBIGUOUS {N}
 
-다음 단계: /integrate {product} (R1~R3) → /bdd {product}(수용 기준) → /render --push(transpose)
+Next steps: /integrate {product} (R1–R3) → /bdd {product} (acceptance criteria) → /render --push (transpose)
 ```
 
-session-log.md 에 추가:
+Append to session-log.md:
 ```markdown
-- {날짜} /write-cluster {cluster_id}: §1 {N}규칙 / §2 {N}화면 / lint OK / TBD {N} / 충돌 {N}
+- {date} /write-cluster {cluster_id}: §1 {N} rules / §2 {N} screens / lint OK / TBD {N} / conflicts {N}
 ```
 
 
-## 결과 파일 목록
+## Output File List
 
-| 파일 | 내용 |
+| File | Content |
 |---|---|
-| `drafts/cluster_{cluster_id}.draft.md` | 4패널 작성본 (status: empty → ai-draft, 골격 보존·내용 무손실) |
-| `decisions.md` | §4-3 결정 trail 의 DEC `⬜` 후보 행 |
-| `open-issues.md` | TBD(P1) / 정책충돌(P0) / 의미 B 신호(RE 인계 추적) |
-| `session-log.md` | 작성 요약 |
+| `drafts/cluster_{cluster_id}.draft.md` | Written 4-panel draft (status: empty → ai-draft, skeleton preserved · content lossless) |
+| `decisions.md` | DEC `⬜` candidate rows from the §4-3 decision trail |
+| `open-issues.md` | TBD (P1) / policy conflicts (P0) / semantic-B signals (RE handoff tracking) |
+| `session-log.md` | Writing summary |
 
 
-## 다음 단계
+## Next Steps
 
 ```
-/integrate {product}        # R1~R3 BLOCK 해소 + UPSTREAM_GAP 분류
-/bdd {product}              # §1-3 매트릭스·§2 4-state → 수용 기준(.feature)
-/render --push {product}    # §1→D2·§2→D3 transpose 후 Confluence 발행
+/integrate {product}        # Resolve R1–R3 BLOCKs + classify UPSTREAM_GAP
+/bdd {product}              # §1-3 matrix / §2 4-state → acceptance criteria (.feature)
+/render --push {product}    # §1→D2 · §2→D3 transpose, then publish to Confluence
 ```

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""pack_admin 회귀 테스트 — 정책팩 패키징/설치/조회 (Phase 5)."""
+"""pack_admin regression tests — policy pack packaging/install/list (Phase 5)."""
 from __future__ import annotations
 
 import json
@@ -15,8 +15,8 @@ def _make_pack(packs: Path, name="p1") -> Path:
     d = packs / name
     (d / "reference-docs" / "EX" / "B").mkdir(parents=True)
     (d / "reference-docs" / "EX" / "A").mkdir(parents=True)
-    (d / "reference-docs" / "EX" / "B" / "EX-B-001.md").write_text("# 정책\n", encoding="utf-8")
-    (d / "reference-docs" / "EX" / "A" / "EX-A-001.md").write_text("# 용어\n", encoding="utf-8")
+    (d / "reference-docs" / "EX" / "B" / "EX-B-001.md").write_text("# Policy\n", encoding="utf-8")
+    (d / "reference-docs" / "EX" / "A" / "EX-A-001.md").write_text("# Glossary\n", encoding="utf-8")
     (d / "reference-docs" / "master-id-map.yml").write_text(
         "EX-A-001: EX-A-001\nEX-B-001: EX-B-001\n", encoding="utf-8")
     (d / "pack.json").write_text(json.dumps({
@@ -58,10 +58,10 @@ def test_install_skips_existing_prefix_without_force(tmp_path):
     pack = _make_pack(packs, "p1")
     hub = _tenant(tmp_path)
     (hub / "CONTEXT/reference-docs/EX/B").mkdir(parents=True)
-    (hub / "CONTEXT/reference-docs/EX/B/mine.md").write_text("# 내것\n", encoding="utf-8")
+    (hub / "CONTEXT/reference-docs/EX/B/mine.md").write_text("# mine\n", encoding="utf-8")
     r = pa.install(hub, pack)
     assert r["skipped"] == ["EX"]
-    assert (hub / "CONTEXT/reference-docs/EX/B/mine.md").exists()  # 보존
+    assert (hub / "CONTEXT/reference-docs/EX/B/mine.md").exists()  # preserved
 
 
 def test_install_dedups_record_on_reinstall(tmp_path):
@@ -71,7 +71,7 @@ def test_install_dedups_record_on_reinstall(tmp_path):
     pa.install(hub, pack)
     pa.install(hub, pack, force=True)
     rec = json.loads((hub / "CONTEXT/installed-packs.json").read_text(encoding="utf-8"))
-    assert len([r for r in rec if r["name"] == "p1"]) == 1  # 중복 제거(최신화)
+    assert len([r for r in rec if r["name"] == "p1"]) == 1  # deduped (refreshed)
 
 
 def test_package_from_tenant(tmp_path):
@@ -87,10 +87,10 @@ def test_package_from_tenant(tmp_path):
 
 
 def test_real_example_pack_present():
-    # 저장소에 커밋된 example-policy-pack 형식 검증
+    # verify the format of example-policy-pack committed in the repo
     packs_dir = Path(__file__).resolve().parents[2] / "packs"
     if not packs_dir.is_dir():
-        pytest.skip("packs/ 디렉토리 없음(모노레포 외 환경)")
+        pytest.skip("packs/ directory not found (outside monorepo environment)")
     names = {p["name"] for p in pa.list_packs(packs_dir)}
     assert "example-policy-pack" in names
 

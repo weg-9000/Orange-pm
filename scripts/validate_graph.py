@@ -1,34 +1,34 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""graph.json 검증 스크립트.
+"""graph.json validation script.
 
-변경 이력:
-    v1.0: 최초 구현
-    v2.0: screen 노드 검증 / implements 방향 검증 /
-          섹션 단위 순환 감지 / 엣지 ID 중복 감지 /
-          policy 섹션 completeness 검사 / FAIL_EDGE_TYPES 활성화
+Change history:
+    v1.0: initial implementation
+    v2.0: screen node validation / implements direction validation /
+          section-level cycle detection / duplicate edge ID detection /
+          policy section completeness check / FAIL_EDGE_TYPES enabled
 
-검증 항목:
+Checks:
     [FAIL]
-    1. JSON Schema 준수
-    2. edges source/target 노드 실재
-    3. edges source_section/target_section 실재
-    4. 중복정의 엣지 0건
-    5. 전제조건 엣지 서브그래프 DAG (섹션 단위)
-    6. implements 엣지 방향 (screen → policy 강제)
-    7. 엣지 id 중복 없음
-    8. node_type 유효값 (policy | screen)
+    1. JSON Schema compliance
+    2. edges source/target nodes exist
+    3. edges source_section/target_section exist
+    4. zero duplicate-definition edges
+    5. prerequisite edge subgraph is a DAG (section level)
+    6. implements edge direction (screen → policy enforced)
+    7. no duplicate edge ids
+    8. node_type valid values (policy | screen)
 
     [WARN]
-    9.  고립 노드 (어떤 엣지와도 연결 없음)
-    10. screen 노드 필수 필드 누락 (screen_name / purpose / req_id)
-    11. policy 섹션 completeness (title / summary 누락)
-    12. screen 노드에 implements 엣지 없음
+    9.  isolated nodes (not connected to any edge)
+    10. screen node required fields missing (screen_name / purpose / req_id)
+    11. policy section completeness (title / summary missing)
+    12. screen node without an implements edge
 
 exit code:
-    0 = PASS (WARN만 있어도 0)
+    0 = PASS (WARN-only still returns 0)
     1 = FAIL
-    2 = 사용법 오류
+    2 = usage error
 """
 from __future__ import annotations
 
@@ -39,11 +39,12 @@ from collections import defaultdict, deque
 from pathlib import Path
 from typing import Any
 
-# Windows 콘솔/파이프 인코딩 가드 (감사 2026-06-08 H2):
-# 본 스크립트는 한글 FAIL/WARN 메시지를 print() 한다(_print_human·errors.append).
-# Windows 기본 stdout 은 cp949 라, fanout step-1 게이트가 stdout 을 파이프로 캡처하면
-# print() 가 UnicodeEncodeError 로 크래시 → 정상 PASS/FAIL exit code 가 가려진다.
-# render_sync_check.py 와 동일한 reconfigure 가드로 utf-8 강제.
+# Windows console/pipe encoding guard (audit 2026-06-08 H2):
+# This script print()s non-ASCII FAIL/WARN messages (_print_human · errors.append).
+# Windows default stdout is cp949, so when the fanout step-1 gate captures stdout
+# through a pipe, print() can crash with UnicodeEncodeError, masking the real
+# PASS/FAIL exit code. Force utf-8 with the same reconfigure guard as
+# render_sync_check.py.
 for _s in (sys.stdout, sys.stderr):
     try:
         _s.reconfigure(encoding="utf-8", errors="replace")  # type: ignore[attr-defined]
@@ -53,15 +54,15 @@ for _s in (sys.stdout, sys.stderr):
 
 VALID_NODE_TYPES = {"policy", "screen"}
 VALID_EDGE_TYPES = {
-    "전제조건", "양방향참조", "중복정의", "기능연동",
-    "이벤트정의", "보안기준", "implements",
-    "용어기준", "UX기준", "과금대상", "운영절차",
+    "prerequisite", "bidirectional-ref", "duplicate-definition", "feature-link",
+    "event-definition", "security-standard", "implements",
+    "term-standard", "ux-standard", "billing-target", "ops-procedure",
 }
 FAIL_EDGE_TYPES = {
-    "중복정의",      # 중복 정의 자체가 FAIL
+    "duplicate-definition",      # a duplicate definition is itself a FAIL
 }
 DIRECTIONAL_EDGE_TYPES = {
-    "implements",   # 반드시 screen → policy 방향
+    "implements",   # must run screen → policy
 }
 
 
@@ -69,24 +70,24 @@ class ValidationError(Exception):
     pass
 
 
-# ── 로드 ──────────────────────────────────────────────────────────────────────
+# ── load ──────────────────────────────────────────────────────────────────────
 
 def _load_json(path: Path) -> dict[str, Any]:
     try:
         return json.loads(path.read_text(encoding="utf-8"))
     except FileNotFoundError:
-        raise ValidationError(f"파일을 찾을 수 없음: {path}")
+        raise ValidationError(f"file not found: {path}")
     except json.JSONDecodeError as e:
-        raise ValidationError(f"JSON 파싱 실패 ({path}): {e}")
+        raise ValidationError(f"JSON parse failure ({path}): {e}")
 
 
 def _load_graph_or_split(graph_path: Path) -> dict[str, Any]:
-    """graph.json 또는 분할 파일(개선안 C)을 감지해 통합 doc을 반환한다."""
+    """Detect graph.json or split files (improvement C) and return a merged doc."""
     graph_dir = graph_path.parent
     policy_file = graph_dir / "graph.policy.json"
 
     if policy_file.exists():
-        # 분할 모드: 4 파일 병합
+        # split mode: merge 4 files
         def _r(fname: str) -> dict:
             p = graph_dir / fname
             return json.loads(p.read_text(encoding="utf-8")) if p.exists() else {}
@@ -127,20 +128,20 @@ def _validate_schema(graph_doc: dict, schema_path: Path) -> list[str]:
 def _minimal_schema_check(doc: dict) -> list[str]:
     errors: list[str] = []
     if "graph" not in doc:
-        errors.append("schema: 최상위 'graph' 키 누락")
+        errors.append("schema: top-level 'graph' key missing")
         return errors
     g = doc["graph"]
     for key in ("metadata", "nodes", "edges"):
         if key not in g:
-            errors.append(f"schema: graph.{key} 누락")
+            errors.append(f"schema: graph.{key} missing")
     if "nodes" in g and not isinstance(g["nodes"], dict):
-        errors.append("schema: graph.nodes는 객체여야 함")
+        errors.append("schema: graph.nodes must be an object")
     if "edges" in g and not isinstance(g["edges"], list):
-        errors.append("schema: graph.edges는 배열이어야 함")
+        errors.append("schema: graph.edges must be an array")
     return errors
 
 
-# ── 2. 노드 타입 유효성 ────────────────────────────────────────────────────────
+# ── 2. node type validity ─────────────────────────────────────────────────────
 
 def _validate_node_types(graph: dict) -> tuple[list[str], list[str]]:
     errors: list[str] = []
@@ -148,21 +149,21 @@ def _validate_node_types(graph: dict) -> tuple[list[str], list[str]]:
     for name, node in graph.get("nodes", {}).items():
         nt = node.get("node_type")
         if nt is None:
-            # node_type 없는 노드는 sections 보유 여부로 판단 (v1.0 하위 호환)
+            # nodes without node_type are judged by whether they have sections (v1.0 back-compat)
             if not node.get("sections"):
                 warnings.append(
-                    f"node-type: '{name}' node_type 미지정이며 sections도 없음 — "
-                    "policy 또는 screen 명시 권장"
+                    f"node-type: '{name}' has no node_type and no sections — "
+                    "declaring policy or screen is recommended"
                 )
         elif nt not in VALID_NODE_TYPES:
             errors.append(
-                f"node-type: '{name}' node_type='{nt}' 유효하지 않음 "
-                f"(허용: {sorted(VALID_NODE_TYPES)})"
+                f"node-type: '{name}' node_type='{nt}' is invalid "
+                f"(allowed: {sorted(VALID_NODE_TYPES)})"
             )
     return errors, warnings
 
 
-# ── 3. 엣지 참조 실재 + 섹션 실재 ────────────────────────────────────────────
+# ── 3. edge reference existence + section existence ──────────────────────────
 
 def _validate_references(graph: dict) -> list[str]:
     errors: list[str] = []
@@ -173,61 +174,61 @@ def _validate_references(graph: dict) -> list[str]:
         src_sec = edge.get("source_section") or ""
         tgt_sec = edge.get("target_section") or ""
 
-        # 노드 실재
+        # node existence
         if src not in nodes:
-            errors.append(f"ref: edges[{i}] source 노드 '{src}' 없음")
+            errors.append(f"ref: edges[{i}] source node '{src}' not found")
         else:
-            # screen 노드는 sections 없음 → src_sec이 비어 있어야 정상
+            # screen nodes have no sections → src_sec must be empty
             node_sections = nodes[src].get("sections") or {}
             if src_sec and nodes[src].get("node_type") == "screen":
                 errors.append(
-                    f"ref: edges[{i}] screen 노드 '{src}'에 "
-                    f"source_section='{src_sec}' 지정 불가"
+                    f"ref: edges[{i}] screen node '{src}' cannot take "
+                    f"source_section='{src_sec}'"
                 )
             elif src_sec and src_sec not in node_sections:
                 errors.append(
-                    f"ref: edges[{i}] '{src}' 노드에 섹션 '{src_sec}' 없음"
+                    f"ref: edges[{i}] node '{src}' has no section '{src_sec}'"
                 )
 
         if tgt not in nodes:
-            errors.append(f"ref: edges[{i}] target 노드 '{tgt}' 없음")
+            errors.append(f"ref: edges[{i}] target node '{tgt}' not found")
         else:
             node_sections = nodes[tgt].get("sections") or {}
             if tgt_sec and nodes[tgt].get("node_type") == "screen":
                 errors.append(
-                    f"ref: edges[{i}] screen 노드 '{tgt}'에 "
-                    f"target_section='{tgt_sec}' 지정 불가"
+                    f"ref: edges[{i}] screen node '{tgt}' cannot take "
+                    f"target_section='{tgt_sec}'"
                 )
             elif tgt_sec and tgt_sec not in node_sections:
                 errors.append(
-                    f"ref: edges[{i}] '{tgt}' 노드에 섹션 '{tgt_sec}' 없음"
+                    f"ref: edges[{i}] node '{tgt}' has no section '{tgt_sec}'"
                 )
     return errors
 
 
-# ── 4. 중복정의 엣지 0건 강제 ────────────────────────────────────────────────
+# ── 4. enforce zero duplicate-definition edges ────────────────────────────────
 
 def _validate_no_duplicate_def(graph: dict) -> list[str]:
     errors: list[str] = []
     for i, edge in enumerate(graph.get("edges", [])):
-        if edge.get("type") == "중복정의":
+        if edge.get("type") == "duplicate-definition":
             errors.append(
                 f"duplicate-def: edges[{i}] "
                 f"'{edge.get('source')}§{edge.get('source_section','')}' ↔ "
                 f"'{edge.get('target')}§{edge.get('target_section','')}' — "
-                "한쪽을 참조로 전환 후 graph-generator 재실행"
+                "convert one side to a reference and re-run graph-generator"
             )
     return errors
 
 
-# ── 5. 전제조건 DAG 검증 (섹션 단위) ─────────────────────────────────────────
+# ── 5. prerequisite DAG validation (section level) ────────────────────────────
 
 def _detect_cycle(graph: dict) -> list[str]:
-    """전제조건 엣지를 (node, section) 튜플 단위로 Kahn 위상정렬해 순환을 감지한다."""
+    """Kahn-topological-sort prerequisite edges at (node, section) tuple level to detect cycles."""
     errors: list[str] = []
     nodes: dict = graph.get("nodes", {})
 
-    # 섹션 단위 키 집합 생성
+    # build the section-level key set
     section_keys: set[tuple[str, str]] = set()
     for name, node in nodes.items():
         if node.get("node_type") == "screen":
@@ -242,7 +243,7 @@ def _detect_cycle(graph: dict) -> list[str]:
     out_adj: dict[tuple[str, str], list[tuple[str, str]]] = defaultdict(list)
 
     for e in graph.get("edges", []):
-        if e.get("type") != "전제조건":
+        if e.get("type") != "prerequisite":
             continue
         src = (e.get("source", ""), e.get("source_section") or "")
         tgt = (e.get("target", ""), e.get("target_section") or "")
@@ -270,13 +271,13 @@ def _detect_cycle(graph: dict) -> list[str]:
             if d > 0
         ]
         errors.append(
-            f"cycle: 전제조건 엣지에 순환 존재. 의심 노드: {stuck[:5]}"
-            + (f" 외 {len(stuck) - 5}개" if len(stuck) > 5 else "")
+            f"cycle: prerequisite edges contain a cycle. suspect nodes: {stuck[:5]}"
+            + (f" and {len(stuck) - 5} more" if len(stuck) > 5 else "")
         )
     return errors
 
 
-# ── 6. implements 엣지 방향 강제 (screen → policy) ────────────────────────────
+# ── 6. enforce implements edge direction (screen → policy) ────────────────────
 
 def _validate_implements_direction(graph: dict) -> list[str]:
     errors: list[str] = []
@@ -290,18 +291,18 @@ def _validate_implements_direction(graph: dict) -> list[str]:
         tgt_type = nodes.get(tgt, {}).get("node_type")
         if src_type != "screen":
             errors.append(
-                f"direction: edges[{i}] implements source '{src}'의 "
-                f"node_type='{src_type}'. screen이어야 함"
+                f"direction: edges[{i}] implements source '{src}' has "
+                f"node_type='{src_type}'. must be screen"
             )
         if tgt_type == "screen":
             errors.append(
-                f"direction: edges[{i}] implements target '{tgt}'의 "
-                f"node_type='screen'. policy이어야 함"
+                f"direction: edges[{i}] implements target '{tgt}' has "
+                f"node_type='screen'. must be policy"
             )
     return errors
 
 
-# ── 7. 엣지 ID 중복 ───────────────────────────────────────────────────────────
+# ── 7. duplicate edge IDs ─────────────────────────────────────────────────────
 
 def _validate_edge_id_uniqueness(graph: dict) -> list[str]:
     errors: list[str] = []
@@ -312,15 +313,15 @@ def _validate_edge_id_uniqueness(graph: dict) -> list[str]:
             continue
         if eid in seen:
             errors.append(
-                f"edge-id: edges[{i}] id='{eid}' 중복 "
-                f"(최초: edges[{seen[eid]}])"
+                f"edge-id: edges[{i}] id='{eid}' duplicated "
+                f"(first: edges[{seen[eid]}])"
             )
         else:
             seen[eid] = i
     return errors
 
 
-# ── 8~12. 경고 ────────────────────────────────────────────────────────────────
+# ── 8~12. warnings ────────────────────────────────────────────────────────────
 
 def _warn_isolated_nodes(graph: dict) -> list[str]:
     warnings: list[str] = []
@@ -330,7 +331,7 @@ def _warn_isolated_nodes(graph: dict) -> list[str]:
         referenced.add(e.get("source", ""))
         referenced.add(e.get("target", ""))
     for n in nodes - referenced:
-        warnings.append(f"isolated: 노드 '{n}' 이 어떤 엣지와도 연결되지 않음")
+        warnings.append(f"isolated: node '{n}' is not connected to any edge")
     return warnings
 
 
@@ -342,7 +343,7 @@ def _warn_screen_fields(graph: dict) -> list[str]:
         for field in ("screen_name", "purpose", "req_id"):
             if not node.get(field):
                 warnings.append(
-                    f"screen-field: '{name}' 필수 필드 '{field}' 누락"
+                    f"screen-field: '{name}' required field '{field}' missing"
                 )
     return warnings
 
@@ -358,8 +359,8 @@ def _warn_screen_no_implements(graph: dict) -> list[str]:
     for name, node in nodes.items():
         if node.get("node_type") == "screen" and name not in impl_sources:
             warnings.append(
-                f"no-implements: screen 노드 '{name}'에 implements 엣지 없음 — "
-                "연관 policy 섹션 연결 권장"
+                f"no-implements: screen node '{name}' has no implements edge — "
+                "linking a related policy section is recommended"
             )
     return warnings
 
@@ -373,20 +374,21 @@ def _warn_policy_section_completeness(graph: dict) -> list[str]:
             for field in ("title", "summary"):
                 if not section.get(field):
                     warnings.append(
-                        f"completeness: '{name}§{sid}' 섹션 '{field}' 누락 — "
-                        "WO 생성 시 fallback 텍스트가 삽입됨"
+                        f"completeness: '{name}§{sid}' section '{field}' missing — "
+                        "fallback text will be inserted at WO generation"
                     )
     return warnings
 
 
-# ── 트랙↔토폴로지 정합 (fix-plan-track-routing P1) ──────────────────────────
+# ── track ↔ topology consistency (fix-plan-track-routing P1) ─────────────────
 
 def _warn_track_topology_mismatch(graph: dict, graph_path: Path) -> list[str]:
-    """project-mode.json(track=A) 와 graph 의 cluster 토폴로지 정합을 검사한다.
+    """Check consistency between project-mode.json (track=A) and the graph's cluster topology.
 
-    트랙이 A(dossier)인데 policy 노드에 capability/cluster_id 가 하나도 없으면,
-    아직 cluster_identify.py 가 실행되지 않은 상태다. 이 graph 로 /fanout --cluster-mode
-    를 돌리면 모든 노드가 DX-{node} fallback cluster 로 흩어진다. 선행 실행을 경고한다.
+    If the track is A (dossier) but no policy node has capability/cluster_id,
+    cluster_identify.py has not run yet. Running /fanout --cluster-mode on this
+    graph would scatter every node into DX-{node} fallback clusters. Warn to run
+    it first.
     """
     mode_path = graph_path.parent / "project-mode.json"
     if not mode_path.exists():
@@ -394,7 +396,7 @@ def _warn_track_topology_mismatch(graph: dict, graph_path: Path) -> list[str]:
     try:
         mode = json.loads(mode_path.read_text(encoding="utf-8"))
     except Exception:
-        return [f"track: project-mode.json 파싱 실패 ({mode_path})"]
+        return [f"track: failed to parse project-mode.json ({mode_path})"]
     is_track_a = str(mode.get("track", "")).upper() == "A" or mode.get("model") == "dossier"
     if not is_track_a:
         return []
@@ -405,15 +407,15 @@ def _warn_track_topology_mismatch(graph: dict, graph_path: Path) -> list[str]:
     )
     if not has_cluster_meta:
         return [
-            "track: project-mode.json 은 track=A(dossier)인데 graph 노드에 "
-            "capability/cluster_id 가 없음 — /fanout --cluster-mode 전에 "
-            "cluster_identify.py 를 먼저 실행하세요 (미실행 시 노드가 fallback "
-            "cluster 로 흩어짐)"
+            "track: project-mode.json says track=A (dossier) but graph nodes "
+            "have no capability/cluster_id — run cluster_identify.py before "
+            "/fanout --cluster-mode (otherwise nodes scatter into fallback "
+            "clusters)"
         ]
     return []
 
 
-# ── 통합 ──────────────────────────────────────────────────────────────────────
+# ── aggregate ─────────────────────────────────────────────────────────────────
 
 def validate(graph_path: Path, schema_path: Path) -> dict[str, Any]:
     doc = _load_graph_or_split(graph_path)
@@ -489,25 +491,26 @@ def _print_human(result: dict[str, Any]) -> None:
     print("PASS" if result["ok"] else "FAIL")
 
 
-# ── 진입점 ────────────────────────────────────────────────────────────────────
+# ── entry point ───────────────────────────────────────────────────────────────
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="orange-plan graph.json validator")
-    parser.add_argument("graph", type=Path, help="graph.json 경로")
+    parser.add_argument("graph", type=Path, help="path to graph.json")
     parser.add_argument(
         "--schema",
         type=Path,
         default=None,
-        help="graph-schema.json 경로 (생략 시 cwd(Hub)→graph 상위→플러그인 순 자동 탐색)",
+        help="path to graph-schema.json (if omitted, auto-search cwd(Hub) → graph parents → plugin)",
     )
-    parser.add_argument("--json", action="store_true", help="JSON 형식 출력")
+    parser.add_argument("--json", action="store_true", help="output in JSON format")
     args = parser.parse_args(argv)
 
     schema = args.schema
     if schema is None:
-        # templates/ 는 Planning-Agent-Hub 작업 디렉토리에 존재하며 플러그인에는
-        # 번들되지 않는다. (1) cwd(Hub) → (2) graph.json 상위 디렉토리 → (3) 플러그인
-        # 상대 경로 순으로 탐색하고, 어디에도 없으면 명확한 에러로 종료한다.
+        # templates/ lives in the Planning-Agent-Hub working directory and is not
+        # bundled with the plugin. Search (1) cwd(Hub) → (2) graph.json ancestor
+        # directories → (3) plugin-relative path, and exit with a clear error if
+        # none exists.
         candidates = [Path.cwd() / "templates" / "graph-schema.json"]
         candidates += [
             ancestor / "templates" / "graph-schema.json"
@@ -519,9 +522,9 @@ def main(argv: list[str] | None = None) -> int:
         schema = next((c for c in candidates if c.is_file()), None)
         if schema is None:
             print(
-                "[ERROR] graph-schema.json 을 찾을 수 없습니다. "
-                "Planning-Agent-Hub/templates/graph-schema.json 존재 여부를 확인하거나 "
-                "--schema 로 경로를 직접 지정하세요.",
+                "[ERROR] graph-schema.json not found. "
+                "Check that Planning-Agent-Hub/templates/graph-schema.json exists, "
+                "or pass the path explicitly with --schema.",
                 file=sys.stderr,
             )
             return 2

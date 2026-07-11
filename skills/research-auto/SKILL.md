@@ -1,18 +1,19 @@
 ---
 name: research-auto
 description: |
-  웹 검색 + LLM 요약으로 자동 타사조사 수행. inputs/discovery/competitor/*.md
-  + research.md (D5 양식) 초안 생성. 사실 정확성 보장 안 됨 — 항상 PM 승인 게이트.
+  Performs automated third-party research via web search + LLM summarization. Generates a
+  draft of inputs/discovery/competitor/*.md + research.md (D5 format). Factual accuracy is
+  not guaranteed — always requires a PM approval gate.
 
-  사용 시점:
-    - 신제품 Phase -1 discovery 자동화
-    - Track B 의 "타사조사 후 D1/D5 작성" 진입
-    - 기존 research.md 보강 (--augment)
+  When to use:
+    - Automating new-product Phase -1 discovery
+    - Entering Track B's "third-party research then write D1/D5" step
+    - Supplementing an existing research.md (--augment)
 triggers:
-  - "타사조사 후"
-  - "경쟁사 조사"
-  - "자동 리서치"
-  - "타사조사 해줘"
+  - "after third-party research"
+  - "competitor research"
+  - "automated research"
+  - "do third-party research"
   - "research-auto"
 phase: -1
 effort: high
@@ -20,123 +21,129 @@ model: opus
 user-invocable: true
 ---
 
-## 1. 진입 조건
+## 1. Entry conditions
 
-본 스킬은 다음 중 하나일 때 실행된다:
+This skill runs when one of the following applies:
 
-- 사용자가 명시적으로 **"타사조사"** 키워드 + 제품/주제 키워드를 지정
-- `intent-router` 가 라우팅: `"{제품} 타사조사 후 작성"` → `research-auto` → `draft-req`
-- 기존 `inputs/discovery/competitor/` 보강 요청 (`--augment` 플래그)
+- The user explicitly specifies the **"third-party research"** keyword + a product/topic
+  keyword
+- `intent-router` routes it: `"{product} third-party research then write"` →
+  `research-auto` → `draft-req`
+- A request to supplement the existing `inputs/discovery/competitor/` (`--augment` flag)
 
-진입 시 PM 에게 다음을 1회 확인한다:
+On entry, confirm the following with the PM once:
 
 ```
-타사조사 자동 실행 — 다음 정보 확인:
-  - 제품 / 주제: {product}
-  - 도메인 키워드: {domain}
-  - 조사 대상 지역: {국내 / 글로벌 / 양쪽}
-  - 기존 inputs/discovery/competitor/ 처리: [augment / replace]
+Running automated third-party research — confirming the following:
+  - Product / topic: {product}
+  - Domain keywords: {domain}
+  - Research region: {domestic / global / both}
+  - Handling of existing inputs/discovery/competitor/: [augment / replace]
 ```
 
 ---
 
-## 2. 전제조건
+## 2. Preconditions
 
-### 2-1. 도구 가용성
+### 2-1. Tool availability
 
-| 도구 | 용도 | 필수 |
+| Tool | Purpose | Required |
 |---|---|---|
-| `WebSearch` | 시드 검색 / 경쟁사 식별 | 필수 |
-| `WebFetch` | 경쟁사 공식 페이지 상세 수집 | 필수 |
+| `WebSearch` | seed search / competitor identification | required |
+| `WebFetch` | detailed collection from competitors' official pages | required |
 
-도구 미가용 시 즉시 중단하고 PM 에게 보고. 우회·추정 채움 절대 금지.
+If a tool is unavailable, stop immediately and report to the PM. Working around it or
+filling in with estimates is absolutely forbidden.
 
-### 2-2. 제품 / 주제 모호성 검증
+### 2-2. Product / topic ambiguity check
 
-제품명이 일반명사이거나 동음이의 가능성이 있으면 PM 에게 보완 키워드를 받는다.
-(예: "DB" → "DBaaS / 관리형 데이터베이스 / 자사 DBaaS" 중 어느 쪽인지)
+If the product name is a common noun or could be a homonym, get supplementary keywords from
+the PM.
+(e.g. "DB" → whichever of "DBaaS / managed database / our own DBaaS" is meant)
 
-### 2-3. 기존 파일 존재 분기
+### 2-3. Existing-file branch
 
-`Planning-Agent-Hub/PROJECTS/{product}/inputs/discovery/competitor/` 존재 시:
+If `Planning-Agent-Hub/PROJECTS/{product}/inputs/discovery/competitor/` exists:
 
-| 플래그 | 동작 |
+| Flag | Behavior |
 |---|---|
-| `--augment` | 기존 파일 보존 + 신규 경쟁사 추가 |
-| `--replace` | 기존 파일 백업 (`.bak`) 후 신규 작성 |
-| (없음) | PM 에게 분기 선택 요청 |
+| `--augment` | keep existing files + add new competitors |
+| `--replace` | back up existing files (`.bak`) then write fresh |
+| (none) | ask the PM to choose a branch |
 
 ---
 
-## 3. 조사 절차
+## 3. Research procedure
 
-### 3-A. 시드 검색 (WebSearch)
+### 3-A. Seed search (WebSearch)
 
-다음 키워드 조합으로 상위 10~20개 결과를 수집한다:
+Collect the top 10~20 results using the following keyword combinations:
 
-- `{제품} 경쟁사`
-- `{제품} alternatives`
-- `{제품} comparison vs`
-- `{도메인} market share`
-- `{도메인} pricing 2025`
-- `{도메인} top providers`
-- `{제품} 한국 시장` (국내 조사 포함 시)
+- `{product} competitors`
+- `{product} alternatives`
+- `{product} comparison vs`
+- `{domain} market share`
+- `{domain} pricing 2025`
+- `{domain} top providers`
+- `{product} domestic market` (if domestic research is included)
 
-각 검색 결과의 (제목, URL, snippet, 검색 일자) 를 메모리 버퍼에 보존한다.
+Keep (title, URL, snippet, search date) for each search result in the memory buffer.
 
-### 3-B. 경쟁사 식별
+### 3-B. Competitor identification
 
-수집한 시드 결과에서 다음을 추출한다:
+Extract the following from the collected seed results:
 
-- 회사명 + 제품명
-- 도메인 분류 (예: 글로벌 클라우드 / 한국 IDC / SaaS 전문 등)
-- 빈도 (몇 개 결과에서 언급되었는지)
+- Company name + product name
+- Domain classification (e.g. global cloud / domestic IDC / SaaS specialist, etc.)
+- Frequency (how many results mentioned it)
 
-빈도순으로 정렬 후 **상위 3~5개** 경쟁사를 선정한다.
-PM 이 특정 경쟁사를 사전에 지정한 경우 해당 경쟁사를 우선 포함한다.
+Sort by frequency and select the **top 3~5** competitors.
+If the PM has pre-specified particular competitors, include them with priority.
 
-### 3-C. 경쟁사별 상세 fetch (WebFetch)
+### 3-C. Per-competitor detail fetch (WebFetch)
 
-각 경쟁사에 대해 다음 페이지를 순차 fetch:
+For each competitor, fetch the following pages in sequence:
 
-1. 공식 사이트 메인 / 제품 페이지 — 회사·제품 개요
-2. 가격 (Pricing) 페이지 — 요금제 표
-3. 기능 (Features) 페이지 — 핵심 기능 / 차별점
-4. SLA / 약관 / 통합 페이지 (가용 시)
+1. Official site main / product page — company·product overview
+2. Pricing page — rate-plan table
+3. Features page — key features / differentiators
+4. SLA / terms / integration page (if available)
 
-⚠ **출처 URL + 수집 일자(UTC) 를 반드시 보존**. 모든 인용 값에 `[REF-NN]` ID 부여.
+⚠ **Source URL + collection date (UTC) must always be preserved**. Assign a `[REF-NN]` ID
+to every cited value.
 
-수집 실패 시 (404 / robots 차단 / 비공개) 해당 행을 `[미확인:사유]` 로 표기.
-추정 채움 금지.
+On collection failure (404 / robots-blocked / private), mark the row `[unconfirmed:reason]`.
+Filling in with estimates is forbidden.
 
-### 3-D. 시장 개요 fetch
+### 3-D. Market overview fetch
 
-다음 항목을 별도 fetch:
+Fetch the following items separately:
 
-- TAM / SAM / SOM (가능한 한 수치 + 출처) — Gartner / IDC / 한국 KISDI 등 1·2차 자료
-- 시장 트렌드 3~5개 (수요 / 가격 / 기술 축)
-- 진입 장벽 / 차별화 포인트 (규제 / 자본 / 기술)
+- TAM / SAM / SOM (figures + source where possible) — 1st/2nd-party sources such as
+  Gartner / IDC / Korean KISDI, etc.
+- 3~5 market trends (demand / pricing / technology axes)
+- Entry barriers / differentiation points (regulatory / capital / technical)
 
-수치 미확보 항목은 `[확인필요]` 로 표기.
+Mark unobtained figures `[needs confirmation]`.
 
 ---
 
-## 4. 출력 파일
+## 4. Output files
 
 ```
 Planning-Agent-Hub/PROJECTS/{product}/
 ├── inputs/discovery/competitor/
-│   ├── overview.md          # 시장 개요 + 비교 매트릭스
-│   ├── {competitor_1}.md    # 경쟁사 1 상세
+│   ├── overview.md          # market overview + comparison matrix
+│   ├── {competitor_1}.md    # competitor 1 detail
 │   ├── {competitor_2}.md
 │   └── {competitor_3}.md
 └── drafts/
-    └── D5.draft.md          # research.md (D5 양식) 자동 채움 초안
+    └── D5.draft.md          # research.md (D5 format) auto-filled draft
 ```
 
-### 4-1. 파일 frontmatter (필수)
+### 4-1. File frontmatter (required)
 
-각 자동 생성 파일에 다음 frontmatter 를 삽입한다:
+Insert the following frontmatter into each auto-generated file:
 
 ```yaml
 ---
@@ -148,168 +155,180 @@ sources:
     url: https://...
     fetched_at: YYYY-MM-DD
     title: "..."
-    reliability: 1차 | 2차 | 3차
-status: draft  # PM 승인 전까지 draft 고정
+    reliability: 1st-party | 2nd-party | 3rd-party
+status: draft  # locked to draft until PM approval
 approved_by: null
 approved_at: null
 ---
 ```
 
-### 4-2. overview.md 본문 구조
+### 4-2. overview.md body structure
 
-draft-req SKILL.md 의 competitor 임계값 (비교 매트릭스 행 3개 이상 / `[미입력]` 셀 50% 미만) 을 충족하도록 작성한다:
+Write to meet the draft-req SKILL.md competitor threshold (comparison-matrix rows 3+ /
+`[not entered]` cells under 50%):
 
-- §1 시장 정의 (TAM/SAM/SOM)
-- §2 시장 트렌드 (3~5개)
-- §3 진입 장벽 / 차별화 포인트
-- §4 경쟁사 비교 매트릭스 (행 3개 이상)
+- §1 Market definition (TAM/SAM/SOM)
+- §2 Market trends (3~5)
+- §3 Entry barriers / differentiation points
+- §4 Competitor comparison matrix (3+ rows)
 
-### 4-3. 경쟁사별 파일 본문 구조
+### 4-3. Per-competitor file body structure
 
-D5 §3~§5 와 동일 구조:
+Same structure as D5 §3~§5:
 
-- 회사 / 제품 개요
-- 가격 정책 (요금제 표)
-- 핵심 기능 / 차별점
-- 약점 / 제약
-- 출처 ID 매핑
+- Company / product overview
+- Pricing policy (rate-plan table)
+- Key features / differentiators
+- Weaknesses / constraints
+- Source ID mapping
 
 ---
 
-## 5. D5 양식 채워 넣기
+## 5. Filling in the D5 format
 
-`templates/standard/D5_research.md` 를 `Planning-Agent-Hub/PROJECTS/{product}/drafts/D5.draft.md` 로 복사 후 다음 placeholder 를 자동 치환한다:
+Copy `templates/standard/D5_research.md` to
+`Planning-Agent-Hub/PROJECTS/{product}/drafts/D5.draft.md`, then auto-substitute the
+following placeholders:
 
-| Placeholder | 치환 값 |
+| Placeholder | Substituted value |
 |---|---|
-| `{{PRODUCT_NAME}}` | 제품명 |
-| `{{DOC_ID}}` | 자동 생성 (예: `RES-{product}-001`) |
+| `{{PRODUCT_NAME}}` | product name |
+| `{{DOC_ID}}` | auto-generated (e.g. `RES-{product}-001`) |
 | `{{VERSION}}` | `1.0-draft` |
-| `{{DATE}}` | 생성 일자 (YYYY-MM-DD) |
-| `{{TAM}} / {{SAM}} / {{SOM}}` | 추출 수치 (없으면 `[확인필요]`) |
-| `{{COMPETITOR_1~3}}` | 추출 경쟁사명 |
-| `{{REF}} / {{REF_1~3}}` | 출처 URL (REF-NN ID 와 §7-1 출처 목록 연동) |
-| `{{T-01~03}}` | 트렌드 (없으면 `[확인필요]`) |
+| `{{DATE}}` | generation date (YYYY-MM-DD) |
+| `{{TAM}} / {{SAM}} / {{SOM}}` | extracted figures (`[needs confirmation]` if absent) |
+| `{{COMPETITOR_1~3}}` | extracted competitor names |
+| `{{REF}} / {{REF_1~3}}` | source URLs (linked to REF-NN IDs and the §7-1 source list) |
+| `{{T-01~03}}` | trends (`[needs confirmation]` if absent) |
 
-⚠ 추정·환각 채움 금지. 미확보 영역은 `[확인필요]` 또는 `[미확인:사유]` 로 명시.
+⚠ Filling with estimates·hallucination is forbidden. Mark unobtained areas
+`[needs confirmation]` or `[unconfirmed:reason]`.
 
 ---
 
-## 6. PM 승인 게이트 (필수 — 우회 금지)
+## 6. PM approval gate (required — no bypass)
 
-자동 생성 결과는 **draft 상태로 stop**. 다음 안내를 출력한 뒤 다음 스킬 (draft-req / render) 로 자동 전이하지 않는다:
+Automated generation results **stop in draft state**. After outputting the following
+notice, do not auto-transition to the next skill (draft-req / render):
 
 ```
-✋ 자동 타사조사 완료 — PM 승인 필요
+✋ Automated third-party research complete — PM approval needed
 
-생성 파일:
-  - inputs/discovery/competitor/overview.md (시장 개요)
-  - inputs/discovery/competitor/{N}.md (경쟁사 {N}개)
-  - drafts/D5.draft.md (D5 양식 자동 채움)
+Generated files:
+  - inputs/discovery/competitor/overview.md (market overview)
+  - inputs/discovery/competitor/{N}.md ({N} competitors)
+  - drafts/D5.draft.md (D5 format auto-filled)
 
-수집 통계:
-  - 시드 검색 결과: {NN} 건
-  - 경쟁사 fetch 성공: {N}/{M}
-  - [확인필요] 셀 수: {N}
-  - 1차 출처 비율: {NN}%
+Collection statistics:
+  - Seed search results: {NN}
+  - Competitor fetch success: {N}/{M}
+  - [needs confirmation] cells: {N}
+  - 1st-party source ratio: {NN}%
 
-다음 단계:
-  1. 각 파일 검토 — 특히 가격/기능 수치 정확성
-  2. 인용 URL 확인 (frontmatter sources)
-  3. [확인필요] 셀 PM 수기 보강
-  4. PM 승인 후 다음 명령 실행:
-     - /draft-req {product}     (3 discovery 스트림 종합)
-     - /render {product} --push (D5 발행)
+Next steps:
+  1. Review each file — especially pricing/feature figure accuracy
+  2. Verify cited URLs (frontmatter sources)
+  3. PM manually supplements [needs confirmation] cells
+  4. Run the following command after PM approval:
+     - /draft-req {product}     (synthesize the 3 discovery streams)
+     - /render {product} --push (publish D5)
 
-승인 명령:   /research-auto --approve {product}
-재생성:     /research-auto {product} --regenerate
-부분 보강:   /research-auto {product} --augment
+Approval command:  /research-auto --approve {product}
+Regenerate:         /research-auto {product} --regenerate
+Partial supplement:  /research-auto {product} --augment
 ```
 
-PM 승인 (`--approve`) 시점에 frontmatter 의 `status: draft` → `status: approved`, `approved_by` / `approved_at` 기록한다.
+At the moment of PM approval (`--approve`), update frontmatter `status: draft` →
+`status: approved`, and record `approved_by` / `approved_at`.
 
 ---
 
-## 7. fact-check 안전망
+## 7. Fact-check safety net
 
-자동 생성 결과는 `scripts/fact_preservation_check.py` (있는 경우) 호환 형식을 보장한다:
+The automated generation result guarantees compatibility with
+`scripts/fact_preservation_check.py` (if present):
 
-- **숫자/단위 보존**: "월 $0.018/GB" 등 단가 표기를 변환 없이 원문 그대로 보존
-- **표 형식 보존**: D5 양식의 `<!-- col-widths: ... -->` 주석 유지
-- **출처 인용 보존**: 모든 수치·인용 셀에 `[REF-NN]` ID 필수
-- **원문 인용은 큰따옴표**: 공식 문서 인용 시 따옴표 + 출처 명시
+- **Numeric/unit preservation**: preserve unit-price notations like "$0.018/GB per month"
+  exactly as-is, without conversion
+- **Table format preservation**: keep the D5 format's `<!-- col-widths: ... -->` comment
+- **Source citation preservation**: every numeric/citation cell requires a `[REF-NN]` ID
+- **Quote official text in double quotes**: use quotation marks + cite the source when
+  quoting official documents
 
-`project-rules.md` 의 결정 관리 / 미결 항목 / Confluence 동기화 정책에 따라:
+Per `project-rules.md`'s decision management / open-items / Confluence sync policy:
 
-- 자동 생성 시 PM 결정이 필요한 모든 항목은 `open-issues.md` 에 `[RA-NN]` ID 로 등록
-- Confluence 동기화는 PM 승인 후 `/render --push` 단계에서만 수행 (research-auto 자체는 push 금지)
+- Every item requiring a PM decision during automated generation is registered in
+  `open-issues.md` with an `[RA-NN]` ID
+- Confluence sync is performed only at the `/render --push` step after PM approval
+  (research-auto itself never pushes)
 
 ---
 
-## 8. 한계 사항
+## 8. Limitations
 
-| 한계 | 대응 |
+| Limitation | Mitigation |
 |---|---|
-| 웹 정보 최신성 (검색 시점 기준) | frontmatter `fetched_at` 명시 + 분기 재실행 권장 |
-| 비공개 가격 / 협상 단가 | `[미확인:비공개]` 표기 — PM 수기 보강 |
-| 한국 시장 특수 정보 부족 | `--augment` 로 PM 보강 분리 |
-| LLM hallucination 위험 | 모든 수치는 출처 URL 필수 / 미확보는 `[확인필요]` |
-| 동적 페이지 / SPA fetch 실패 | `[미확인:fetch-fail]` 표기 |
+| Web information freshness (as of search time) | specify `fetched_at` in frontmatter + recommend periodic re-run |
+| Non-public pricing / negotiated rates | mark `[unconfirmed:non-public]` — PM manually supplements |
+| Lack of domestic-market-specific information | separate via `--augment` for PM supplementation |
+| LLM hallucination risk | every figure requires a source URL / mark unobtained ones `[needs confirmation]` |
+| Dynamic page / SPA fetch failure | mark `[unconfirmed:fetch-fail]` |
 
-**자동 발행 절대 금지**. PM 승인 게이트 우회는 본 스킬의 무결성을 깨뜨린다.
+**Automatic publishing is absolutely forbidden**. Bypassing the PM approval gate breaks the
+integrity of this skill.
 
 ---
 
-## 9. 워크플로 연결
+## 9. Workflow connections
 
 ```
 intent-router
-    ↓ ("{제품} 타사조사 후 작성")
-research-auto  ← 본 스킬
-    ↓ (PM 승인 게이트)
-draft-req      ← 3 discovery 스트림 종합 (competitor / stakeholder / product-audit)
+    ↓ ("{product} third-party research then write")
+research-auto  ← this skill
+    ↓ (PM approval gate)
+draft-req      ← synthesizes 3 discovery streams (competitor / stakeholder / product-audit)
     ↓
-render --push  ← D5 / D1 발행
+render --push  ← publish D5 / D1
 ```
 
-- **선행**: `intent-router` (라우팅 분기)
-- **후속**:
-  - `draft-req` — competitor 스트림을 stakeholder / product-audit 와 종합
-  - `render --push` — D5 발행 (PM 승인 필수)
+- **Precedes**: `intent-router` (routing branch)
+- **Follows**:
+  - `draft-req` — synthesizes the competitor stream with stakeholder / product-audit
+  - `render --push` — publishes D5 (PM approval required)
 
 ---
 
-## 10. 사용 예시
+## 10. Usage examples
 
 ```bash
-# 신제품 자동 타사조사 (전체 신규 생성)
+# Automated third-party research for a new product (full fresh generation)
 /research-auto dbaas
-# → inputs/discovery/competitor/ + drafts/D5.draft.md 생성
+# → generates inputs/discovery/competitor/ + drafts/D5.draft.md
 
-# 기존 조사 보강 (신규 경쟁사 추가)
+# Supplement existing research (add new competitors)
 /research-auto dbaas --augment
-# → 기존 파일 보존 + 신규 경쟁사 .md 만 추가
+# → keeps existing files + adds only new competitor .md files
 
-# 전체 재생성 (기존 백업 후 새로 작성)
+# Full regeneration (back up existing, write fresh)
 /research-auto dbaas --regenerate
-# → inputs/discovery/competitor/*.md → *.md.bak 백업 후 신규 작성
+# → backs up inputs/discovery/competitor/*.md → *.md.bak, then writes fresh
 
-# PM 승인 (frontmatter status → approved)
+# PM approval (frontmatter status → approved)
 /research-auto dbaas --approve
 
-# 승인 후 D5 발행
+# Publish D5 after approval
 /draft-req dbaas
 /render dbaas --push
 ```
 
 ---
 
-## 11. session-log 기록
+## 11. session-log record
 
-본 스킬 실행 시 `session-log.md` 에 다음 형식으로 1행 추가:
+When this skill runs, add one row to `session-log.md` in the following format:
 
 ```markdown
-| -1 (Discovery / Auto) | {UTC 타임스탬프} | /research-auto | 경쟁사 {N}개 / 시드 검색 {NN}건 / [확인필요] {N}건 / status: draft |
+| -1 (Discovery / Auto) | {UTC timestamp} | /research-auto | {N} competitors / {NN} seed searches / {N} [needs confirmation] / status: draft |
 ```
 
-PM 승인 시 동일 형식으로 별도 행 추가 (`status: approved`).
+Add a separate row in the same format upon PM approval (`status: approved`).

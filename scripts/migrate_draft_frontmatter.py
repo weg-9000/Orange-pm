@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""drafts/*.draft.md 표준 frontmatter 적용 (개선안 H — CONTEXT_OPTIMIZATION.md).
+"""Apply standard frontmatter to drafts/*.draft.md (Option H — CONTEXT_OPTIMIZATION.md).
 
-목적:
-    reviewer / integrator 가 본문 로드 전 1차 스캔으로 후보군을 좁힐 수 있도록
-    모든 draft 파일 상단에 다음 형식의 frontmatter 를 보장한다.
+Purpose:
+    Ensure every draft file starts with frontmatter in the following format,
+    so reviewers / integrators can narrow candidates in a first pass before
+    loading the full body.
 
     ---
     wo_id: {PREFIX}-C-001
@@ -18,28 +19,31 @@
     last_updated: 2026-05-06
     ---
 
-    빠진 필드는 (deprecated) work-orders/{WO_ID}.md 에서 추론한다(존재 시).
-    안 A(WO 템플릿 ↔ draft 1-파일화) 이후 work-orders/*.md 본문 파일은 더 이상
-    표준 경로가 아니며, drafts/{WO_ID}.draft.md 만 정본이다. 호환을 위해 추론
-    로직은 잔존하지만, 신규 프로젝트에서는 derive_from_wo() 호출이 빈 dict 를 반환한다.
-    이미 frontmatter 가 있으면 누락 필드만 보강하고 기존 값은 보존한다.
+    Missing fields are inferred from (deprecated) work-orders/{WO_ID}.md when it
+    exists. After Option A (merging the WO template and draft into one file),
+    work-orders/*.md body files are no longer the canonical path — only
+    drafts/{WO_ID}.draft.md is authoritative. The inference logic remains for
+    backward compatibility, but derive_from_wo() returns an empty dict for new
+    projects. If frontmatter already exists, only missing fields are added;
+    existing values are preserved.
 
-    status 필드 자동 추가:
-        기존 drafts/*.draft.md 마이그레이션 시 status 필드가 없으면 'ai-draft' 로 자동
-        지정한다(역추론: 기존 draft 는 모두 ai-draft 단계로 간주).
+    Automatic status field:
+        When migrating existing drafts/*.draft.md files, if the status field is
+        missing it is automatically set to 'ai-draft' (back-inferred: existing
+        drafts are all assumed to be at the ai-draft stage).
 
-사용법:
+Usage:
     python migrate_draft_frontmatter.py --hub-root <Hub> --product <product>
     python migrate_draft_frontmatter.py --hub-root <Hub> --product <product> --check
-        (--check: 누락만 보고하고 파일 변경 없음. exit 1 = 누락 존재)
+        (--check: report only what's missing, no file changes. exit 1 = missing found)
     python migrate_draft_frontmatter.py --hub-root <Hub> --product <product> --convert-wo-to-draft
-        (안 A 마이그레이션: work-orders/{WO_ID}.md → drafts/{WO_ID}.draft.md 변환 후
-         원본을 .archive/work-orders/ 로 이동. index.md/index.json 은 유지.)
+        (Option A migration: convert work-orders/{WO_ID}.md → drafts/{WO_ID}.draft.md,
+         then move the originals to .archive/work-orders/. index.md/index.json are kept.)
 
 exit code:
-    0 = 모두 정상 또는 마이그레이션 완료
-    1 = --check 모드에서 누락 발견
-    2 = 인자 오류
+    0 = all OK or migration complete
+    1 = missing fields found in --check mode
+    2 = argument error
 """
 from __future__ import annotations
 
@@ -129,8 +133,8 @@ def merge(fm: dict, wo_id: str, wo_info: dict) -> dict:
     merged.setdefault("wo_id", wo_id)
     merged.setdefault("type", wo_info.get("type", "policy"))
     merged.setdefault("layer", "C")
-    # 안 A: 기존 draft 는 모두 ai-draft 단계로 역추론.
-    # 단, 'status' 가 이미 존재하면 절대 덮어쓰지 않는다(보존 우선).
+    # Option A: back-infer that existing drafts are all at the ai-draft stage.
+    # However, if 'status' already exists, never overwrite it (preserve first).
     merged.setdefault("status", "ai-draft")
 
     pol_existing = parse_list_value(merged.get("referenced_policies", "")) if isinstance(
@@ -217,9 +221,9 @@ VALID_STATUSES_PROMOTED = {"ai-draft", "human-reviewed", "frozen"}
 
 
 def _read_status_field(text: str) -> str | None:
-    """draft 본문에서 status 필드 값을 읽는다(frontmatter 영역 한정).
+    """Read the status field value from a draft body (frontmatter region only).
 
-    frontmatter 가 없거나 status 필드가 없으면 None.
+    Returns None if there is no frontmatter or no status field.
     """
     match = FRONTMATTER_PATTERN.match(text)
     if not match:
@@ -232,20 +236,21 @@ def _read_status_field(text: str) -> str | None:
 
 
 def _ensure_status_field(text: str, status_value: str) -> str:
-    """draft 본문에 frontmatter status 필드가 없으면 삽입한다(있으면 보존).
+    """Insert a frontmatter status field into a draft body if missing (preserve if present).
 
-    - frontmatter 가 아예 없으면: 최소 frontmatter 블록을 새로 만들어 status 만 삽입.
-    - frontmatter 는 있고 status 만 없으면: frontmatter 끝에 status 라인 추가.
-    - frontmatter 와 status 모두 있으면: 원본 그대로 반환(덮어쓰기 금지).
+    - No frontmatter at all: create a minimal frontmatter block with just status.
+    - Frontmatter exists but status is missing: append a status line at the end
+      of the frontmatter.
+    - Both frontmatter and status exist: return unchanged (never overwrite).
     """
     match = FRONTMATTER_PATTERN.match(text)
     if not match:
-        # frontmatter 없음 → 최소 블록 신설
+        # No frontmatter → create a minimal block
         new_fm = f"---\nstatus: {status_value}\n---\n"
         return new_fm + text
     fm_block = match.group(1)
     if STATUS_FIELD_PATTERN.search(fm_block):
-        return text  # 이미 status 존재 — 절대 덮어쓰지 않음
+        return text  # status already present — never overwrite
     body = text[match.end() :]
     new_fm = f"---\n{fm_block}\nstatus: {status_value}\n---\n"
     return new_fm + body
@@ -256,18 +261,21 @@ REVIEW_STATUS_FIELD_PATTERN = re.compile(r"^review_status\s*:", re.MULTILINE)
 
 
 def _ensure_review_status_field(text: str, value: str = "ai-draft") -> str:
-    """frontmatter 에 review_status(칸반 생애주기) 블록이 없으면 비파괴 삽입한다.
+    """Non-destructively insert a review_status (kanban lifecycle) block into frontmatter if missing.
 
-    status(문서 성숙도: draft|review|frozen)와 review_status(칸반 생애주기:
-    empty|ai-draft|human-reviewed|frozen)는 별개 필드다. 작업 보드(wo_emit)는
-    review_status 를 우선 읽으므로, 이 필드가 빠지면 status 값이 폴백되어 4-레인에
-    매핑되지 못한다(카드 미표시). 이 함수는 그 누락만 메운다.
+    status (document maturity: draft|review|frozen) and review_status (kanban
+    lifecycle: empty|ai-draft|human-reviewed|frozen) are separate fields. The
+    work board (wo_emit) reads review_status first, so if this field is
+    missing, the status value falls back and can't be mapped to the 4 lanes
+    (the card doesn't display). This function only fills that gap.
 
-    - frontmatter 없음 → 변경 없음(dossier 는 frontmatter 전제).
-    - review_status 이미 존재 → 변경 없음(보존 우선, 덮어쓰기 금지 → 멱등).
-    - 없음 → status 라인 바로 뒤(없으면 frontmatter 끝)에
-      review_status / reviewed_by / reviewed_at 3줄 삽입. 라인 삽입만 하므로
-      doc_id·capability 등 dossier 고유 필드를 보존한다.
+    - No frontmatter → no change (dossier assumes frontmatter exists).
+    - review_status already present → no change (preserve first, never
+      overwrite → idempotent).
+    - Missing → insert 3 lines (review_status / reviewed_by / reviewed_at)
+      right after the status line (or at the end of frontmatter if there is
+      no status line). Since this only inserts lines, dossier-specific fields
+      like doc_id/capability are preserved.
     """
     match = FRONTMATTER_PATTERN.match(text)
     if not match:
@@ -291,10 +299,11 @@ def _ensure_review_status_field(text: str, value: str = "ai-draft") -> str:
 
 
 def ensure_dossier_review_status(hub_root: Path, product: str, dry_run: bool = False) -> int:
-    """dossier(type: dossier) draft 에 review_status: ai-draft 블록을 보장한다(비파괴).
+    """Ensure a review_status: ai-draft block on dossier (type: dossier) drafts (non-destructive).
 
-    process()/render_frontmatter 의 REQUIRED_FIELDS 재작성 경로(고유 필드 유실 위험)를
-    타지 않고 라인 삽입만 수행한다. 이미 review_status 가 있으면 건너뛴다(멱등).
+    Avoids the REQUIRED_FIELDS rewrite path in process()/render_frontmatter
+    (which risks losing unique fields) and only performs line insertion.
+    Skips files that already have review_status (idempotent).
     """
     drafts_dir = hub_root / "PROJECTS" / product / "drafts"
     if not drafts_dir.is_dir():
@@ -322,25 +331,28 @@ def ensure_dossier_review_status(hub_root: Path, product: str, dry_run: bool = F
         print(f"{prefix}[review_status] {draft.name} → review_status: ai-draft")
         changed += 1
     print(
-        f"[ensure_dossier_review_status] 보강 {changed} / 건너뜀 {skipped}"
+        f"[ensure_dossier_review_status] added {changed} / skipped {skipped}"
         + (" (dry-run)" if dry_run else "")
     )
     return 0
 
 
 def convert_wo_to_draft(hub_root: Path, product: str, dry_run: bool = False) -> int:
-    """안 A 마이그레이션: work-orders/{WO_ID}.md → drafts/{WO_ID}.draft.md.
+    """Option A migration: work-orders/{WO_ID}.md → drafts/{WO_ID}.draft.md.
 
-    절차:
-        1. work-orders/{WO_ID}.md (index.md/index.json 제외) 수집
-        2. drafts/{WO_ID}.draft.md 존재 여부 확인 후 분기:
-           - 없음: work-orders 본문 복사 + frontmatter status: empty 부여
-           - 있음 + status ∈ {ai-draft, human-reviewed, frozen}: draft 보존(work-orders 무시)
-           - 있음 + status: empty 또는 status 없음: draft 본문 유지 + status 를 ai-draft 로 승격
-        3. work-orders/{WO_ID}.md → .archive/work-orders/{WO_ID}.md 이동 (롤백 안전)
-        4. work-orders/index.md, work-orders/index.json 은 유지 (이동 X)
+    Procedure:
+        1. Collect work-orders/{WO_ID}.md (excluding index.md/index.json).
+        2. Check whether drafts/{WO_ID}.draft.md exists, then branch:
+           - Doesn't exist: copy the work-orders body + add frontmatter status: empty.
+           - Exists + status ∈ {ai-draft, human-reviewed, frozen}: keep the draft
+             (ignore work-orders).
+           - Exists + status: empty or no status: keep the draft body + promote
+             status to ai-draft.
+        3. Move work-orders/{WO_ID}.md → .archive/work-orders/{WO_ID}.md (safe rollback).
+        4. Keep work-orders/index.md and work-orders/index.json in place (not moved).
 
-    멱등성: 같은 명령을 두 번 실행해도 결과 동일 (이미 .archive 로 이동된 파일은 재처리 안 됨).
+    Idempotency: running the same command twice produces the same result
+    (files already moved to .archive are not reprocessed).
     """
     import shutil
 
@@ -350,7 +362,7 @@ def convert_wo_to_draft(hub_root: Path, product: str, dry_run: bool = False) -> 
     archive_dir = project_root / ".archive" / "work-orders"
 
     if not wo_dir.exists():
-        print(f"[convert_wo_to_draft] work-orders/ 없음 — skip ({wo_dir})")
+        print(f"[convert_wo_to_draft] work-orders/ not found — skip ({wo_dir})")
         return 0
 
     if not dry_run:
@@ -364,12 +376,12 @@ def convert_wo_to_draft(hub_root: Path, product: str, dry_run: bool = False) -> 
     for wo_file in sorted(wo_dir.glob("*.md")):
         if wo_file.name in ("index.md", "index.json"):
             skipped += 1
-            continue  # 유지: 색인 파일은 이동 X
+            continue  # keep: index files are not moved
         wo_id = wo_file.stem
         draft_file = drafts_dir / f"{wo_id}.draft.md"
 
         if not draft_file.exists():
-            # 신규 변환: work-orders 본문을 draft 로 복사 + status: empty 부여
+            # New conversion: copy the work-orders body into a draft + set status: empty
             content = wo_file.read_text(encoding="utf-8")
             new_content = _ensure_status_field(content, "empty")
             if dry_run:
@@ -382,14 +394,14 @@ def convert_wo_to_draft(hub_root: Path, product: str, dry_run: bool = False) -> 
             existing = draft_file.read_text(encoding="utf-8")
             current_status = _read_status_field(existing)
             if current_status in VALID_STATUSES_PROMOTED:
-                # 이미 ai-draft 이상 — draft 본문 보존, work-orders 본문 무시
+                # already at ai-draft or beyond — keep the draft body, ignore work-orders body
                 if dry_run:
                     print(f"[dry-run][preserve] {draft_file.name} (status: {current_status})")
                 else:
                     print(f"[preserve] {draft_file.name} (status: {current_status})")
                 preserved += 1
             else:
-                # status: empty 또는 누락 → ai-draft 로 승격(draft 본문은 유지)
+                # status: empty or missing → promote to ai-draft (keep the draft body)
                 new_content = _ensure_status_field(existing, "ai-draft")
                 if dry_run:
                     print(f"[dry-run][promote] {draft_file.name} → status: ai-draft")
@@ -398,7 +410,7 @@ def convert_wo_to_draft(hub_root: Path, product: str, dry_run: bool = False) -> 
                     print(f"[promote] {draft_file.name} → status: ai-draft")
                 converted += 1
 
-        # work-orders 본문 파일을 .archive/ 로 이동 (즉시 삭제 X — 롤백 안전)
+        # move the work-orders body file to .archive/ (not deleted immediately — safe rollback)
         archive_target = archive_dir / wo_file.name
         if dry_run:
             print(f"[dry-run][archive] {wo_file} → {archive_target}")
@@ -406,7 +418,7 @@ def convert_wo_to_draft(hub_root: Path, product: str, dry_run: bool = False) -> 
             shutil.move(str(wo_file), str(archive_target))
 
     print(
-        f"[convert_wo_to_draft] 완료: 변환/승격 {converted} / 보존 {preserved} / "
+        f"[convert_wo_to_draft] done: converted/promoted {converted} / preserved {preserved} / "
         f"index-skip {skipped}"
         + (" (dry-run)" if dry_run else "")
     )
@@ -416,28 +428,30 @@ def convert_wo_to_draft(hub_root: Path, product: str, dry_run: bool = False) -> 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Apply standard frontmatter to drafts")
     parser.add_argument("--hub-root", required=True, type=Path)
-    parser.add_argument("--product", required=True, help="PROJECTS/<product> 디렉토리명")
-    parser.add_argument("--check", action="store_true", help="검증만 수행, 파일 변경 없음")
+    parser.add_argument("--product", required=True, help="PROJECTS/<product> directory name")
+    parser.add_argument("--check", action="store_true", help="validate only, no file changes")
     parser.add_argument(
         "--convert-wo-to-draft",
         action="store_true",
         help=(
-            "안 A 마이그레이션: 기존 work-orders/{WO_ID}.md 를 drafts/{WO_ID}.draft.md 로 변환 후 "
-            ".archive/work-orders/ 로 이동 (index.md/index.json 은 유지)"
+            "Option A migration: convert existing work-orders/{WO_ID}.md to "
+            "drafts/{WO_ID}.draft.md, then move it to .archive/work-orders/ "
+            "(index.md/index.json are kept)"
         ),
     )
     parser.add_argument(
         "--ensure-dossier-review-status",
         action="store_true",
         help=(
-            "dossier(type: dossier) draft 에 review_status: ai-draft 블록을 비파괴 삽입한다. "
-            "작업 보드 칸반 생애주기(empty→ai-draft→human-reviewed→frozen) 누락 보정 — 멱등."
+            "Non-destructively insert a review_status: ai-draft block into "
+            "dossier (type: dossier) drafts. Backfills a missing work-board "
+            "kanban lifecycle (empty→ai-draft→human-reviewed→frozen) — idempotent."
         ),
     )
     parser.add_argument(
         "--dry-run",
         action="store_true",
-        help="--convert-wo-to-draft / --ensure-dossier-review-status 와 함께 사용 시 실제 파일 변경 없이 결과만 출력",
+        help="used with --convert-wo-to-draft / --ensure-dossier-review-status to print results without changing any files",
     )
     args = parser.parse_args()
     if not args.hub_root.is_dir():

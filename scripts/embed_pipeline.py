@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""마크다운 파일을 청킹하고 임베딩을 생성해 Neo4j에 적재한다. (Chonkie 기반)
+"""Chunks Markdown files, generates embeddings, and loads them into Neo4j. (Chonkie-based)
 
-사용:
+Usage:
     python embed_pipeline.py --product <product_name> [--dry-run]
     python embed_pipeline.py --product <product_name> --model local
     python embed_pipeline.py --product <product_name> --force
@@ -18,18 +18,18 @@ import time
 from pathlib import Path
 from typing import Any
 
-# ── Chonkie 임포트 ────────────────────────────────────────────────────────────
+# ── Chonkie import ────────────────────────────────────────────────────────────
 try:
     import chonkie as _chonkie_pkg
     from chonkie import RecursiveChunker, EmbeddingsRefinery
     CHONKIE_VERSION = getattr(_chonkie_pkg, "__version__", "unknown")
 except ImportError:
-    print("[chonkie 미설치]")
+    print("[chonkie not installed]")
     print('pip install "chonkie[tiktoken,voyageai,st]"')
     sys.exit(1)
 
 
-# ── 상수 ─────────────────────────────────────────────────────────────────────
+# ── Constants ────────────────────────────────────────────────────────────────
 PARQUET_FILENAME = "chunks.parquet"
 EMBEDDING_DIM = 768
 CHUNK_SIZE = 500
@@ -41,14 +41,14 @@ BATCH_SIZE = 64
 _DOC_ID_RE = re.compile(r"[A-Z]\d+-[A-Z](?:-\d+)?")
 
 
-# ── 인수 파싱 ────────────────────────────────────────────────────────────────
+# ── Argument parsing ─────────────────────────────────────────────────────────
 
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
-        description="마크다운 청킹 + 임베딩 → Neo4j 적재 파이프라인 (Chonkie 기반)",
+        description="Markdown chunking + embedding → Neo4j loading pipeline (Chonkie-based)",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
-예시:
+Examples:
   python embed_pipeline.py --product my-product
   python embed_pipeline.py --product my-product --dry-run
   python embed_pipeline.py --product my-product --model local
@@ -58,28 +58,30 @@ def build_parser() -> argparse.ArgumentParser:
         """,
     )
     p.add_argument("--product", required=True,
-                   help="PROJECTS/{product}/drafts/ 경로 결정")
+                   help="Determines the PROJECTS/{product}/drafts/ path")
     p.add_argument("--neo4j-uri", default=os.environ.get("NEO4J_URI", "bolt://localhost:7687"),
-                   help="Neo4j Bolt URI (env NEO4J_URI / 기본 bolt://localhost:7687). "
-                        "클라우드/Aura 는 neo4j+s://<host> 형식.")
+                   help="Neo4j Bolt URI (env NEO4J_URI / default bolt://localhost:7687). "
+                        "Cloud/Aura uses the neo4j+s://<host> format.")
     p.add_argument("--neo4j-user", default=os.environ.get("NEO4J_USER", "neo4j"),
-                   help="Neo4j 사용자명 (env NEO4J_USER / 기본 neo4j)")
+                   help="Neo4j username (env NEO4J_USER / default neo4j)")
     p.add_argument("--neo4j-password", default=None,
-                   help="Neo4j 비밀번호. NEO4J_PASSWORD 환경변수 우선 적용")
+                   help="Neo4j password. NEO4J_PASSWORD env var takes precedence")
     p.add_argument("--model", choices=["anthropic", "local"], default=None,
-                   help="[하위호환] local→기본 로컬모델 / anthropic→voyage-3. "
-                        "미지정 시 env ORANGE_EMBED_MODEL 또는 기본(bge-m3, 로컬). "
-                        "모델·차원은 _embed_config 단일 출처에서 결정된다.")
+                   help="[legacy compat] local→default local model / anthropic→voyage-3. "
+                        "If omitted, uses env ORANGE_EMBED_MODEL or the default (bge-m3, local). "
+                        "Model and dimension are resolved from the single source of truth, "
+                        "_embed_config.")
     p.add_argument("--force", action="store_true",
-                   help="체크포인트(chunks.parquet) 무시하고 전체 재처리")
+                   help="Ignore the checkpoint (chunks.parquet) and reprocess everything")
     p.add_argument("--dry-run", action="store_true",
-                   help="청킹 결과만 출력하고 임베딩·적재는 수행하지 않음")
+                   help="Only print chunking results; skip embedding/loading")
     p.add_argument("--prune", action="store_true",
-                   help="더 이상 존재하지 않는 파일의 청크를 parquet·Neo4j 에서 제거(삭제 동기화)")
+                   help="Remove chunks for files that no longer exist from parquet/Neo4j "
+                        "(deletion sync)")
     return p
 
 
-# ── PREFIX 감지 ───────────────────────────────────────────────────────────────
+# ── PREFIX detection ──────────────────────────────────────────────────────────
 
 _ACTIVE_PREFIX_RE = re.compile(r"^ACTIVE_PREFIX:\s*([A-Za-z0-9_-]+)\s*$", re.MULTILINE)
 _PREFIX_RE = re.compile(r"^PREFIX:\s*([A-Za-z0-9_-]+)\s*$", re.MULTILINE)
@@ -94,9 +96,9 @@ def _layer_config_text() -> str | None:
 
 
 def detect_prefix() -> str | None:
-    """CONTEXT/layer-config.md에서 활성 PREFIX(예: G2)를 추출한다.
+    """Extract the active PREFIX (e.g. G2) from CONTEXT/layer-config.md.
 
-    우선순위: ``ACTIVE_PREFIX:`` → ``PREFIX:`` → (레거시) doc_id 패턴 추정.
+    Priority: ``ACTIVE_PREFIX:`` -> ``PREFIX:`` -> (legacy) doc_id pattern guess.
     """
     content = _layer_config_text()
     if content is None:
@@ -111,7 +113,7 @@ def detect_prefix() -> str | None:
 
 
 def detect_prefixes() -> list[str]:
-    """선언된 전체 PREFIX 목록을 반환한다 (멀티-PREFIX). 없으면 활성 1개로 폴백."""
+    """Return the full list of declared PREFIXes (multi-PREFIX). Falls back to the single active one if none declared."""
     content = _layer_config_text()
     if content is None:
         return []
@@ -122,7 +124,7 @@ def detect_prefixes() -> list[str]:
     return [one] if one else []
 
 
-# ── 파일 수집 ────────────────────────────────────────────────────────────────
+# ── File collection ─────────────────────────────────────────────────────────
 
 def collect_files(product: str) -> list[Path]:
     sources: list[Path] = []
@@ -131,18 +133,18 @@ def collect_files(product: str) -> list[Path]:
     if drafts_dir.exists():
         sources.extend(sorted(drafts_dir.glob("*.md")))
     else:
-        print(f"[WARN] drafts 디렉터리 없음: {drafts_dir}", file=sys.stderr)
+        print(f"[WARN] drafts directory not found: {drafts_dir}", file=sys.stderr)
 
     ref_dir = Path("CONTEXT") / "reference-docs"
     if ref_dir.exists():
         sources.extend(sorted(ref_dir.rglob("*.md")))
     else:
-        print(f"[WARN] reference-docs 디렉터리 없음: {ref_dir}", file=sys.stderr)
+        print(f"[WARN] reference-docs directory not found: {ref_dir}", file=sys.stderr)
 
     return sources
 
 
-# ── 메타데이터 헬퍼 ───────────────────────────────────────────────────────────
+# ── Metadata helpers ─────────────────────────────────────────────────────────
 
 def _extract_doc_id(file_path: Path) -> str:
     m = _DOC_ID_RE.search(file_path.stem)
@@ -155,10 +157,10 @@ def _extract_layer(file_path: Path, prefix: str | None) -> str:
     if "reference-docs" in parts:
         idx = list(parts).index("reference-docs")
         rest = parts[idx + 1:]
-        # 신규 중첩: reference-docs/{PREFIX}/{A,B,C}/... — 경로의 PREFIX 를 우선 사용
+        # New nested layout: reference-docs/{PREFIX}/{A,B,C}/... — use the PREFIX from the path
         if len(rest) >= 2 and rest[1].upper() in ("A", "B", "C"):
             return f"{rest[0]}-{rest[1].upper()}"
-        # 레거시 평면: reference-docs/{A,B,C}/... — 활성 PREFIX 적용
+        # Legacy flat layout: reference-docs/{A,B,C}/... — apply the active PREFIX
         if len(rest) >= 1 and rest[0].upper() in ("A", "B", "C"):
             return f"{pfx}-{rest[0].upper()}"
     if "drafts" in parts:
@@ -175,7 +177,7 @@ def _extract_section_title(text: str, file_path: Path) -> str:
 
 
 def _derive_prefix(file_path: Path, active: str | None) -> str:
-    """경로에서 PREFIX 추출(중첩 reference-docs/{PREFIX}/...), 없으면 활성 PREFIX."""
+    """Extract PREFIX from the path (nested reference-docs/{PREFIX}/...); falls back to the active PREFIX."""
     parts = file_path.parts
     if "reference-docs" in parts:
         idx = list(parts).index("reference-docs")
@@ -186,7 +188,7 @@ def _derive_prefix(file_path: Path, active: str | None) -> str:
 
 
 def _derive_service(file_path: Path) -> str:
-    """C 서비스 추출: reference-docs/{PREFIX}/C/{service}/... → service, 그 외 ''."""
+    """Extract the C service: reference-docs/{PREFIX}/C/{service}/... → service, else ''."""
     parts = file_path.parts
     if "reference-docs" in parts:
         idx = list(parts).index("reference-docs")
@@ -198,7 +200,7 @@ def _derive_service(file_path: Path) -> str:
 
 
 def _derive_doc_type(file_path: Path) -> str:
-    """완결판 명명 규약 d1~d5 또는 .complete/.draft 표기에서 doc_type 추출."""
+    """Extract doc_type from the d1-d5 naming convention or the .complete/.draft suffix."""
     stem = file_path.stem
     m = re.match(r"(d[1-5])\b", stem)
     if m:
@@ -222,17 +224,17 @@ def _make_chunk_id(file_path: Path, index: int, text: str) -> str:
     ).hexdigest()[:16]
 
 
-# ── 체크포인트 ────────────────────────────────────────────────────────────────
+# ── Checkpoint ───────────────────────────────────────────────────────────────
 
 def _parquet_path(product: str) -> Path:
     return Path("PROJECTS") / product / "graph" / PARQUET_FILENAME
 
 
 def load_processed_files(product: str) -> dict[str, float]:
-    """chunks.parquet에서 {source_file: 처리 당시 mtime} 매핑 반환.
+    """Return a {source_file: mtime at processing time} mapping from chunks.parquet.
 
-    source_mtime 컬럼이 없으면(구버전 체크포인트) 0.0 으로 본다 → 변경 감지 시
-    재임베딩되도록 보수적으로 동작한다.
+    If the source_mtime column is absent (an older checkpoint), treat it as
+    0.0 — this conservatively re-embeds on any change detection.
     """
     cp = _parquet_path(product)
     if not cp.exists():
@@ -246,7 +248,7 @@ def load_processed_files(product: str) -> dict[str, float]:
             return df.groupby("source_file")["source_mtime"].max().to_dict()
         return {sf: 0.0 for sf in df["source_file"].unique()}
     except ImportError:
-        print("[ERROR] pandas/pyarrow 패키지가 없습니다. pip install pandas pyarrow 를 실행하세요.",
+        print("[ERROR] pandas/pyarrow package not installed. Run pip install pandas pyarrow.",
               file=sys.stderr)
         sys.exit(1)
 
@@ -269,7 +271,7 @@ def load_all_records(product: str) -> list[dict]:
         import pandas as pd
         return pd.read_parquet(cp).to_dict("records")
     except ImportError:
-        print("[ERROR] pandas/pyarrow 패키지가 없습니다. pip install pandas pyarrow 를 실행하세요.",
+        print("[ERROR] pandas/pyarrow package not installed. Run pip install pandas pyarrow.",
               file=sys.stderr)
         sys.exit(1)
 
@@ -281,43 +283,43 @@ def save_checkpoint(product: str, records: list[dict]) -> None:
         import pandas as pd
         pd.DataFrame(records).to_parquet(cp, index=False)
     except ImportError:
-        print("[ERROR] pandas/pyarrow 패키지가 없습니다. pip install pandas pyarrow 를 실행하세요.",
+        print("[ERROR] pandas/pyarrow package not installed. Run pip install pandas pyarrow.",
               file=sys.stderr)
         sys.exit(1)
-    print(f"[INFO] 체크포인트 저장: {cp} ({len(records)}건)")
+    print(f"[INFO] checkpoint saved: {cp} ({len(records)} records)")
 
 
-# ── 임베딩 모델 팩토리 ────────────────────────────────────────────────────────
+# ── Embedding model factory ──────────────────────────────────────────────────
 
 def _build_from_spec(spec: dict):
-    """spec({provider,name,dim}) → chonkie 임베딩 인스턴스."""
+    """spec({provider,name,dim}) -> chonkie embedding instance."""
     if spec["provider"] == "voyage":
         api_key = os.environ.get("VOYAGE_API_KEY") or os.environ.get("ANTHROPIC_API_KEY")
         if not api_key:
-            print("[Voyage API 키 없음(VOYAGE_API_KEY) — 로컬 모델로 전환]")
+            print("[No Voyage API key (VOYAGE_API_KEY) — falling back to the local model]")
             import _embed_config as _ec
             return _build_from_spec(_ec.EMBED_MODELS[_ec.DEFAULT_MODEL] | {"key": _ec.DEFAULT_MODEL})
         try:
             from chonkie.embeddings import VoyageAIEmbeddings
             return VoyageAIEmbeddings(model=spec["name"], api_key=api_key)
         except ImportError:
-            print("[ERROR] chonkie voyageai 의존성이 없습니다.", file=sys.stderr)
+            print("[ERROR] chonkie voyageai dependency not installed.", file=sys.stderr)
             print('pip install "chonkie[voyageai]"', file=sys.stderr)
             sys.exit(1)
     try:
         from chonkie.embeddings import SentenceTransformerEmbeddings
-        # 로컬 실행 — 첫 호출 시 모델 가중치 자동 다운로드(키 불요, CPU/GPU 자동).
+        # Local run — model weights auto-download on first call (no key needed, CPU/GPU auto-detected).
         return SentenceTransformerEmbeddings(model=spec["name"])
     except ImportError:
-        print("[sentence-transformers 미설치]")
+        print("[sentence-transformers not installed]")
         print('pip install "chonkie[st]"')
         sys.exit(1)
 
 
 def build_embeddings_model(model_type: str | None = None):
-    """[하위호환 + 공용] env ORANGE_EMBED_MODEL / --model 을 해소해 임베딩 인스턴스 반환.
+    """[Backward-compat + shared] Resolves env ORANGE_EMBED_MODEL / --model and returns an embedding instance.
 
-    context_search 도 본 함수를 호출하므로 적재·검색 모델이 항상 일치한다.
+    context_search also calls this function, so the loading and search models always match.
     """
     import _embed_config as _ec
     return _build_from_spec(_ec.resolve_model(model_type))
@@ -329,7 +331,7 @@ def get_driver(uri: str, user: str, password: str):
     try:
         from neo4j import GraphDatabase
     except ImportError:
-        print("[ERROR] neo4j 패키지가 없습니다. pip install neo4j 를 실행하세요.",
+        print("[ERROR] neo4j package not installed. Run pip install neo4j.",
               file=sys.stderr)
         sys.exit(1)
     try:
@@ -337,13 +339,13 @@ def get_driver(uri: str, user: str, password: str):
         driver.verify_connectivity()
         return driver
     except Exception as e:
-        print(f"[ERROR] Neo4j 연결 실패: {e}", file=sys.stderr)
-        print(f"        URI: {uri}, 사용자: {user}", file=sys.stderr)
+        print(f"[ERROR] Neo4j connection failed: {e}", file=sys.stderr)
+        print(f"        URI: {uri}, user: {user}", file=sys.stderr)
         sys.exit(1)
 
 
 def ensure_vector_index(session, dims: int = EMBEDDING_DIM) -> None:
-    # 인덱스 차원은 선택한 임베딩 모델 차원과 반드시 일치해야 한다(_embed_config).
+    # The index dimension must match the chosen embedding model's dimension (_embed_config).
     session.run(
         """
         CREATE VECTOR INDEX chunk_embedding IF NOT EXISTS
@@ -358,15 +360,16 @@ def ensure_vector_index(session, dims: int = EMBEDDING_DIM) -> None:
 
 
 def compute_removed(known_files: set[str], current_files: set[str]) -> list[str]:
-    """이전 적재(parquet)에는 있으나 현재 수집 목록에 없는 파일(=삭제됨) 목록."""
+    """List of files present in the previous load (parquet) but absent from the current collection (= deleted)."""
     return sorted(known_files - current_files)
 
 
 def delete_chunks_for_files(session, source_files: list[str]) -> int:
-    """주어진 source_file 들의 :Chunk 노드를 Neo4j 에서 제거하고 삭제 수를 반환.
+    """Remove :Chunk nodes for the given source_files from Neo4j and return the delete count.
 
-    수정 동기화: 재임베딩 대상 파일의 옛 청크(텍스트 변경으로 chunk_id 가 바뀐 잔존 노드)와
-    삭제된 파일의 청크를 제거해 Neo4j 가 현재 문서 상태와 일치하도록 한다.
+    Modification sync: removes stale chunks for re-embedded files (leftover
+    nodes whose chunk_id changed due to text changes) and chunks for deleted
+    files, keeping Neo4j consistent with the current document state.
     """
     if not source_files:
         return 0
@@ -417,7 +420,7 @@ def merge_chunks(session, records: list[dict]) -> int:
 
 
 def link_chunks_to_nodes(session) -> None:
-    """doc_id로 Policy/Reference 노드와 [:HAS_CHUNK] 관계 연결."""
+    """Link [:HAS_CHUNK] relationships to Policy/Reference nodes by doc_id."""
     session.run(
         """
         MATCH (c:Chunk)
@@ -431,29 +434,29 @@ def link_chunks_to_nodes(session) -> None:
     )
 
 
-# ── 메인 ─────────────────────────────────────────────────────────────────────
+# ── Main ─────────────────────────────────────────────────────────────────────
 
 def main() -> None:
     args = build_parser().parse_args()
 
     password = os.environ.get("NEO4J_PASSWORD") or args.neo4j_password
     if not password and not args.dry_run:
-        print("[ERROR] Neo4j 비밀번호가 없습니다.", file=sys.stderr)
-        print("        NEO4J_PASSWORD 환경변수 또는 --neo4j-password 인수를 사용하세요.",
+        print("[ERROR] No Neo4j password.", file=sys.stderr)
+        print("        Use the NEO4J_PASSWORD env var or the --neo4j-password argument.",
               file=sys.stderr)
         sys.exit(1)
 
     start_time = time.time()
     prefix = detect_prefix()
 
-    # 1. 파일 수집
+    # 1. collect files
     files = collect_files(args.product)
     if not files:
-        print("[ERROR] 처리할 마크다운 파일이 없습니다.", file=sys.stderr)
+        print("[ERROR] No markdown files to process.", file=sys.stderr)
         sys.exit(1)
-    print(f"[INFO] 수집된 파일: {len(files)}개")
+    print(f"[INFO] files collected: {len(files)}")
 
-    # 2. 체크포인트 확인 — source_file 기준 스킵
+    # 2. check checkpoint — skip based on source_file
     if args.force:
         processed: dict[str, float] = {}
         cached_records: list[dict] = []
@@ -461,23 +464,23 @@ def main() -> None:
         processed = load_processed_files(args.product)
         cached_records = load_all_records(args.product)
 
-    # 신규 + 변경(mtime↑) 파일만 재임베딩. 변경 파일의 stale 청크는 캐시에서 제거.
+    # Re-embed only new + changed (mtime up) files. Remove stale chunks of changed files from the cache.
     new_files = [f for f in files if _needs_reembed(f, processed)]
     reembed = {str(f) for f in new_files}
     if reembed:
         cached_records = [r for r in cached_records if r.get("source_file") not in reembed]
     skip_count = len(files) - len(new_files)
-    print(f"[INFO] 처리 대상: {len(new_files)}개 / 스킵: {skip_count}개")
+    print(f"[INFO] to process: {len(new_files)} / skipped: {skip_count}")
 
-    # 삭제 동기화(--prune): 이전 적재엔 있으나 현재 없는 파일 = 삭제됨 → parquet·Neo4j 제거
+    # Deletion sync (--prune): files present in the previous load but absent now = deleted -> remove from parquet/Neo4j
     current_files = {str(f) for f in files}
     known_files = set(load_processed_files(args.product).keys())
     removed_files = compute_removed(known_files, current_files) if args.prune else []
     if removed_files:
         cached_records = [r for r in cached_records if r.get("source_file") not in set(removed_files)]
-        print(f"[INFO] 삭제 동기화 대상(--prune): {len(removed_files)}개 파일")
+        print(f"[INFO] deletion sync targets (--prune): {len(removed_files)} files")
 
-    # 3. 청킹 — RecursiveChunker(recipe="markdown")
+    # 3. chunking — RecursiveChunker(recipe="markdown")
     chunker = RecursiveChunker(
         tokenizer="tiktoken",
         chunk_size=CHUNK_SIZE,
@@ -489,25 +492,25 @@ def main() -> None:
     for f in new_files:
         raw = chunker(f.read_text(encoding="utf-8"))
         file_chunk_map.append((f, raw))
-        print(f"       {f.name}: {len(raw)}청크")
+        print(f"       {f.name}: {len(raw)} chunks")
 
     total_new = sum(len(c) for _, c in file_chunk_map)
     total_chunks = len(cached_records) + total_new
-    print(f"[INFO] 총 청크: {total_chunks}개 (신규: {total_new}개)")
+    print(f"[INFO] total chunks: {total_chunks} (new: {total_new})")
 
     if args.dry_run:
-        print("\n[DRY-RUN] 임베딩·적재 없이 종료합니다.")
+        print("\n[DRY-RUN] Exiting without embedding/loading.")
         if removed_files:
-            print(f"[DRY-RUN] 삭제 동기화 예정(--prune): {len(removed_files)}개 파일")
+            print(f"[DRY-RUN] deletion sync planned (--prune): {len(removed_files)} files")
         layer_counts: dict[str, int] = {}
         for f, raw in file_chunk_map:
             lyr = _extract_layer(f, prefix)
             layer_counts[lyr] = layer_counts.get(lyr, 0) + len(raw)
         for lyr, cnt in layer_counts.items():
-            print(f"[DRY-RUN]   {lyr}: {cnt}청크")
+            print(f"[DRY-RUN]   {lyr}: {cnt} chunks")
         return
 
-    # 4. 임베딩 — EmbeddingsRefinery. 모델·차원은 _embed_config 단일 출처에서 해소.
+    # 4. embedding — EmbeddingsRefinery. Model/dimension resolved from the single source of truth, _embed_config.
     import _embed_config as _ec
     spec = _ec.resolve_model(args.model)
     embed_dim = spec["dim"]
@@ -515,7 +518,7 @@ def main() -> None:
     all_raw_chunks = [c for _, chunks in file_chunk_map for c in chunks]
 
     if all_raw_chunks:
-        print(f"[INFO] 임베딩 생성 중 (model={spec['key']} dim={embed_dim}, {len(all_raw_chunks)}건)...")
+        print(f"[INFO] generating embeddings (model={spec['key']} dim={embed_dim}, {len(all_raw_chunks)} items)...")
         embeddings_model = _build_from_spec(spec)
         refinery = EmbeddingsRefinery(embeddings=embeddings_model)
         embedded = refinery(all_raw_chunks)
@@ -523,7 +526,7 @@ def main() -> None:
     else:
         embedded = []
 
-    # 5. 메타데이터 부착 → 레코드 생성
+    # 5. attach metadata -> build records
     new_records: list[dict] = []
     emb_idx = 0
     for f, raw_chunks in file_chunk_map:
@@ -558,36 +561,36 @@ def main() -> None:
                 "embedding": _to_list(ec.embedding),
             })
 
-    # 6. 체크포인트 저장
+    # 6. save checkpoint
     final_records = cached_records + new_records
     save_checkpoint(args.product, final_records)
 
-    # 7. Neo4j 적재
+    # 7. load into Neo4j
     driver = get_driver(args.neo4j_uri, args.neo4j_user, password)
     neo4j_count = 0
     try:
         with driver.session() as session:
-            print(f"[INFO] 벡터 인덱스 확인/생성 (dim={embed_dim})...")
+            print(f"[INFO] checking/creating vector index (dim={embed_dim})...")
             ensure_vector_index(session, embed_dim)
-            # 수정 동기화: 재임베딩 파일의 옛 청크 + 삭제 파일 청크를 먼저 제거(유령 청크 방지).
+            # Modification sync: remove stale chunks of re-embedded files + chunks of deleted files first (avoids ghost chunks).
             stale_files = sorted(set(reembed) | set(removed_files))
             if stale_files:
                 deleted = delete_chunks_for_files(session, stale_files)
-                print(f"[INFO] 옛/삭제 청크 제거: {deleted}개 (대상 {len(stale_files)}파일)")
-            print("[INFO] :Chunk 노드 MERGE 시작...")
+                print(f"[INFO] removed stale/deleted chunks: {deleted} (across {len(stale_files)} files)")
+            print("[INFO] starting :Chunk node MERGE...")
             neo4j_count = merge_chunks(session, final_records)
-            print("[INFO] [:HAS_CHUNK] 관계 연결 시작...")
+            print("[INFO] starting [:HAS_CHUNK] relationship linking...")
             link_chunks_to_nodes(session)
     finally:
         driver.close()
 
     elapsed = time.time() - start_time
-    print(f"\n[완료] 소요 시간: {elapsed:.1f}초")
-    print(f"[완료] 처리 파일: {len(new_files)}개 (스킵: {skip_count}개)")
-    print(f"[완료] 총 청크: {total_chunks}개")
-    print(f"[완료] 임베딩 모델: {model_name}")
-    print(f"[완료] Neo4j (:Chunk) 노드: {neo4j_count}개")
-    print(f"[완료] 청킹 라이브러리: chonkie {CHONKIE_VERSION}")
+    print(f"\n[DONE] elapsed time: {elapsed:.1f}s")
+    print(f"[DONE] files processed: {len(new_files)} (skipped: {skip_count})")
+    print(f"[DONE] total chunks: {total_chunks}")
+    print(f"[DONE] embedding model: {model_name}")
+    print(f"[DONE] Neo4j (:Chunk) nodes: {neo4j_count}")
+    print(f"[DONE] chunking library: chonkie {CHONKIE_VERSION}")
 
 
 if __name__ == "__main__":

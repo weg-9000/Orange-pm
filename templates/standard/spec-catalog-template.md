@@ -1,64 +1,64 @@
 <!--
-  spec-catalog 작성 양식 (PROJECTS/{product}/inputs/spec-catalog.md 의 원본)
-  - 산출 위치: PROJECTS/{product}/inputs/spec-catalog.md (Confluence 발행 대상 아님 — 프로젝트 inputs 작업 산출물)
-  - 생산자: synthesizer (/draft-req). 소비자: reviewer(V-06), write·write-cluster·flow·screen-detail([[spec-catalog 변수ID]]), formula-binding(계산형)
-  - 제품의 모든 입력 변수를 이 문서에서 단 한 번 정의한다(C1 SSoT). 정책서·화면서는 변수ID 인용·링크만 한다.
-  - {중괄호} placeholder 는 실제 값으로 치환하고, 빈 칸은 금지 — 미상 값은 [확인필요:사유] 로 기재 후 open-issues 등록.
+  spec-catalog authoring template (source of PROJECTS/{product}/inputs/spec-catalog.md)
+  - Output location: PROJECTS/{product}/inputs/spec-catalog.md (not a Confluence publish target — a project inputs work artifact)
+  - Producer: synthesizer (/draft-req). Consumers: reviewer (V-06), write · write-cluster · flow · screen-detail ([[spec-catalog variable ID]]), formula-binding (calculation type)
+  - Every input variable of the product is defined exactly once in this document (C1 SSoT). The policy document / screen design only cite/link the variable ID.
+  - Substitute {curly-brace} placeholders with actual values; blank cells are prohibited — for unknown values, write [needs-confirmation:reason] and register in open-issues.
 -->
 ---
 doc_id: {PREFIX}-C-{PRODUCT_CODE}-SPEC-CATALOG
-title: 입력 변수 카탈로그 (SSoT)
+title: Input Variable Catalog (SSoT)
 status: draft
-mode: calculation | console   # calculation=요금 산식형 / console=입력 유효성형
+mode: calculation | console   # calculation=billing-formula type / console=input-validation type
 referenced_master: [{PREFIX}-B-002@v1.3, {PREFIX}-A-001@v1.1]
 last_updated: YYYY-MM-DD
 ---
 
-# 입력 변수 카탈로그 — {제품명}
+# Input Variable Catalog — {product name}
 
-> **C1 SSoT**: 제품의 모든 입력 변수는 이 문서에서 **단 한 번** 정의한다.
-> 정책서·화면서는 변수ID를 인용·링크만 하며 재정의하지 않는다.
-> **C5 원천 추적성**: 모든 행의 `출처`는 공통(G2-B §X) 인용 또는 `제품 Delta`
-> 또는 `[확인필요:사유]` 셋 중 하나. **추정·환각 채움 금지**(빈 칸 금지).
+> **C1 SSoT**: every input variable of the product is defined **exactly once** in this document.
+> The policy document / screen design only cite and link the variable ID — they do not redefine it.
+> **C5 Source Traceability**: every row's `Source` must be either a citation of common (PX-B §X),
+> `product delta`, or `[needs-confirmation:reason]`. **Guessing or hallucinated entries are prohibited** (blank cells are prohibited).
 
-## 사용 모드
+## Usage Modes
 
-| mode | 용도 | formula-binding |
+| mode | Use | formula-binding |
 |---|---|---|
-| `calculation` | 요금 산식형 제품(예: 계산기). 변수↔산식 1:1(C2) | 필요(WP5) |
-| `console` | 콘솔형 제품. 입력 유효성 단일 출처(중복 재기재 차단) | 불요 |
+| `calculation` | Billing-formula-type products (e.g. a calculator). Variable ↔ formula is 1:1 (C2) | required (WP5) |
+| `console` | Console-type products. Single source of input validation (blocks duplicate re-entry) | not required |
 
 ---
 
-## {서비스/엔티티명 — G2-A-001 정본 용어}
+## {Service/Entity Name — canonical term per PX-A-001}
 
-| 필드명(변수ID) | 입력유형 | 기본값 | 범위/옵션 | 단위 | UI 안내문구 | 오류 메시지 | 출처 |
+| Field Name (Variable ID) | Input Type | Default | Range/Options | Unit | UI Guidance Copy | Error Message | Source |
 |---|---|---|---|---|---|---|---|
-| `{variable_id}` | Number/Select/Text/Checkbox | {기본값} | {min~max 또는 옵션} | {GB/건/월/…} | "{안내}" | "{오류}" | `{PREFIX}-B-002 §B-2` |
-| `{variable_id}` | Number | `[확인필요:원천없음]` | — | — | — | — | `open-issues {ISSUE-ID}` |
+| `{variable_id}` | Number/Select/Text/Checkbox | {default value} | {min~max or options} | {GB/count/month/…} | "{guidance}" | "{error}" | `{PREFIX}-B-002 §B-2` |
+| `{variable_id}` | Number | `[needs-confirmation:no-source]` | — | — | — | — | `open-issues {ISSUE-ID}` |
 
-### 종속·플래그
+### Dependencies · Flags
 - requires: [`{variable_id}`]
 - suggests: [`{variable_id}`]
-- 약정 대상: Y/N    · 과금 단위: 시간/일/월/건/없음
+- Commitment target: Y/N    · Billing unit: hour/day/month/count/none
 
-### JSON 변환 구조
+### JSON Conversion Structure
 ```json
-{ "{variable_id}": "<타입>" }
+{ "{variable_id}": "<type>" }
 ```
 
 ---
 
-## 출처 표기 규칙 (C0·C5)
+## Source Notation Rules (C0 · C5)
 
-| 표기 | 의미 | 처리 |
+| Notation | Meaning | Handling |
 |---|---|---|
-| `{PREFIX}-B-NNN §X` | 공통 정책 파생 — 값 복사 금지, 링크 참조만 | C0 준수 |
-| `제품 Delta` | 공통에 없는 이 제품 고유 정의 | decisions.md 근거 권장 |
-| `[확인필요:사유]` | 원천 미확보 — 추정 금지, open-issues 등록 | source-input-gate 추적 |
+| `{PREFIX}-B-NNN §X` | Derived from common policy — copying the value is prohibited, link-reference only | complies with C0 |
+| `product delta` | A definition unique to this product, absent from common | a decisions.md basis is recommended |
+| `[needs-confirmation:reason]` | Source not yet secured — guessing is prohibited, register in open-issues | tracked by source-input-gate |
 
 ## Workflow Connections
-- 용어 정본: [[G2-A 용어 규칙]]
-- 공통 정책: [[G2-B_상품요금결제정책]]
-- 산식 바인딩(계산형): [[formula-binding-template]]
-- 적용 스킬: [[draft-req]], [[write]], [[review]]
+- Canonical terminology: [[PX-A Terminology Rules]]
+- Common policy: [[PX-B_ProductPricingPaymentPolicy]]
+- Formula binding (calculation type): [[formula-binding-template]]
+- Applicable skills: [[draft-req]], [[write]], [[review]]

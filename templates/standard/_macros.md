@@ -1,106 +1,106 @@
-# 매크로 어노테이션 Reference (templates/standard/ 작성자 가이드)
+# Macro Annotation Reference (templates/standard/ Author Guide)
 
-> **목적**: `templates/standard/D*.md` 양식 작성·확장 시 사용 가능한 매크로 어노테이션을 한곳에 모은 실용 가이드.
-> **사양 SSoT**: `orange-pm-plugin/skills/render/publication-syntax.md` (본 문서는 그 요약·실용 발췌).
-> **검증**: `scripts/lint_publication_syntax.py` (L1~L7).
+> **Purpose**: a practical guide collecting, in one place, the macro annotations available when authoring/extending `templates/standard/D*.md` templates.
+> **Spec SSoT**: `orange-pm-plugin/skills/render/publication-syntax.md` (this document is a summary/practical excerpt of it).
+> **Validation**: `scripts/lint_publication_syntax.py` (L1-L7).
 
-## 0. 기본 원칙
+## 0. Basic Principles
 
-1. Markdown 정본 — XML 직접 작성 금지
-2. 모든 매크로는 fenced div (`::: {.클래스}`) 또는 frontmatter 로 표현
-3. 발행 시점에 `md_to_storage.py` 가 결정적 변환
-4. 검증: 작성 후 `lint_publication_syntax.py --input <file>` 실행 권장
+1. Markdown is canonical — do not author XML directly
+2. Every macro is expressed as a fenced div (`::: {.class}`) or frontmatter
+3. `md_to_storage.py` performs a deterministic conversion at publish time
+4. Validation: recommended to run `lint_publication_syntax.py --input <file>` after authoring
 
 ---
 
-## 1. Frontmatter 표준 구조
+## 1. Standard Frontmatter Structure
 
 ```yaml
 ---
-title: "[D1 제목] {{PRODUCT_NAME}}"     # Confluence 페이지 제목
-wo_id: G2-DIRECT-D1                    # 또는 Track A 의 cluster ID (Phase 5 활성)
+title: "[D1 Title] {{PRODUCT_NAME}}"     # Confluence page title
+wo_id: PX-DIRECT-D1                    # or Track A's cluster ID (Phase 5 active)
 type: requirements                     # requirements|policy|screen|meetings|research|etc
-layer: DIRECT                          # B(공통)|C(제품)|DIRECT(Track B/C 단일)
+layer: DIRECT                          # B (common) | C (product) | DIRECT (Track B/C single)
 version: 1.0
 last_updated: 2026-05-30
 
 publication:
-  # 상단 info macro (옵션)
+  # top info macro (optional)
   header:
     style: info                        # info|warning|note|tip
     body: |
-      **{{PRODUCT_NAME}} 정의서**
+      **{{PRODUCT_NAME}} Definition**
 
-      doc_id: {{DOC_ID}} 버전: {{VERSION}} 최종 수정: {{DATE}}
+      doc_id: {{DOC_ID}} Version: {{VERSION}} Last updated: {{DATE}}
 
-  # 메타 영역 — 참고자료/목차/change-history 등 (옵션)
+  # meta area — references/table of contents/change-history, etc. (optional)
   meta:
     layout: two_equal                  # single|two_equal|three_equal
     cells:
       - panel:
-          title: "참고 자료"
+          title: "References"
           body: |
-            - [[page:[정책정의서] {{PRODUCT_NAME}}]]
+            - [[page:[Policy Definition] {{PRODUCT_NAME}}]]
       - change_history: 5
 
-  # Phase 3 색상 상태 (자동 — 수동 설정 금지)
+  # Phase 3 color state (automatic — do not set manually)
   color_state: null
 ---
 ```
 
-**화이트리스트 (publication.* 외 추가 필드)**: `title`, `wo_id`, `type`, `layer`, `version`, `last_updated`.  
-**제거 (prefilter)**: 작성 메타, 자기검증 섹션, 금지사항, Workflow Connections 등.
+**Whitelist (additional fields besides publication.*)**: `title`, `wo_id`, `type`, `layer`, `version`, `last_updated`.  
+**Removed (prefilter)**: authoring metadata, self-verification sections, prohibitions, Workflow Connections, etc.
 
 ---
 
-## 2. 본문 매크로
+## 2. Body Macros
 
-### 2.1 Panel — 섹션 컨테이너 (가장 자주 사용)
+### 2.1 Panel — Section Container (most frequently used)
 
 ```markdown
-::: {.panel section="§N 섹션 제목"}
-## §N 섹션 제목
+::: {.panel section="§N Section Title"}
+## §N Section Title
 
-### §N-1 소제목
-본문 ...
+### §N-1 Subtitle
+Body text ...
 :::
 ```
 
-**Style 매핑** (`style=` attribute):
+**Style Mapping** (`style=` attribute):
 
-| style | 색상 (border / title) | 용도 |
+| style | Color (border / title) | Use |
 |---|---|---|
-| `common` (기본, 생략 가능) | `#24FE00` / `#002FD5` | 공통/제품 정책 표준 |
-| `product` | `#0050E5` / `#FFFFFF` | 제품 고유 강조 |
-| `tbd` | `#FF4D4F` / `#FFFFFF` | TBD/검토 필요 |
-| `warning` | `#FAAD14` / `#FFFFFF` | 경고 |
-| `info` | `#1890FF` / `#FFFFFF` | 정보성 |
+| `common` (default, can be omitted) | `#24FE00` / `#002FD5` | Common/product policy standard |
+| `product` | `#0050E5` / `#FFFFFF` | Product-specific emphasis |
+| `tbd` | `#FF4D4F` / `#FFFFFF` | TBD / needs review |
+| `warning` | `#FAAD14` / `#FFFFFF` | Warning |
+| `info` | `#1890FF` / `#FFFFFF` | Informational |
 
-**필수**: `section="..."` (lint L2). **선택**: `style="..."` (lint L3 — 허용 값만).
+**Required**: `section="..."` (lint L2). **Optional**: `style="..."` (lint L3 — allowed values only).
 
-### 2.2 콜아웃 — info / warning / note / tip
+### 2.2 Callouts — info / warning / note / tip
 
 ```markdown
 ::: {.info}
-정보성 메시지
+Informational message
 :::
 
 ::: {.warning}
-주의 사항
+Caution
 :::
 ```
 
-→ `<ac:structured-macro ac:name="info|warning|note|tip">`. Layout 래퍼 없이 본문 흐름에 배치.
+→ `<ac:structured-macro ac:name="info|warning|note|tip">`. Placed inline in the body flow, with no layout wrapper.
 
-### 2.3 Expand — 접이식 영역
+### 2.3 Expand — Collapsible Area
 
 ```markdown
-::: {.expand title="상세 내용"}
-숨겨질 본문
+::: {.expand title="Details"}
+Body text to hide
 :::
 ```
 
-### 2.4 코드블록
+### 2.4 Code Blocks
 
 ```markdown
 ​```python
@@ -110,172 +110,172 @@ def foo():
 ```
 
 → `<ac:structured-macro ac:name="code">` + `<ac:plain-text-body><![CDATA[...]]>`.  
-언어 fence 지정 권장 (lint L4 — 알려진 언어): `python`, `bash`, `json`, `yaml`, `sql`, `javascript`, `typescript`, `markdown`, `xml`, `html`, `css`, `text`, `mermaid`, `plantuml`, `diff` 등.
+Specifying a language fence is recommended (lint L4 — known languages): `python`, `bash`, `json`, `yaml`, `sql`, `javascript`, `typescript`, `markdown`, `xml`, `html`, `css`, `text`, `mermaid`, `plantuml`, `diff`, etc.
 
 ---
 
-## 3. 인라인 매크로
+## 3. Inline Macros
 
-### 3.1 페이지 링크 — 다른 Confluence 페이지 참조
+### 3.1 Page Link — Reference Another Confluence Page
 
 ```markdown
-[[page:[정책정의서] {{PRODUCT_NAME}}]]
+[[page:[Policy Definition] {{PRODUCT_NAME}}]]
 ```
 
 → `<ac:link><ri:page ri:content-title="..."/></ac:link>`.  
-title 패턴은 일관성을 위해 `[D유형] {{PRODUCT_NAME}}` 형식 권장.
+For consistency, the title pattern should follow the `[D-type] {{PRODUCT_NAME}}` format.
 
-### 3.2 자동 매크로
+### 3.2 Automatic Macros
 
-| MD | XML 출력 | 용도 |
+| MD | XML Output | Use |
 |---|---|---|
-| `{{toc}}` | `<ac:structured-macro ac:name="toc"/>` | 본문 목차 자동 생성 |
-| `{{change_history N}}` | `<ac:structured-macro ac:name="change-history">` + limit N | 최근 N건 변경 이력 |
+| `{{toc}}` | `<ac:structured-macro ac:name="toc"/>` | Auto-generates the body's table of contents |
+| `{{change_history N}}` | `<ac:structured-macro ac:name="change-history">` + limit N | The N most recent change-history entries |
 
-### 3.3 Placeholder — 발행 시점 치환
+### 3.3 Placeholder — Substituted at Publish Time
 
-| 표기 | 치환 시점 | 출처 |
+| Notation | Substitution Timing | Source |
 |---|---|---|
-| `{{PRODUCT_NAME}}` | publish 단계 | 제품 메타 |
-| `{{DOC_ID}}` | publish 단계 | frontmatter |
-| `{{VERSION}}` | publish 단계 | frontmatter |
-| `{{DATE}}` | publish 단계 | 발행 일자 |
-| `{{WO_ID}}` | publish 단계 | frontmatter |
+| `{{PRODUCT_NAME}}` | publish stage | product metadata |
+| `{{DOC_ID}}` | publish stage | frontmatter |
+| `{{VERSION}}` | publish stage | frontmatter |
+| `{{DATE}}` | publish stage | publish date |
+| `{{WO_ID}}` | publish stage | frontmatter |
 
-위 5개는 lint L5 WARN 의 허용 목록. 다른 `{{...}}` 사용 시 WARN 발생 → 양식 의도일 경우 무시 가능.
+These 5 are the allowed list for lint L5 WARN. Using any other `{{...}}` triggers a WARN → can be ignored if it is intentional to the template.
 
 ---
 
-## 4. 표 작성
+## 4. Writing Tables
 
 ```markdown
-| 항목 | 내용 |
+| Item | Content |
 |---|---|
-| **목적** | 본 정책서의 목적 |
-| **범위** | 전체 |
+| **Purpose** | The purpose of this policy document |
+| **Scope** | All |
 ```
 
-→ `<table class="relative-table wrapped" style="width: 90%;">` + colgroup (기본 균등).
+→ `<table class="relative-table wrapped" style="width: 90%;">` + colgroup (evenly distributed by default).
 
-**컬럼 너비 명시** — HTML 주석 directive:
+**Specifying Column Widths** — HTML comment directive:
 
 ```markdown
 <!-- col-widths: 15%, 85% -->
-| 항목 | 내용 |
+| Item | Content |
 |---|---|
-| 목적 | 본 정책서의 목적 |
+| Purpose | The purpose of this policy document |
 ```
 
-**검증**: 헤더와 본문 행의 컬럼 수가 동일해야 함 (lint L7).
+**Validation**: the header and body rows must have the same number of columns (lint L7).
 
 ---
 
-## 5. Phase 3 — 색상 Cycling (예약)
+## 5. Phase 3 — Color Cycling (reserved)
 
-색상 cycling 활성 시 자동 산출. **양식 작성자가 수동 사용 X**.
+Auto-generated once color cycling is active. **Template authors must not use this manually.**
 
 ```markdown
-[변경된 텍스트]{.color-green}      ← 최신 변경 (#00B050)
-[직전 변경 텍스트]{.color-blue}    ← 직전 변경 (#0050E5)
-일반 텍스트                        ← 기본 (검정, span 미적용)
+[changed text]{.color-green}      ← most recent change (#00B050)
+[previous change text]{.color-blue}    ← previous change (#0050E5)
+normal text                        ← default (black, no span applied)
 ```
 
-자동 cycling 메커니즘은 Phase 3 활성 시 `md_to_storage.py` + `diff_blocks.py` 가 발행 시점에 주입.
+The automatic cycling mechanism is injected at publish time by `md_to_storage.py` + `diff_blocks.py` once Phase 3 is active.
 
 ---
 
-## 6. 양식 작성 체크리스트
+## 6. Template-Authoring Checklist
 
-새 deliverable 양식 추가 시 (예: D6, Dα_new):
+When adding a new deliverable template (e.g. D6, Dα_new):
 
-1. **파일 위치**: `orange-pm-plugin/templates/standard/{D유형}_{이름}.md`
+1. **File location**: `orange-pm-plugin/templates/standard/{D-type}_{name}.md`
 2. **Frontmatter**:
-   - [ ] `title` 패턴 (`[D유형] {{PRODUCT_NAME}}`)
-   - [ ] `type` 카테고리 (`requirements|policy|screen|meetings|research|etc`)
-   - [ ] `layer` (`DIRECT` 기본, Track A 적용 시 `C`)
-   - [ ] `publication.header` (옵션, 페이지 상단 안내가 필요할 때)
-   - [ ] `publication.meta` (옵션, 참고자료/목차/change-history)
-3. **본문**:
-   - [ ] `::: {.panel section="..."}` 단위 섹션 분리
-   - [ ] 헤딩 `## §N` 패턴 일관 (panel section 과 일치)
-   - [ ] 표 컬럼 수 일관 (헤더↔본문)
-   - [ ] 코드블록 언어 fence 지정
-   - [ ] placeholder 는 5종 표준 사용 (그 외는 양식 의도임을 README 에 메모)
-4. **검증**:
+   - [ ] `title` pattern (`[D-type] {{PRODUCT_NAME}}`)
+   - [ ] `type` category (`requirements|policy|screen|meetings|research|etc`)
+   - [ ] `layer` (`DIRECT` by default, `C` when Track A applies)
+   - [ ] `publication.header` (optional, when a page-top notice is needed)
+   - [ ] `publication.meta` (optional, references/table of contents/change-history)
+3. **Body**:
+   - [ ] section separation by `::: {.panel section="..."}` units
+   - [ ] consistent `## §N` heading pattern (matching the panel section)
+   - [ ] consistent table column count (header ↔ body)
+   - [ ] code-block language fence specified
+   - [ ] use the 5 standard placeholders (note in the README if others are intentional to the template)
+4. **Validation**:
    - [ ] `python scripts/lint_publication_syntax.py --input templates/standard/{file}.md` → FAIL 0
    - [ ] `python scripts/md_to_storage.py --input ... --output /tmp/x.xml --validate` → exit 0
-   - [ ] `python scripts/round_trip_test.py` 전체 통과
-5. **문서**:
-   - [ ] `templates/standard/README.md` 파일 목록 표 갱신
-   - [ ] 신규 deliverable 의 Confluence 페이지 제목 패턴 등록
+   - [ ] `python scripts/round_trip_test.py` passes in full
+5. **Documentation**:
+   - [ ] update the file-listing table in `templates/standard/README.md`
+   - [ ] register the new deliverable's Confluence page-title pattern
 
 ---
 
-## 7. 자주 묻는 패턴
+## 7. Frequently Asked Patterns
 
-### Q. 섹션 안에 추가 콜아웃을 넣고 싶다
+### Q. I want to add an extra callout inside a section
 
 ```markdown
-::: {.panel section="§3 정책"}
-## §3 정책
+::: {.panel section="§3 Policy"}
+## §3 Policy
 
-본문 ...
+Body text ...
 
 ::: {.warning}
-이 정책은 v2.0 부터 deprecated 예정.
+This policy will be deprecated starting from v2.0.
 :::
 
-이어지는 본문 ...
+Continuing body text ...
 :::
 ```
 
-Nested 가능 — panel 안에 info/warning 등 자유 배치.
+Nesting is possible — info/warning etc. can be freely placed inside a panel.
 
-### Q. 표 안에 여러 줄 텍스트
+### Q. Multi-line text inside a table
 
 ```markdown
-| 항목 | 설명 |
+| Item | Description |
 |---|---|
-| A | 첫 줄<br/>두 번째 줄 |
+| A | first line<br/>second line |
 ```
 
-`<br/>` 인라인 또는 단순 공백. 다중 단락이 필요하면 panel 로 분리 권장.
+Use inline `<br/>` or simple spacing. If multiple paragraphs are needed, splitting into a panel is recommended.
 
-### Q. 페이지 제목에 한글 + 영문 혼용
+### Q. Mixing Korean and English in a page title
 
 ```yaml
-title: "[정책정의서] DBaaS for Berkeley"
+title: "[Policy Definition] DBaaS for Berkeley"
 ```
 
-따옴표 내부에 한/영/공백/괄호 모두 허용. backslash escape 없음.
+Within the quotes, Korean, English, spaces, and parentheses are all allowed. No backslash escaping is needed.
 
-### Q. 양식의 placeholder 가 lint WARN 으로 떠요
+### Q. My template's placeholder shows up as a lint WARN
 
-L5(미해결 placeholder) 는 WARN(비차단). 양식 작성 의도이면 그대로 둠. 양식 사용자(드래프트 단계)에서 치환되어야 함.
+L5 (unresolved placeholder) is a WARN (non-blocking). If it is intentional to the template, leave it as-is. It should be substituted by the template's user at the draft stage.
 
 ---
 
-## 8. 변환기 / lint 빠른 실행
+## 8. Quick Converter / Lint Commands
 
 ```bash
-# 양식 lint
+# Template lint
 python orange-pm-plugin/scripts/lint_publication_syntax.py \
    --input orange-pm-plugin/templates/standard/D1_requirements.md
 
-# 양식 → XML 변환 (검증 포함)
+# Template → XML conversion (with validation)
 python orange-pm-plugin/scripts/md_to_storage.py \
    --input orange-pm-plugin/templates/standard/D2_policy.md \
    --output /tmp/D2.xml --validate
 
-# 양식 round-trip 안정성 (전체 양식 일괄)
+# Template round-trip stability (all templates in bulk)
 python orange-pm-plugin/scripts/round_trip_test.py
 ```
 
 ---
 
-## 9. 참조
+## 9. References
 
-- 사양 SSoT: `orange-pm-plugin/skills/render/publication-syntax.md`
-- 정책: `Planning-Agent-Hub/CONTEXT/project-rules.md` (Confluence 동기화 절)
-- 변환기: `scripts/md_to_storage.py`, `scripts/storage_to_md.py`
-- 검증: `scripts/lint_publication_syntax.py`, `scripts/render_verify.py`
+- Spec SSoT: `orange-pm-plugin/skills/render/publication-syntax.md`
+- Policy: `Planning-Agent-Hub/CONTEXT/project-rules.md` (Confluence sync procedure)
+- Converters: `scripts/md_to_storage.py`, `scripts/storage_to_md.py`
+- Validation: `scripts/lint_publication_syntax.py`, `scripts/render_verify.py`

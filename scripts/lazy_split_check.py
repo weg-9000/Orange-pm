@@ -2,17 +2,18 @@
 # -*- coding: utf-8 -*-
 """Lazy-Split Trigger Check (Phase 5D).
 
-Cluster draft 가 분할 임계를 초과하는지 검사하고 권고를 출력한다.
-실제 분할은 PM 승인 후 fanout 재실행 또는 수동 처리.
+Checks whether a cluster draft exceeds the split thresholds and prints
+recommendations. The actual split happens via a fanout re-run or manual
+handling after PM approval.
 
-임계 (publication-syntax.md / cluster-draft.md 사양):
-    - 본문 > 1500 lines
-    - §1+§2 항목 수 > 8
-    - R2 BLOCK 누적 (HARD+SOFT) > 5  (integrate 산출 참조)
-    - PM 명시 --force-split
+Thresholds (per publication-syntax.md / cluster-draft.md spec):
+    - body > 1500 lines
+    - §1+§2 item count > 8
+    - cumulative R2 BLOCK count (HARD+SOFT) > 5  (from the integrate report)
+    - PM-specified --force-split
 
-자식 cluster ID 패턴 (사양):
-    {부모_cluster_id}-{suffix}   예: PV-01 → PV-01-a, PV-01-b
+Child cluster ID pattern (spec):
+    {parent_cluster_id}-{suffix}   e.g. PV-01 → PV-01-a, PV-01-b
 
 CLI:
     python lazy_split_check.py --drafts drafts/cluster_*.draft.md
@@ -20,7 +21,7 @@ CLI:
         [--threshold-lines 1500] [--threshold-items 8] [--threshold-blocks 5]
         [--report reports/lazy-split-report.md]
 
-종료 코드: 0 (분할 권고 없음) / 1 (1개 이상 권고) / 2 (입력 오류)
+exit code: 0 (no split recommended) / 1 (1+ recommended) / 2 (input error)
 """
 from __future__ import annotations
 
@@ -38,15 +39,15 @@ DEFAULT_THRESHOLD_BLOCKS = 5
 
 @dataclass
 class SplitCheck:
-    """단일 cluster 의 분할 검사 결과."""
+    """Split-check result for a single cluster."""
 
     cluster_path: Path
     cluster_id: str = ""
     body_lines: int = 0
-    section1_items: int = 0  # §1 정책 결정의 표/리스트 항목 수
-    section2_items: int = 0  # §2 화면 설계의 표/리스트 항목 수
-    integrate_blocks: int = 0  # R2 BLOCK 누적
-    triggers: list[str] = field(default_factory=list)  # 위반 임계 목록
+    section1_items: int = 0  # table/list item count in the §1 policy decisions
+    section2_items: int = 0  # table/list item count in the §2 screen design
+    integrate_blocks: int = 0  # cumulative R2 BLOCK count
+    triggers: list[str] = field(default_factory=list)  # list of exceeded thresholds
 
     @property
     def should_split(self) -> bool:
@@ -59,7 +60,7 @@ def _extract_cluster_id(text: str) -> str:
 
 
 def _count_panel_items(body: str, section_keyword: str) -> int:
-    """주어진 panel section 안의 표 행 + 리스트 항목 수."""
+    """Count table rows + list items inside the given panel section."""
     pattern = re.compile(
         r'::: \{\.panel section="[^"]*' + re.escape(section_keyword) + r'[^"]*"[^}]*\}(.*?):::',
         re.DOTALL,
@@ -68,7 +69,7 @@ def _count_panel_items(body: str, section_keyword: str) -> int:
     if not m:
         return 0
     panel_body = m.group(1)
-    # 표 본문 행 수 (헤더/구분선 제외)
+    # table body row count (excludes header/separator)
     table_rows = 0
     in_table = False
     for line in panel_body.splitlines():
@@ -77,13 +78,13 @@ def _count_panel_items(body: str, section_keyword: str) -> int:
             in_table = True
             continue
         if stripped.startswith("|") and in_table:
-            # placeholder ({{...}}) 만 있는 행은 제외 (양식 의도)
+            # exclude rows that are only a placeholder ({{...}}) — template intent
             if re.fullmatch(r"\|\s*\{\{[^}]+\}\}\s*(\|\s*[^|]*)*\|", stripped):
                 continue
             table_rows += 1
         else:
             in_table = False
-    # 리스트 항목
+    # list items
     list_items = sum(
         1 for ln in panel_body.splitlines() if re.match(r"\s*[-*+]\s+\S", ln)
     )
@@ -93,11 +94,11 @@ def _count_panel_items(body: str, section_keyword: str) -> int:
 def _count_blocks_for_cluster(
     integrate_report: Path | None, cluster_id: str
 ) -> int:
-    """integrate 산출에서 해당 cluster_id 의 BLOCK 카운트."""
+    """Count BLOCK occurrences for the given cluster_id in the integrate report."""
     if not integrate_report or not integrate_report.is_file():
         return 0
     text = integrate_report.read_text(encoding="utf-8", errors="replace")
-    # cluster_id 가 본문에 등장하면서 같은 라인 / 인접 블록에 HARD/SOFT 가 있는지
+    # lines where cluster_id appears, with HARD/SOFT on the same line / adjacent block
     cluster_lines = [
         ln for ln in text.splitlines() if cluster_id in ln
     ]
@@ -119,7 +120,7 @@ def check_cluster_draft(
     text = path.read_text(encoding="utf-8", errors="replace")
     cluster_id = _extract_cluster_id(text)
 
-    # body (frontmatter 제외)
+    # body (frontmatter excluded)
     body = text
     if text.startswith("---\n"):
         end = text.find("\n---\n", 4)
@@ -130,23 +131,23 @@ def check_cluster_draft(
         cluster_path=path,
         cluster_id=cluster_id,
         body_lines=len([ln for ln in body.splitlines() if ln.strip()]),
-        section1_items=_count_panel_items(body, "정책"),
-        section2_items=_count_panel_items(body, "화면"),
+        section1_items=_count_panel_items(body, "Policy"),
+        section2_items=_count_panel_items(body, "Screen"),
         integrate_blocks=_count_blocks_for_cluster(integrate_report, cluster_id),
     )
 
     if check.body_lines > threshold_lines:
         check.triggers.append(
-            f"본문 라인 수 {check.body_lines} > {threshold_lines}"
+            f"body line count {check.body_lines} > {threshold_lines}"
         )
     items_total = check.section1_items + check.section2_items
     if items_total > threshold_items:
         check.triggers.append(
-            f"§1+§2 항목 수 {items_total} > {threshold_items}"
+            f"§1+§2 item count {items_total} > {threshold_items}"
         )
     if check.integrate_blocks > threshold_blocks:
         check.triggers.append(
-            f"R2 BLOCK 누적 {check.integrate_blocks} > {threshold_blocks}"
+            f"cumulative R2 BLOCK count {check.integrate_blocks} > {threshold_blocks}"
         )
 
     return check
@@ -159,64 +160,64 @@ def format_report(
     threshold_items: int,
     threshold_blocks: int,
 ) -> str:
-    lines = ["# Lazy-Split 권고 (Phase 5D)\n"]
-    lines.append("**임계** (publication-syntax.md / cluster-draft.md 사양):")
-    lines.append(f"- 본문 라인 > {threshold_lines}")
-    lines.append(f"- §1+§2 항목 수 > {threshold_items}")
-    lines.append(f"- R2 BLOCK 누적 > {threshold_blocks}\n")
+    lines = ["# Lazy-Split Recommendations (Phase 5D)\n"]
+    lines.append("**Thresholds** (per publication-syntax.md / cluster-draft.md spec):")
+    lines.append(f"- body lines > {threshold_lines}")
+    lines.append(f"- §1+§2 item count > {threshold_items}")
+    lines.append(f"- cumulative R2 BLOCK count > {threshold_blocks}\n")
 
     splittable = [c for c in checks if c.should_split]
-    lines.append(f"**총 {len(checks)} cluster 검사, {len(splittable)} cluster 분할 권고**\n")
+    lines.append(f"**{len(checks)} clusters checked, {len(splittable)} cluster(s) recommended for split**\n")
 
     if not splittable:
-        lines.append("모든 cluster 가 임계 이내 — 분할 권고 없음.\n")
+        lines.append("All clusters are within thresholds — no split recommended.\n")
         return "\n".join(lines) + "\n"
 
-    lines.append("| Cluster ID | 본문 라인 | §1 항목 | §2 항목 | BLOCK | 트리거 |")
+    lines.append("| Cluster ID | Body Lines | §1 Items | §2 Items | BLOCK | Triggers |")
     lines.append("|---|---|---|---|---|---|")
     for c in splittable:
-        triggers = "<br>".join(c.triggers) or "_(임계 이내)_"
+        triggers = "<br>".join(c.triggers) or "_(within thresholds)_"
         lines.append(
             f"| `{c.cluster_id}` | {c.body_lines} | "
             f"{c.section1_items} | {c.section2_items} | "
             f"{c.integrate_blocks} | {triggers} |"
         )
 
-    lines.append("\n## 권장 후속 처리\n")
-    lines.append("각 분할 권고 cluster 에 대해 PM 확인 후:")
-    lines.append("1. 자식 cluster ID 부여: `{부모_cluster_id}-a`, `-b`, ...")
-    lines.append("2. 원본 cluster draft 의 멤버 노드를 자식 간 재배분")
-    lines.append("3. `cluster_identify.py` 의 `cluster_map.json` 에 자식 ID 등재")
-    lines.append("4. `fanout --cluster-mode` 재실행 → 자식 cluster drafts 생성")
-    lines.append("5. (선택) `--force-split` 으로 임계 미달 시도 가능\n")
+    lines.append("\n## Recommended follow-up\n")
+    lines.append("For each cluster recommended for split, after PM confirmation:")
+    lines.append("1. Assign child cluster IDs: `{parent_cluster_id}-a`, `-b`, ...")
+    lines.append("2. Redistribute the original cluster draft's member nodes among the children")
+    lines.append("3. Register the child IDs in `cluster_identify.py`'s `cluster_map.json`")
+    lines.append("4. Re-run `fanout --cluster-mode` → generates the child cluster drafts")
+    lines.append("5. (Optional) `--force-split` can be used to force a split below threshold\n")
     return "\n".join(lines) + "\n"
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="lazy_split_check",
-        description="Cluster draft 분할 임계 검사 (Phase 5D)",
+        description="Cluster draft split-threshold check (Phase 5D)",
     )
     parser.add_argument(
         "--drafts", nargs="+", type=Path, required=True,
-        help="cluster draft 파일들 (drafts/cluster_*.draft.md)",
+        help="cluster draft files (drafts/cluster_*.draft.md)",
     )
     parser.add_argument(
         "--integrate-report", type=Path, default=None,
-        help="integrate R2 BLOCK 보고서 (옵션)",
+        help="integrate R2 BLOCK report (optional)",
     )
     parser.add_argument("--threshold-lines", type=int, default=DEFAULT_THRESHOLD_LINES)
     parser.add_argument("--threshold-items", type=int, default=DEFAULT_THRESHOLD_ITEMS)
     parser.add_argument("--threshold-blocks", type=int, default=DEFAULT_THRESHOLD_BLOCKS)
     parser.add_argument(
         "--report", type=Path, default=None,
-        help="보고서 markdown 출력 경로",
+        help="report markdown output path",
     )
     args = parser.parse_args(argv)
 
     missing = [p for p in args.drafts if not p.is_file()]
     if missing:
-        print(f"[lazy_split_check] ERROR: 파일 없음: {missing}", file=sys.stderr)
+        print(f"[lazy_split_check] ERROR: file(s) not found: {missing}", file=sys.stderr)
         return 2
 
     checks = [
@@ -245,8 +246,8 @@ def main(argv: list[str] | None = None) -> int:
 
     splittable = [c for c in checks if c.should_split]
     print(
-        f"[lazy_split_check] {len(checks)} cluster 검사, "
-        f"{len(splittable)} 분할 권고",
+        f"[lazy_split_check] {len(checks)} clusters checked, "
+        f"{len(splittable)} recommended for split",
         file=sys.stderr,
     )
     return 1 if splittable else 0

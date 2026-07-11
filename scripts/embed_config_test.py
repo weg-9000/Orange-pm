@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""_embed_config 회귀 테스트 — 임베딩 모델 단일 출처 해소(적재=검색 일치)."""
+"""Regression tests for _embed_config — single source of truth for the embedding model (ingest = search match)."""
 from __future__ import annotations
 
 import importlib
@@ -33,7 +33,7 @@ def test_legacy_anthropic_maps_to_voyage():
 
 def test_env_overrides_cli(monkeypatch):
     monkeypatch.setenv("ORANGE_EMBED_MODEL", "e5-large")
-    spec = ec.resolve_model("anthropic")   # env 가 우선
+    spec = ec.resolve_model("anthropic")   # env takes priority
     assert spec["key"] == "e5-large" and spec["dim"] == 1024
 
 
@@ -50,7 +50,7 @@ def test_all_registry_entries_have_dim():
 
 
 def test_qwen_embedding_available():
-    assert "qwen3-0.6b" in ec.EMBED_MODELS  # Qwen 임베딩(챗 아님) 로컬 옵션
+    assert "qwen3-0.6b" in ec.EMBED_MODELS  # Qwen embedding (not chat) local option
 
 
 if __name__ == "__main__":

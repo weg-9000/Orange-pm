@@ -1,48 +1,50 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-r"""Confluence XML 구조 품질 검증 스크립트 (C-VERIFY).
+r"""Confluence XML structural quality verification script (C-VERIFY).
 
-목적:
-    md_to_storage.py 변환 결과(또는 confluence-source/ 잔존 XML)가 자사 표준
-    Confluence Storage Format 품질 규칙을 준수하는지 검증한다. --push 직후 또는
-    XML 수작업 편집(권장 X — Option A 정책상 직접 편집 금지) 후 구조 훼손
-    여부를 빠르게 탐지한다.
+Purpose:
+    Verifies that the output of md_to_storage.py (or leftover XML under
+    confluence-source/) complies with our in-house Confluence Storage Format
+    quality rules. Quickly detects structural damage right after --push, or
+    after manual XML edits (not recommended — Option A policy prohibits direct
+    edits).
 
-책임 분담 (Option A — MD-only 이후):
-    - **MD 단계 (1차 게이트)**: lint_publication_syntax.py (L1~L7) 가 사양
-      (publication-syntax.md §10) 준수 여부를 변환 전에 검증한다. 사용자 작성
-      오류를 빠르게 차단하는 곳.
-    - **XML 단계 (2차 게이트, 본 스크립트)**: 변환기(md_to_storage.py) 자체의
-      회귀 또는 직접 편집된 XML 의 품질을 사후 검증한다. 정상 흐름에서는
-      L1~L7 통과 + 변환기 정상 동작 시 F1/F2 도 자동 통과.
+Division of responsibility (Option A — after MD-only):
+    - **MD stage (1st gate)**: lint_publication_syntax.py (L1~L7) verifies
+      compliance with the spec (publication-syntax.md §10) before conversion.
+      This is where user authoring errors are caught quickly.
+    - **XML stage (2nd gate, this script)**: verifies after the fact the
+      quality of the converter's (md_to_storage.py) own regressions or of
+      manually edited XML. In the normal flow, F1/F2 pass automatically once
+      L1~L7 pass and the converter behaves correctly.
 
-검증 항목 (FAIL = 차단 / WARN = 경고):
-    [FAIL] F1 — 패널 매크로 색상 규칙
+Checks (FAIL = blocking / WARN = warning):
+    [FAIL] F1 — panel macro color rules
                borderColor=#24FE00 / titleColor=#002FD5 /
                titleBGColor=24FE00 / borderStyle=none
-               (MD 대응: lint L3 — panel style="common")
-    [FAIL] F2 — 코드 블록: ac:plain-text-body + CDATA 사용
-               (ac:rich-text-body 안에 코드가 있으면 FAIL)
-               (MD 대응: md_to_storage 가 코드블록 자동 CDATA 처리 — 회귀 시 잡힘)
-    [FAIL] F3 — 색상 span 허용 영역 검증 (Phase 3E)
-               CDATA 코드블록 내부 / ac:parameter 값 내부 / nested span 금지
-               (MD 대응: lint L6 — 사양 §6.1)
-    [WARN] W1 — FR 번호 체계: FR-\d{3}(-\d+)? 패턴 (§ 베이스 3자리)
-               예) FR-101 ✓   FR-101-1 ✓   FR-01 ✗   FR-1 ✗
-    [WARN] W2 — 필수 레이아웃 섹션 존재 여부 (ac:layout-section 최소 1개)
-    [WARN] W3 — 빈 플레이스홀더 잔존 여부 ({{...}} 패턴)
+               (MD counterpart: lint L3 — panel style="common")
+    [FAIL] F2 — code block: must use ac:plain-text-body + CDATA
+               (FAIL if code appears inside ac:rich-text-body)
+               (MD counterpart: md_to_storage auto-CDATA-wraps code blocks — this catches regressions)
+    [FAIL] F3 — color-span allowed-zone verification (Phase 3E)
+               forbidden inside CDATA code blocks / ac:parameter values / nested spans
+               (MD counterpart: lint L6 — spec §6.1)
+    [WARN] W1 — FR numbering scheme: FR-\d{3}(-\d+)? pattern (§-base 3 digits)
+               e.g. FR-101 ✓   FR-101-1 ✓   FR-01 ✗   FR-1 ✗
+    [WARN] W2 — required layout section present (at least 1 ac:layout-section)
+    [WARN] W3 — leftover empty placeholders ({{...}} pattern)
 
-출력:
-    PROJECTS/{product}/reports/verify-report.md  (자동 생성, 수정 금지)
+Output:
+    PROJECTS/{product}/reports/verify-report.md  (auto-generated, do not edit)
 
 exit code:
-    0 = FAIL 없음 (WARN 은 비차단)
-    1 = FAIL 1건 이상
-    2 = 인자 오류
+    0 = no FAIL (WARN is non-blocking)
+    1 = 1 or more FAIL
+    2 = argument error
 
-사용법:
+Usage:
     python render_verify.py --hub-root <Hub> [--product <name>]
-    (--product 생략 시 PROJECTS/* 전체)
+    (omit --product to scan all of PROJECTS/*)
 """
 from __future__ import annotations
 
@@ -58,33 +60,33 @@ for _s in (sys.stdout, sys.stderr):
     except Exception:
         pass
 
-# ── 패턴 정의 ──────────────────────────────────────────────────────────────
+# ── Pattern definitions ──────────────────────────────────────────────────────
 
-# 패널 매크로 파라미터 추출
+# Extract panel macro parameters
 RE_PANEL_MACRO = re.compile(
     r'<ac:structured-macro[^>]*ac:name="panel"[^>]*>(.*?)</ac:structured-macro>',
     re.DOTALL,
 )
 RE_PARAM = re.compile(r'<ac:parameter ac:name="([^"]+)">([^<]*)</ac:parameter>')
 
-# 코드 블록: code macro 안에 rich-text-body 가 있으면 FAIL
+# Code block: FAIL if rich-text-body appears inside the code macro
 RE_CODE_MACRO = re.compile(
     r'<ac:structured-macro[^>]*ac:name="code"[^>]*>(.*?)</ac:structured-macro>',
     re.DOTALL,
 )
 RE_RICH_TEXT_BODY = re.compile(r'<ac:rich-text-body>')
 
-# FR 번호 — §-base 3자리 검증
+# FR numbering — §-base 3-digit verification
 RE_FR_ANY = re.compile(r'\bFR-(\d+)(-\d+)?\b')
 RE_FR_VALID = re.compile(r'\bFR-\d{3}(-\d+)?\b')
 
-# 필수 레이아웃
+# Required layout
 RE_LAYOUT_SECTION = re.compile(r'<ac:layout-section')
 
-# 플레이스홀더 잔존
+# Leftover placeholders
 RE_PLACEHOLDER = re.compile(r'\{\{[^}]+\}\}')
 
-# 권장 패널 색상 (CLAUDE.md 표준)
+# Recommended panel colors (CLAUDE.md standard)
 EXPECTED_PANEL_COLORS = {
     "borderColor": "#24FE00",
     "titleColor": "#002FD5",
@@ -94,7 +96,7 @@ EXPECTED_PANEL_COLORS = {
 
 
 def _check_panel_colors(xml: str) -> list[tuple[str, str, str]]:
-    """[F1] 패널 매크로 색상 규칙 검증. (level, code, message) 반환."""
+    """[F1] Verify panel macro color rules. Returns (level, code, message)."""
     issues: list[tuple[str, str, str]] = []
     for i, m in enumerate(RE_PANEL_MACRO.finditer(xml), 1):
         body = m.group(1)
@@ -104,26 +106,26 @@ def _check_panel_colors(xml: str) -> list[tuple[str, str, str]]:
             if actual and actual != expected:
                 issues.append((
                     "FAIL", "F1",
-                    f"패널 #{i}: {key}={actual!r} (기대 {expected!r})",
+                    f"panel #{i}: {key}={actual!r} (expected {expected!r})",
                 ))
     return issues
 
 
 def _check_code_blocks(xml: str) -> list[tuple[str, str, str]]:
-    """[F2] code macro 안 rich-text-body 사용 금지."""
+    """[F2] rich-text-body is not allowed inside a code macro."""
     issues: list[tuple[str, str, str]] = []
     for i, m in enumerate(RE_CODE_MACRO.finditer(xml), 1):
         body = m.group(1)
         if RE_RICH_TEXT_BODY.search(body):
             issues.append((
                 "FAIL", "F2",
-                f"코드 블록 #{i}: ac:rich-text-body 사용 — ac:plain-text-body + CDATA 로 교체 필요",
+                f"code block #{i}: uses ac:rich-text-body — must be replaced with ac:plain-text-body + CDATA",
             ))
     return issues
 
 
-# Phase 3E — F3: 색상 span 허용 영역 검증
-# 코드블록(CDATA) 내부, 매크로 파라미터 값(ac:parameter), nested span 금지.
+# Phase 3E — F3: verify color-span allowed zones.
+# Forbidden inside CDATA code blocks, macro parameter values (ac:parameter), or as nested spans.
 RE_CDATA_BLOCK = re.compile(r"<!\[CDATA\[(.*?)\]\]>", re.DOTALL)
 RE_COLOR_SPAN = re.compile(
     r'<span\s+style\s*=\s*"color:\s*rgb\(\s*\d+\s*,\s*\d+\s*,\s*\d+\s*\)\s*"\s*>(.*?)</span>',
@@ -135,76 +137,76 @@ RE_PARAM_TAG = re.compile(
 
 
 def _check_color_spans(xml: str) -> list[tuple[str, str, str]]:
-    """[F3] 색상 span 이 허용 영역에만 존재하는지 검증.
+    """[F3] Verify that color spans only appear in allowed zones.
 
-    금지 영역:
-      - CDATA 코드블록 내부 (XML 파서가 인식 안 함 → 의미 없는 마크업)
-      - ac:parameter 값 내부 (매크로 파라미터에 색상 span 들어가면 깨짐)
-      - nested span (`<span><span>...</span></span>`)
+    Forbidden zones:
+      - inside a CDATA code block (the XML parser doesn't interpret it → meaningless markup)
+      - inside an ac:parameter value (a color span inside a macro parameter breaks it)
+      - nested spans (`<span><span>...</span></span>`)
     """
     issues: list[tuple[str, str, str]] = []
 
-    # CDATA 내부에 span 이 있는지
+    # Check for spans inside CDATA
     for i, m in enumerate(RE_CDATA_BLOCK.finditer(xml), 1):
         body = m.group(1)
         if RE_COLOR_SPAN.search(body):
             issues.append((
                 "FAIL", "F3",
-                f"CDATA #{i} 내부 색상 span 발견 — 코드블록 내부는 색상 표기 불가",
+                f"color span found inside CDATA #{i} — color markup is not allowed inside code blocks",
             ))
 
-    # ac:parameter 값 내부에 span
+    # Check for spans inside ac:parameter values
     for i, m in enumerate(RE_PARAM_TAG.finditer(xml), 1):
         body = m.group(1)
         if RE_COLOR_SPAN.search(body):
             issues.append((
                 "FAIL", "F3",
-                f"ac:parameter #{i} 내부 색상 span 발견 — 매크로 파라미터에 span 금지",
+                f"color span found inside ac:parameter #{i} — spans are not allowed in macro parameters",
             ))
 
-    # nested span: span 의 inner 에 또 span 이 있는지
+    # Nested span: check whether a span's inner content contains another span
     for i, m in enumerate(RE_COLOR_SPAN.finditer(xml), 1):
         inner = m.group(1)
         if RE_COLOR_SPAN.search(inner):
             issues.append((
                 "FAIL", "F3",
-                f"색상 span #{i}: nested span — 사양 §6.1 nested 금지",
+                f"color span #{i}: nested span — nesting is forbidden by spec §6.1",
             ))
 
     return issues
 
 
 def _check_fr_numbering(xml: str) -> list[tuple[str, str, str]]:
-    """[W1] FR 번호 §-base 3자리 형식 검증."""
+    """[W1] Verify the FR numbering §-base 3-digit format."""
     issues: list[tuple[str, str, str]] = []
     bad: list[str] = []
     for m in RE_FR_ANY.finditer(xml):
         full = m.group(0)
         if not RE_FR_VALID.match(full):
             bad.append(full)
-    bad = list(dict.fromkeys(bad))  # 중복 제거
+    bad = list(dict.fromkeys(bad))  # de-duplicate
     if bad:
         sample = ", ".join(bad[:5]) + ("..." if len(bad) > 5 else "")
         issues.append((
             "WARN", "W1",
-            f"FR 번호 형식 불일치 {len(bad)}건 (예: {sample}) — 기대: FR-NNN 또는 FR-NNN-N",
+            f"{len(bad)} FR numbering mismatches (e.g. {sample}) — expected: FR-NNN or FR-NNN-N",
         ))
     return issues
 
 
 def _check_layout(xml: str) -> list[tuple[str, str, str]]:
-    """[W2] ac:layout-section 최소 1개 존재."""
+    """[W2] At least one ac:layout-section must be present."""
     if not RE_LAYOUT_SECTION.search(xml):
-        return [("WARN", "W2", "ac:layout-section 없음 — Confluence Storage Format 레이아웃 구조 확인 필요")]
+        return [("WARN", "W2", "no ac:layout-section found — check the Confluence Storage Format layout structure")]
     return []
 
 
 def _check_placeholders(xml: str) -> list[tuple[str, str, str]]:
-    """[W3] {{...}} 플레이스홀더 잔존."""
+    """[W3] Leftover {{...}} placeholders."""
     found = list(dict.fromkeys(RE_PLACEHOLDER.findall(xml)))
     if found:
         sample = ", ".join(found[:5]) + ("..." if len(found) > 5 else "")
-        return [("WARN", "W3", f"플레이스홀더 {len(found)}건 잔존 ({sample}) — 치환 필요")]
+        return [("WARN", "W3", f"{len(found)} leftover placeholder(s) ({sample}) — substitution required")]
     return []
 
 
@@ -223,7 +225,7 @@ def verify_file(xml_path: Path) -> list[tuple[str, str, str]]:
 def scan(hub_root: Path, product: str | None = None) -> int:
     projects_root = hub_root / "PROJECTS"
     if not projects_root.is_dir():
-        print(f"[verify] PROJECTS 없음: {projects_root} — 스캔 대상 없음")
+        print(f"[verify] PROJECTS not found: {projects_root} — nothing to scan")
         return 0
 
     products = (
@@ -240,7 +242,7 @@ def scan(hub_root: Path, product: str | None = None) -> int:
         xml_files = sorted(src_dir.glob("*.xml")) if src_dir.is_dir() else []
 
         if not xml_files:
-            print(f"[verify] {pname}: XML 없음 — 건너뜀")
+            print(f"[verify] {pname}: no XML — skipping")
             continue
 
         file_results: list[tuple[Path, list]] = []
@@ -259,8 +261,8 @@ def scan(hub_root: Path, product: str | None = None) -> int:
         lines = [
             f"# verify-report — {pname}",
             "",
-            f"> 생성: {datetime.now().isoformat(timespec='seconds')}"
-            f" · render_verify.py 자동 생성 (수정 금지)",
+            f"> Generated: {datetime.now().isoformat(timespec='seconds')}"
+            f" · auto-generated by render_verify.py (do not edit)",
             f"> **FAIL: {n_fail} · WARN: {n_warn}**",
             "",
         ]
@@ -269,10 +271,10 @@ def scan(hub_root: Path, product: str | None = None) -> int:
             rel = xf.relative_to(proj)
             lines += [f"## {rel}", ""]
             if not issues:
-                lines += ["> ✅ 모든 검증 통과", ""]
+                lines += ["> ✅ All checks passed", ""]
                 continue
             lines += [
-                "| 수준 | 코드 | 내용 |",
+                "| Level | Code | Message |",
                 "|---|---|---|",
             ]
             for lv, code, msg in issues:
@@ -283,42 +285,42 @@ def scan(hub_root: Path, product: str | None = None) -> int:
         lines += [
             "---",
             "",
-            "## 검증 기준",
-            "| 코드 | 수준 | 규칙 |",
+            "## Verification criteria",
+            "| Code | Level | Rule |",
             "|---|---|---|",
-            "| F1 | FAIL | 패널 매크로: borderColor=#24FE00 / titleColor=#002FD5 / titleBGColor=24FE00 / borderStyle=none |",
-            "| F2 | FAIL | 코드 블록: ac:plain-text-body + CDATA (ac:rich-text-body 금지) |",
-            "| F3 | FAIL | 색상 span: CDATA/ac:parameter/nested 내부 금지 (Phase 3E) |",
-            "| W1 | WARN | FR 번호: FR-NNN 또는 FR-NNN-N 형식 (§-base 3자리) |",
-            "| W2 | WARN | ac:layout-section 최소 1개 |",
-            "| W3 | WARN | {{...}} 플레이스홀더 잔존 없음 |",
+            "| F1 | FAIL | Panel macro: borderColor=#24FE00 / titleColor=#002FD5 / titleBGColor=24FE00 / borderStyle=none |",
+            "| F2 | FAIL | Code block: ac:plain-text-body + CDATA (ac:rich-text-body forbidden) |",
+            "| F3 | FAIL | Color span: forbidden inside CDATA/ac:parameter/nested (Phase 3E) |",
+            "| W1 | WARN | FR numbering: FR-NNN or FR-NNN-N format (§-base 3 digits) |",
+            "| W2 | WARN | At least 1 ac:layout-section |",
+            "| W3 | WARN | No leftover {{...}} placeholders |",
         ]
         out.write_text("\n".join(lines) + "\n", encoding="utf-8")
         print(f"[verify] {pname}: FAIL={n_fail} WARN={n_warn} → {out.relative_to(hub_root)}")
 
-    print(f"[verify] 완료 — 총 FAIL {total_fail}건"
-          + ("" if total_fail == 0 else " (게이트 차단)"))
+    print(f"[verify] done — total FAIL {total_fail}"
+          + ("" if total_fail == 0 else " (gate blocked)"))
     return 1 if total_fail else 0
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description="Confluence XML 구조 품질 검증")
+    ap = argparse.ArgumentParser(description="Confluence XML structural quality verification")
     ap.add_argument("--hub-root", required=True, type=Path)
-    ap.add_argument("--product", default=None, help="PROJECTS/<product> (생략=전체)")
+    ap.add_argument("--product", default=None, help="PROJECTS/<product> (omit = all)")
     ap.add_argument("--file", default=None, type=Path,
-                    help="단일 XML 파일 직접 지정 (--hub-root 없이도 가능)")
+                    help="Directly specify a single XML file (works without --hub-root)")
     args = ap.parse_args()
 
     if args.file:
         if not args.file.is_file():
-            sys.stderr.write(f"파일 없음: {args.file}\n")
+            sys.stderr.write(f"file not found: {args.file}\n")
             return 2
         issues = verify_file(args.file)
         n_fail = sum(1 for lv, _, _ in issues if lv == "FAIL")
         for lv, code, msg in issues:
             print(f"[{lv}] {code}: {msg}")
         if not issues:
-            print("✅ 모든 검증 통과")
+            print("✅ All checks passed")
         return 1 if n_fail else 0
 
     if not args.hub_root or not args.hub_root.is_dir():

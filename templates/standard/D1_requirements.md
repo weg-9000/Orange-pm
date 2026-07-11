@@ -3,51 +3,51 @@ publication:
   header:
     style: info
     body: |
-      **doc_id: {{DOC_ID}} 버전: {{VERSION}} 최종 수정: {{DATE}}**
+      **doc_id: {{DOC_ID}} Version: {{VERSION}} Last updated: {{DATE}}**
       
       {{DESCRIPTION}}
       
-      **FR 번호 체계: FR-[섹션번호][순번2자리][-하위순번] — §1→FR-1xx / §2→FR-2xx / ... / §9→FR-9xx**
+      **FR numbering scheme: FR-[section number][2-digit sequence][-sub-sequence] — §1→FR-1xx / §2→FR-2xx / ... / §9→FR-9xx**
   meta:
     layout: two_equal
     cells:
       - panel:
-          title: "참고 자료"
+          title: "References"
           body: |
-            **관련 문서**
+            **Related Documents**
             
-            - [[page:[정책정의서] {{PRODUCT_NAME}}]]
-            - [[page:[화면설계서] {{PRODUCT_NAME}}]]
+            - [[page:[Policy Definition] {{PRODUCT_NAME}}]]
+            - [[page:[Screen Design] {{PRODUCT_NAME}}]]
       - change_history: 5
 ---
 
-::: {.panel section="1. 서비스 개요"}
-## 1. 서비스 개요
+::: {.panel section="1. Service Overview"}
+## 1. Service Overview
 
 ---
 
-**{{PRODUCT_NAME}}에 대한 한 문장 설명을 작성한다.**
+**Write a one-sentence description of {{PRODUCT_NAME}}.**
 
 <!-- col-widths: 20%, 80% -->
-| 용어 | 정의 |
+| Term | Definition |
 |---|---|
-| **{{용어1}}** | {{정의1}} |
-| **{{용어2}}** | {{정의2}} |
+| **{{term 1}}** | {{definition 1}} |
+| **{{term 2}}** | {{definition 2}} |
 :::
 
-::: {.panel section="2. 추진 배경"}
-## 2. 추진 배경
+::: {.panel section="2. Background"}
+## 2. Background
 
 ---
 
-{{추진 배경 본문}}
+{{background body}}
 
-### 현행 문제
+### Current Problems
 
 <!-- col-widths: 5%, 10%, 75%, 10% -->
-|  | 구분 | 내용 | 출처 |
+|  | Category | Content | Source |
 |---|---|---|---|
-| P-01 | {{구분}} | {{문제 내용}} | {{출처}} |
+| P-01 | {{category}} | {{problem description}} | {{source}} |
 :::
 
 ::: {.panel section="3. As-Is / To-Be"}
@@ -56,103 +56,105 @@ publication:
 ---
 
 <!-- col-widths: 20%, 35%, 45% -->
-| 구분 | As-Is (현행) | To-Be (개선 후) |
+| Category | As-Is (current) | To-Be (after improvement) |
 |---|---|---|
-| **{{항목1}}** | {{현행 상태}} | {{개선 목표}} |
+| **{{item 1}}** | {{current state}} | {{improvement goal}} |
 :::
 
-::: {.panel section="기능 요구사항"}
-## 기능 요구사항 (FR)
+::: {.panel section="Functional Requirements"}
+## Functional Requirements (FR)
 
 ---
 
 ::: {.info}
-**FR 번호 체계:** FR-[섹션번호][순번2자리][-하위순번]
+**FR numbering scheme:** FR-[section number][2-digit sequence][-sub-sequence]
 
 <!-- col-widths: 15%, 15%, 70% -->
-| 섹션 | 번호대 | 주제 |
+| Section | Number Range | Topic |
 |---|---|---|
-| §1 | FR-1xx | {{§1 주제명}} |
-| §2 | FR-2xx | {{§2 주제명}} |
-| §3 | FR-3xx | {{§3 주제명}} |
-| §4 | FR-4xx | {{§4 주제명}} |
-| §5 | FR-5xx | {{§5 주제명}} |
+| §1 | FR-1xx | {{§1 topic name}} |
+| §2 | FR-2xx | {{§2 topic name}} |
+| §3 | FR-3xx | {{§3 topic name}} |
+| §4 | FR-4xx | {{§4 topic name}} |
+| §5 | FR-5xx | {{§5 topic name}} |
 
-FR 내용 작성 원칙: **What(무엇을)** 한 문장으로. 디테일은 정책서·화면설계서에 위임.
+FR content-writing principle: state **What** in one sentence. Delegate
+details to the policy document / screen design.
 
-capability 씨앗은 사이드카 `requirements.seeds.yml` (가설 — cluster_identify가 소비, cluster_seed_backfill로 부트스트랩)
+The capability seed lives in the sidecar `requirements.seeds.yml`
+(a hypothesis — consumed by cluster_identify, bootstrapped via cluster_seed_backfill)
 :::
 
-### §1 {{§1 주제명}}
+### §1 {{§1 topic name}}
 
 <!-- col-widths: 8%, 15%, 67%, 10% -->
-| FR ID | 요구사항 명칭 | 내용 (What) | 우선순위 |
+| FR ID | Requirement Name | Content (What) | Priority |
 |---|---|---|---|
-| **FR-101** | {{명칭}} | {{기능이 무엇을 해야 하는지 — 한 문장}} | P0 |
-| **FR-101-1** | {{명칭}} | {{FR-101의 세부 조건}} | P0 |
-| **FR-102** | {{명칭}} | {{내용}} | P0 |
+| **FR-101** | {{name}} | {{what the feature should do — one sentence}} | P0 |
+| **FR-101-1** | {{name}} | {{FR-101 detailed condition}} | P0 |
+| **FR-102** | {{name}} | {{content}} | P0 |
 
-### §2 {{§2 주제명}}
+### §2 {{§2 topic name}}
 
 <!-- col-widths: 8%, 15%, 67%, 10% -->
-| FR ID | 요구사항 명칭 | 내용 (What) | 우선순위 |
+| FR ID | Requirement Name | Content (What) | Priority |
 |---|---|---|---|
-| **FR-201** | {{명칭}} | {{내용}} | P0 |
-| **FR-201-1** | {{명칭}} | {{세부 조건}} | P0 |
-| **FR-202** | {{명칭}} | {{내용}} | P1 |
+| **FR-201** | {{name}} | {{content}} | P0 |
+| **FR-201-1** | {{name}} | {{detailed condition}} | P0 |
+| **FR-202** | {{name}} | {{content}} | P1 |
 
-### §3 {{§3 주제명}}
+### §3 {{§3 topic name}}
 
 <!-- col-widths: 8%, 15%, 67%, 10% -->
-| FR ID | 요구사항 명칭 | 내용 (What) | 우선순위 |
+| FR ID | Requirement Name | Content (What) | Priority |
 |---|---|---|---|
-| **FR-301** | {{명칭}} | {{내용}} | P0 |
+| **FR-301** | {{name}} | {{content}} | P0 |
 
-### §4 {{§4 주제명}}
+### §4 {{§4 topic name}}
 
 <!-- col-widths: 8%, 15%, 67%, 10% -->
-| FR ID | 요구사항 명칭 | 내용 (What) | 우선순위 |
+| FR ID | Requirement Name | Content (What) | Priority |
 |---|---|---|---|
-| **FR-401** | {{명칭}} | {{내용}} | P1 |
+| **FR-401** | {{name}} | {{content}} | P1 |
 
-### §5 {{§5 주제명}}
+### §5 {{§5 topic name}}
 
 <!-- col-widths: 8%, 15%, 67%, 10% -->
-| FR ID | 요구사항 명칭 | 내용 (What) | 우선순위 |
+| FR ID | Requirement Name | Content (What) | Priority |
 |---|---|---|---|
-| **FR-501** | {{명칭}} | {{내용}} | P1 |
+| **FR-501** | {{name}} | {{content}} | P1 |
 :::
 
-::: {.panel section="비기능 요구사항"}
-## 비기능 요구사항 (NFR)
+::: {.panel section="Non-Functional Requirements"}
+## Non-Functional Requirements (NFR)
 
 ---
 
 <!-- col-widths: 8%, 15%, 67%, 10% -->
-| NFR ID | 요구사항 명칭 | 내용 | 우선순위 |
+| NFR ID | Requirement Name | Content | Priority |
 |---|---|---|---|
-| NFR-001 | {{명칭}} | {{내용}} | P0 |
+| NFR-001 | {{name}} | {{content}} | P0 |
 :::
 
-::: {.panel section="제약사항"}
-## 제약사항
+::: {.panel section="Constraints"}
+## Constraints
 
 ---
 
 <!-- col-widths: 12%, 23%, 65% -->
-| CON ID | 제약 항목 | 내용 |
+| CON ID | Constraint Item | Content |
 |---|---|---|
-| CON-001 | {{제약 항목}} | {{내용}} |
+| CON-001 | {{constraint item}} | {{content}} |
 :::
 
-::: {.panel section="액터 정의"}
-## 액터 정의
+::: {.panel section="Actor Definitions"}
+## Actor Definitions
 
 ---
 
 <!-- col-widths: 12%, 13%, 13%, 62% -->
-| ACTOR ID | 액터명 | 유형 | 주요 시나리오 |
+| ACTOR ID | Actor Name | Type | Key Scenario |
 |---|---|---|---|
-| ACTOR-001 | {{액터명}} | Primary (외부) | {{시나리오}} |
-| ACTOR-002 | {{액터명}} | Primary (내부) | {{시나리오}} |
+| ACTOR-001 | {{actor name}} | Primary (external) | {{scenario}} |
+| ACTOR-002 | {{actor name}} | Primary (internal) | {{scenario}} |
 :::

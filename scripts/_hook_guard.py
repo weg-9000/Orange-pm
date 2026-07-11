@@ -14,7 +14,7 @@ Behavior:
     - if cwd is not a Planning-Agent-Hub  -> exit 0, no output (dormant)
     - if it is a Hub                      -> emit the matching guidance text
 
-PostToolUse SKIP rule (안 A — status:empty draft):
+PostToolUse SKIP rule (Option A — status:empty draft):
     When Write/Edit/MultiEdit touches PROJECTS/*/drafts/*.draft.md and the
     resulting file has  status: empty  in frontmatter, the fanout shell is
     not yet filled — running policy_impact_scan is meaningless at this stage.
@@ -118,7 +118,7 @@ def main():
     if not is_hub(cwd):
         return 0  # dormant in non-Hub sessions
 
-    # [안 A] PostToolUse skip: status:empty draft = fanout empty shell
+    # [Option A] PostToolUse skip: status:empty draft = fanout empty shell
     # No policy content yet → policy_impact_scan recommendation is meaningless.
     if is_empty_draft_write(payload, event, cwd):
         return 0

@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""cluster_emit — graph/cluster_map.json → 정규화 cluster-map 계약 (FR↔cluster B2/B3).
+"""cluster_emit — graph/cluster_map.json → normalized cluster-map contract (FR<->cluster B2/B3).
 
-cluster_identify 가 만든 cluster_map.json(fr_index·module_index)을 viz 계약으로 변환한다.
-- capabilities: fr_index 를 capability → cluster → FR 로 묶은 파생 뷰(B2 추적성)
-- modules:      module_index(횡단 관심사) → 모듈별 참조 cluster 매트릭스(B3)
-읽기 전용. cluster_map 부재/손상 시 빈 골격(graceful, 01-data-contract).
+Converts the cluster_map.json (fr_index/module_index) produced by cluster_identify
+into the viz contract.
+- capabilities: derived view grouping fr_index by capability -> cluster -> FR (B2 traceability)
+- modules:      module_index (cross-cutting concerns) -> per-module referenced cluster matrix (B3)
+Read-only. Emits an empty skeleton if cluster_map is missing/corrupt (graceful, 01-data-contract).
 """
 from __future__ import annotations
 
@@ -19,12 +20,12 @@ import _emit_common as C
 
 
 def _fr_key(fr: str) -> list:
-    """FR 자연 정렬 키 (FR-2 < FR-10)."""
+    """FR natural sort key (FR-2 < FR-10)."""
     return [int(t) if t.isdigit() else t for t in re.split(r"(\d+)", str(fr))]
 
 
 def transform_cluster_map(cmap: dict, product: str = "") -> dict:
-    """cluster_map.json → cluster-map 계약(capabilities + modules). 결정적 정렬."""
+    """cluster_map.json → cluster-map contract (capabilities + modules). Deterministic sort."""
     fr_index = cmap.get("fr_index") if isinstance(cmap, dict) else None
     module_index = cmap.get("module_index") if isinstance(cmap, dict) else None
     fr_index = fr_index if isinstance(fr_index, dict) else {}
@@ -35,7 +36,7 @@ def transform_cluster_map(cmap: dict, product: str = "") -> dict:
     for fr, info in fr_index.items():
         if not isinstance(info, dict):
             continue
-        cap = str(info.get("capability") or "(미지정)")
+        cap = str(info.get("capability") or "(unspecified)")
         cid = str(info.get("cluster_id") or "")
         cap_map[cap][cid].append(str(fr))
     capabilities = [
@@ -49,7 +50,7 @@ def transform_cluster_map(cmap: dict, product: str = "") -> dict:
         for cap, clusters in sorted(cap_map.items())
     ]
 
-    # modules: moduleId → refs[] (횡단 매트릭스)
+    # modules: moduleId → refs[] (cross-cutting matrix)
     modules = []
     for mid, refs in sorted(module_index.items()):
         rows = [
@@ -82,7 +83,7 @@ def main(argv: list[str]) -> int:
     if args.from_fixture:
         return C.emit(C.load_fixture(args.from_fixture))
     if not (args.hub_root and args.product):
-        sys.stderr.write("--hub-root, --product 필요\n")
+        sys.stderr.write("--hub-root, --product required\n")
         return 2
     path = C.product_dir(args.hub_root, args.product) / "graph" / "cluster_map.json"
     if not path.is_file():

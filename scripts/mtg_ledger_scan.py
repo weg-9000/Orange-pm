@@ -1,27 +1,30 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-r"""회의 결정 원장 ↔ 화면 핀 결정적 교차검증 (WP8-4 · 계약 C-MTG).
+r"""Meeting decisions ledger ↔ screen pin deterministic cross-check (WP8-4 · contract C-MTG).
 
-목적:
-    `meetings/mtg-ledger.md`(PM 정본)와 screen draft frontmatter
-    `meeting_decisions: [MTG-NN]` 핀을 **결정적으로 교차검증만** 한다.
-    회의록 산문에서 분류·요약을 **자동 생성/추출하지 않는다**(환각·C5 위반).
-    원장은 PM 이 작성하며, 본 스크립트는 읽기·검증·큐 산출만.
+Purpose:
+    **Deterministically cross-check only** `meetings/mtg-ledger.md` (PM's
+    canonical source) against the screen draft frontmatter's
+    `meeting_decisions: [MTG-NN]` pins.
+    Classification/summary is **never auto-generated/extracted** from meeting
+    minutes prose (hallucination / C5 violation).
+    The ledger is authored by the PM; this script only reads, validates, and
+    produces a queue.
 
-검사 (전부 결정적):
-    - SCREEN-DELEGATED 행:
-        · open + 어떤 screen 도 meeting_decisions 에 미반영 → BLOCK(위임 미반영)
-        · open + 기한(YYYY-MM-DD) < 오늘 → WARN(기한초과)
-        · closed + 종결근거 공란 또는 미반영 → WARN(종결 불완전)
-    - screen meeting_decisions 의 MTG-NN:
-        · 원장에 없음 → FAIL(미등재 MTG 주장)
-        · 원장에 있으나 분류 ≠ SCREEN-DELEGATED → WARN(오분류 주장)
-    원장 부재 → INFO(미작성 — PM 작성 권고). 자동 생성 안 함.
+Checks (all deterministic):
+    - SCREEN-DELEGATED rows:
+        - open + no screen reflects it in meeting_decisions → BLOCK (delegation not reflected)
+        - open + due date (YYYY-MM-DD) < today → WARN (overdue)
+        - closed + closure rationale blank or not reflected → WARN (incomplete closure)
+    - MTG-NN referenced in screen meeting_decisions:
+        - not in the ledger → FAIL (claims an unregistered MTG)
+        - in the ledger but classification ≠ SCREEN-DELEGATED → WARN (misclassified claim)
+    Ledger missing → INFO (not authored — PM should author it). Never auto-generated.
 
-사용법:
+Usage:
     python mtg_ledger_scan.py --hub-root <Hub> --product <p>
 
-exit code: 0 BLOCK/FAIL 없음 / 1 BLOCK·FAIL≥1(게이트 차단) / 2 인자오류
+exit code: 0 no BLOCK/FAIL / 1 BLOCK·FAIL≥1 (gate blocked) / 2 argument error
 """
 from __future__ import annotations
 
@@ -65,7 +68,7 @@ def _list(raw) -> list[str]:
 
 
 def _parse_ledger(p: Path) -> list[dict]:
-    """고정 7열 파이프 표에서 MTG 행 추출(위치 기반). 헤더·구분행 스킵."""
+    """Extract MTG rows from the fixed 7-column pipe table (positional). Skips header/separator rows."""
     rows = []
     for ln in p.read_text(encoding="utf-8", errors="replace").splitlines():
         s = ln.strip()
@@ -74,7 +77,7 @@ def _parse_ledger(p: Path) -> list[dict]:
         cols = [c.strip() for c in s.strip("|").split("|")]
         if not cols or not MTG_ID.match(cols[0]):
             continue
-        # 0:ID 1:출처 2:요약 3:분류 4:대상 5:상태 6:종결근거
+        # 0:ID 1:source 2:summary 3:class 4:target 5:status 6:closure rationale
         c = cols + [""] * (7 - len(cols))
         rows.append({
             "id": c[0], "src": c[1], "summary": c[2],
@@ -99,18 +102,19 @@ def scan(hub: Path, product: str) -> int:
     if not ledger.exists():
         q.write_text(
             f"# mtg-queue — {product}\n\n"
-            f"> 생성: {datetime.now().isoformat(timespec='seconds')} · mtg_ledger_scan.py\n"
-            f"> **INFO: mtg-ledger 미작성** — `meetings/mtg-ledger.md` 를 PM 이 "
-            f"작성해야 C-MTG 추적 가능(템플릿: templates/mtg-ledger-template.md). "
-            f"자동 생성하지 않음(환각 금지).\n",
+            f"> Generated: {datetime.now().isoformat(timespec='seconds')} · mtg_ledger_scan.py\n"
+            f"> **INFO: mtg-ledger not authored** — the PM must author "
+            f"`meetings/mtg-ledger.md` for C-MTG tracking to work "
+            f"(template: templates/mtg-ledger-template.md). "
+            f"Not auto-generated (no hallucinated content).\n",
             encoding="utf-8")
-        print(f"[mtg_ledger_scan] {product}: ledger 미작성 — INFO(자동생성 안 함)")
+        print(f"[mtg_ledger_scan] {product}: ledger not authored — INFO (not auto-generated)")
         return 0
 
     led = _parse_ledger(ledger)
     led_ids = {r["id"]: r for r in led}
 
-    # screen meeting_decisions 수집
+    # collect screen meeting_decisions
     screen_pins: dict[str, list[str]] = {}   # MTG-ID → [draft...]
     for sd in sorted(drafts.glob("*.draft.md")):
         fm = _fm(sd.read_text(encoding="utf-8", errors="replace"))
@@ -125,8 +129,8 @@ def scan(hub: Path, product: str) -> int:
 
     for r in led:
         if r["cls"] not in CLASSES:
-            rows.append((r["id"], r["cls"] or "(공란)", "WARN",
-                         "분류 enum 아님(POLICY-REFLECTED/SCREEN-DELEGATED/EXTERNAL-PENDING)"))
+            rows.append((r["id"], r["cls"] or "(blank)", "WARN",
+                         "classification not a valid enum (POLICY-REFLECTED/SCREEN-DELEGATED/EXTERNAL-PENDING)"))
             continue
         if r["cls"] != "SCREEN-DELEGATED":
             continue
@@ -134,8 +138,8 @@ def scan(hub: Path, product: str) -> int:
         if r["status"] != "closed" and not reflected:
             block += 1
             rows.append((r["id"], "SCREEN-DELEGATED", "BLOCK",
-                         f"위임 open 미반영 — 어떤 screen 도 meeting_decisions 에 "
-                         f"{r['id']} 핀 없음 (대상: {r['target'] or '?'})"))
+                         f"delegation open not reflected — no screen has a "
+                         f"meeting_decisions pin for {r['id']} (target: {r['target'] or '?'})"))
             continue
         dm = DATE.search(r["target"])
         if r["status"] != "closed" and dm:
@@ -143,63 +147,63 @@ def scan(hub: Path, product: str) -> int:
                 dl = datetime.strptime(dm.group(1), "%Y-%m-%d").date()
                 if dl < today:
                     rows.append((r["id"], "SCREEN-DELEGATED", "WARN",
-                                 f"기한초과({dm.group(1)}) open — 반영: "
-                                 f"{', '.join(reflected) or '없음'}"))
+                                 f"overdue ({dm.group(1)}) open — reflected in: "
+                                 f"{', '.join(reflected) or 'none'}"))
                     continue
             except ValueError:
                 pass
         if r["status"] == "closed" and (not r["closure"] or not reflected):
             rows.append((r["id"], "SCREEN-DELEGATED", "WARN",
-                         f"closed 이나 종결근거 공란 또는 화면 미반영 "
-                         f"(근거:'{r['closure'] or '-'}' / 반영:{reflected or '없음'})"))
+                         f"closed but closure rationale blank or not reflected in a screen "
+                         f"(rationale:'{r['closure'] or '-'}' / reflected in:{reflected or 'none'})"))
             continue
         rows.append((r["id"], "SCREEN-DELEGATED", "OK",
-                     f"반영: {', '.join(reflected)} / 상태 {r['status']}"))
+                     f"reflected in: {', '.join(reflected)} / status {r['status']}"))
 
     for mid, ds in sorted(screen_pins.items()):
         if mid not in led_ids:
             fail += 1
-            rows.append((mid, "(원장없음)", "FAIL",
-                         f"화면 {', '.join(ds)} 이 미등재 {mid} 주장 — 원장 등재 필요"))
+            rows.append((mid, "(not in ledger)", "FAIL",
+                         f"screen(s) {', '.join(ds)} claim unregistered {mid} — must be registered in the ledger"))
         elif led_ids[mid]["cls"] != "SCREEN-DELEGATED":
             rows.append((mid, led_ids[mid]["cls"], "WARN",
-                         f"화면 {', '.join(ds)} 주장이나 원장 분류={led_ids[mid]['cls']} "
-                         f"(SCREEN-DELEGATED 아님)"))
+                         f"screen(s) {', '.join(ds)} claim it but ledger classification={led_ids[mid]['cls']} "
+                         f"(not SCREEN-DELEGATED)"))
 
     n_w = sum(1 for r in rows if r[2] == "WARN")
     lines = [
         f"# mtg-queue — {product}",
         "",
-        f"> 생성: {datetime.now().isoformat(timespec='seconds')} · mtg_ledger_scan.py (수정 금지)",
-        f"> 원장 {len(led)}행 · screen 핀 {sum(len(v) for v in screen_pins.values())}건 · "
+        f"> Generated: {datetime.now().isoformat(timespec='seconds')} · mtg_ledger_scan.py (do not edit)",
+        f"> ledger {len(led)} rows · screen pins {sum(len(v) for v in screen_pins.values())} · "
         f"**BLOCK: {block} · FAIL: {fail} · WARN: {n_w}**",
         "",
-        "| MTG-ID | 분류 | 상태 | 사유 |",
+        "| MTG-ID | Class | Status | Reason |",
         "|---|---|---|---|",
     ]
     if rows:
         for i, cls, st, why in rows:
             lines.append(f"| {i} | {cls} | **{st}** | {why} |")
     else:
-        lines.append("| _(SCREEN-DELEGATED 없음)_ | — | OK | — |")
+        lines.append("| _(no SCREEN-DELEGATED)_ | — | OK | — |")
     lines += [
         "",
-        "## 처리 기준 (gates/mtg-gate.md)",
-        "- BLOCK: SCREEN-DELEGATED open 미반영 → 대응 화면 반영 전 Phase 전진 차단",
-        "- FAIL: 화면이 미등재 MTG 주장 → 원장 등재(PM) 또는 핀 정정",
-        "- WARN: 기한초과/종결 불완전/오분류 — 비차단, PM 확인",
-        "- INFO: 원장 미작성 — PM 작성(자동 생성 안 함, 환각 금지)",
+        "## Handling criteria (gates/mtg-gate.md)",
+        "- BLOCK: SCREEN-DELEGATED open not reflected → blocks Phase progress until the corresponding screen reflects it",
+        "- FAIL: screen claims an unregistered MTG → register in the ledger (PM) or correct the pin",
+        "- WARN: overdue / incomplete closure / misclassified — non-blocking, PM should verify",
+        "- INFO: ledger not authored — PM should author it (not auto-generated, no hallucinated content)",
     ]
     q.write_text("\n".join(lines) + "\n", encoding="utf-8")
     print(f"[mtg_ledger_scan] {product}: BLOCK={block} FAIL={fail} WARN={n_w} "
           f"→ {q.relative_to(hub)}")
-    print(f"[mtg_ledger_scan] 완료 — 차단 {block + fail}건"
-          + ("" if block + fail == 0 else " (mtg-gate 차단)"))
+    print(f"[mtg_ledger_scan] done — {block + fail} blocked"
+          + ("" if block + fail == 0 else " (mtg-gate blocked)"))
     return 1 if (block + fail) else 0
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description="회의 원장↔화면 핀 교차검증 (C-MTG)")
+    ap = argparse.ArgumentParser(description="Meeting ledger ↔ screen pin cross-check (C-MTG)")
     ap.add_argument("--hub-root", required=True, type=Path)
     ap.add_argument("--product", required=True)
     a = ap.parse_args()

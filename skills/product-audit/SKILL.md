@@ -1,6 +1,6 @@
 ---
 name: product-audit
-description: 사용자가 연결한 wiki·design·repo 커넥터(CONNECTORS.md)를 통해 자사 제품 현황을 분석하고 기존 기능 목록, 페인 포인트, 개선 기회를 구조화한다. Discovery 3개 스트림 중 product-audit 스트림을 완성한다.
+description: Analyzes the state of your own product via the wiki·design·repo connectors the user has connected (CONNECTORS.md), and structures the existing feature list, pain points, and improvement opportunities. Completes the product-audit stream of the 3 Discovery streams.
 triggers:
   - "product-audit"
   - "audit product"
@@ -10,247 +10,253 @@ effort: medium
 user-invocable: true
 ---
 
-## Bootstrap 캐시 가드 (개선안 F — CONTEXT_OPTIMIZATION.md)
+## Bootstrap Cache Guard (Improvement F — CONTEXT_OPTIMIZATION.md)
 
-세션 첫 진입 시 `CONTEXT/_session-bootstrap.md` 를 1회만 로드한다.
-이미 같은 세션에서 본 파일을 읽었다면 재독을 금지한다.
-캐시가 없거나 stale 이면 다음 명령으로 갱신한 뒤 진행한다:
+Load `CONTEXT/_session-bootstrap.md` once at the start of the session.
+If a file has already been read in the same session, do not re-read it.
+If the cache is missing or stale, refresh it with the following command before proceeding:
 
 ```bash
 python ${CLAUDE_PLUGIN_ROOT}/scripts/build_bootstrap.py --hub-root .
 ```
 
-본 가드는 layer-config / about-pm / project-rules / brand-voice /
-doc-layer-schema / team-members 6개 원본 파일 재로드를 대체한다.
-원본 파일 직접 Read 는 본 skill 의 핵심 작업에 필수인 경우에만 허용된다.
+This guard replaces re-loading the 6 source files layer-config / about-pm / project-rules /
+brand-voice / doc-layer-schema / team-members.
+Reading the source files directly is only permitted when essential to this skill's core work.
 
-## 전제조건 검사
+## Precondition check
 
-1. `CONTEXT/layer-config.md`에서 PREFIX를 읽는다.
-   미존재 시 `/ingest {product}` 실행을 안내한다.
+1. Read PREFIX from `CONTEXT/layer-config.md`.
+   If not present, guide the user to run `/ingest {product}`.
 
-2. `inputs/discovery/product-audit/` 디렉토리가 존재하는지 확인한다.
-   없으면 생성한다.
+2. Check whether the `inputs/discovery/product-audit/` directory exists.
+   If not, create it.
 
-3. 기존 파일이 존재하면 덮어쓰기 전 PM에게 확인한다.
-
-
-## 실행 단계
-
-### 단계 1 — 문서 조회 (`wiki` 커넥터)
-
-`wiki` 커넥터(예: Confluence, Notion — CONNECTORS.md 탐지 프로토콜)를 사용해 다음 항목을 조회한다:
-
-**조회 대상:**
-- 현재 서비스 기능 명세 페이지 (Approved 문서 우선)
-- 이전 개발 주기 PRD / 기획서
-- API 연동 명세 문서
-- 알려진 이슈 / 버그 기록 페이지
-
-**수집 항목:**
-- 기능명, 기능 설명, 현재 상태 (운영 중 / 개발 중 / 중단)
-- 기능별 관련 레이어 (정책 / 화면 / 시스템)
-- 문서화된 고객 불만 또는 한계 사항
-
-커넥터 부재·연결 실패 시 `[wiki 연동 없음 — 탐색 생략]`을 기록하고 계속 진행한다.
+3. If existing files are present, confirm with the PM before overwriting.
 
 
-### 단계 2 — 디자인 조회 (`design` 커넥터)
+## Execution steps
 
-`design` 커넥터(예: Figma — CONNECTORS.md 탐지 프로토콜)를 사용해 현재 제품 디자인 파일을 조회한다.
+### Step 1 — Query documents (`wiki` connector)
 
-**수집 항목:**
-- 화면 목록 (프레임 이름 기준)
-- 화면별 상태 (현행 UI / 개편 예정 / Deprecated)
-- 주요 컴포넌트 및 반복 패턴
-- 화면 흐름 (프로토타입 연결 기준)
+Use the `wiki` connector (e.g. Confluence, Notion — CONNECTORS.md detection protocol) to query
+the following items:
 
-커넥터 부재·연결 실패 시 `[design 연동 없음 — 탐색 생략]`을 기록하고 계속 진행한다.
+**Query targets:**
+- Current service feature spec pages (prefer Approved documents)
+- PRD / planning docs from previous development cycles
+- API integration spec documents
+- Known issue / bug record pages
 
+**Items to collect:**
+- Feature name, feature description, current status (in operation / in development / discontinued)
+- Layer associated with each feature (policy / screen / system)
+- Documented customer complaints or limitations
 
-### 단계 3 — 저장소 조회 (`repo` 커넥터)
-
-`repo` 커넥터(예: GitLab, GitHub — CONNECTORS.md 탐지 프로토콜)를 사용해 다음 항목을 조회한다:
-
-**조회 대상:**
-- 최근 90일 Closed 이슈 제목 + 레이블
-- 최근 90일 Merged MR 제목
-- README 또는 CHANGELOG
-
-**수집 항목:**
-- 최근 변경된 기능 범위
-- 반복적으로 등장하는 버그 패턴
-- 기술 부채 관련 레이블 (tech-debt, hotfix 등)
-
-커넥터 부재·연결 실패 시 `[repo 연동 없음 — 탐색 생략]`을 기록하고 계속 진행한다.
+If the connector is absent or the connection fails, record
+`[wiki skipped]` and continue.
 
 
-### 단계 4 — existing-features.md 작성
+### Step 2 — Query design (`design` connector)
 
-수집된 데이터를 기반으로 작성한다.
+Use the `design` connector (e.g. Figma — CONNECTORS.md detection protocol) to query the
+current product design files.
 
-**작성 기준:**
-- 각 기능을 운영·개발·중단 상태로 분류한다.
-- 기능 단위는 화면 또는 API 기준으로 분리한다.
-- 디자인 화면명과 문서 기능명이 일치하지 않으면 양쪽을 병기한다.
+**Items to collect:**
+- Screen list (based on frame names)
+- Status per screen (current UI / to be redesigned / deprecated)
+- Key components and recurring patterns
+- Screen flow (based on prototype links)
 
-**파일 형식:**
+If the connector is absent or the connection fails, record
+`[design skipped]` and continue.
+
+
+### Step 3 — Query repository (`repo` connector)
+
+Use the `repo` connector (e.g. GitLab, GitHub — CONNECTORS.md detection protocol) to query
+the following items:
+
+**Query targets:**
+- Titles + labels of issues closed in the last 90 days
+- Titles of MRs merged in the last 90 days
+- README or CHANGELOG
+
+**Items to collect:**
+- Scope of recently changed features
+- Recurring bug patterns
+- Tech-debt-related labels (tech-debt, hotfix, etc.)
+
+If the connector is absent or the connection fails, record
+`[repo skipped]` and continue.
+
+
+### Step 4 — Write existing-features.md
+
+Write based on the collected data.
+
+**Authoring criteria:**
+- Classify each feature as in-operation, in-development, or discontinued.
+- Split feature units by screen or API.
+- If the design screen name and document feature name don't match, list both.
+
+**File format:**
 ```markdown
-# 기존 기능 목록 — {product}
+# Existing Feature List — {product}
 
-> 수집 기준일: {날짜}
-> 출처: wiki / design / repo 커넥터 (탐색 성공 소스만 기재)
+> Collection baseline date: {date}
+> Sources: wiki / design / repo connectors (only successfully discovered sources listed)
 
-## 운영 중 기능
+## Features in operation
 
-| 기능명 | 설명 | 관련 화면 | 문서 출처 | 비고 |
+| Feature | Description | Related screen | Document source | Notes |
 |---|---|---|---|---|
 
-## 개발 중 기능
+## Features in development
 
-| 기능명 | 설명 | 예상 완료 | 출처 | 비고 |
+| Feature | Description | Expected completion | Source | Notes |
 |---|---|---|---|---|
 
-## 중단 / Deprecated
+## Discontinued / Deprecated
 
-| 기능명 | 중단 사유 | 대체 기능 |
+| Feature | Reason for discontinuation | Replacement feature |
 |---|---|---|
 
-## 탐색 공백 (출처 미확인 기능)
+## Discovery gaps (features with unconfirmed source)
 
-| 기능명 | 공백 사유 |
+| Feature | Gap reason |
 |---|---|
 ```
 
-"탐색 공백" 항목이 3개 이상이면 open-issues.md에 P2로 등록한다.
+If there are 3+ "discovery gap" items, register them in open-issues.md as P2.
 
 
-### 단계 5 — pain-points.md 작성
+### Step 5 — Write pain-points.md
 
-수집된 이슈, 불만, 한계 사항을 유형별로 분류한다.
+Classify collected issues, complaints, and limitations by type.
 
-**분류 기준:**
+**Classification criteria:**
 
-| 유형 | 정의 |
+| Type | Definition |
 |---|---|
-| UX | 사용자 흐름 불편, 이해 어려움, 피드백 부재 |
-| 성능 | 응답 지연, 오류율, 처리 한계 |
-| 비즈니스 로직 | 정책 불일치, 예외 미처리, 엣지케이스 오류 |
-| 연동 | 외부 시스템 연결 불안정, API 불일치 |
-| 운영 | 관리 도구 부재, 모니터링 불가, 수동 처리 필요 |
+| UX | inconvenient user flow, hard to understand, lack of feedback |
+| Performance | response delay, error rate, processing limits |
+| Business logic | policy inconsistency, unhandled exceptions, edge-case errors |
+| Integration | unstable external system connections, API mismatch |
+| Operations | lack of admin tools, no monitoring, requires manual handling |
 
-**파일 형식:**
+**File format:**
 ```markdown
-# 페인 포인트 — {product}
+# Pain Points — {product}
 
-> 수집 기준일: {날짜}
-> 출처: wiki / repo 이슈 / chat 커넥터 (탐색 성공 소스만 기재)
+> Collection baseline date: {date}
+> Sources: wiki / repo issues / chat connector (only successfully discovered sources listed)
 
-## UX 페인 포인트
+## UX pain points
 
-| 항목 | 설명 | 출처 | 심각도 (H/M/L) |
+| Item | Description | Source | Severity (H/M/L) |
 |---|---|---|---|
 
-## 성능 페인 포인트
+## Performance pain points
 
 ...
 
-## 비즈니스 로직 페인 포인트
+## Business logic pain points
 
 ...
 
-## 연동 페인 포인트
+## Integration pain points
 
 ...
 
-## 운영 페인 포인트
+## Operations pain points
 
 ...
 ```
 
-심각도 H 항목이 존재하면 open-issues.md에 P1으로 등록한다.
+If any severity-H item exists, register it in open-issues.md as P1.
 
 
-### 단계 6 — overview.md 작성
+### Step 6 — Write overview.md
 
-existing-features.md와 pain-points.md를 교차 분석해 작성한다.
+Write by cross-analyzing existing-features.md and pain-points.md.
 
-**파일 형식:**
+**File format:**
 ```markdown
-# 제품 현황 요약 — {product}
+# Product Status Summary — {product}
 
-## 현황 스냅샷
+## Status snapshot
 
-| 항목 | 수치 |
+| Item | Figure |
 |---|---|
-| 운영 중 기능 수 | {N}개 |
-| 개발 중 기능 수 | {N}개 |
-| 페인 포인트 총계 | {N}건 (H: {N} / M: {N} / L: {N}) |
-| 탐색 공백 수 | {N}건 |
+| Features in operation | {N} |
+| Features in development | {N} |
+| Total pain points | {N} (H: {N} / M: {N} / L: {N}) |
+| Discovery gaps | {N} |
 
-## 개선 기회 도출
+## Improvement opportunities identified
 
-{pain-points.md 심각도 H/M 항목을 기반으로 개선이 필요한 영역 서술}
+{Description of areas needing improvement, based on severity H/M items in pain-points.md}
 
-### 요구사항 연결 가능성
+### Requirements linkage potential
 
-| 개선 기회 | 예상 요구사항 레이어 | 우선순위 |
+| Improvement opportunity | Expected requirements layer | Priority |
 |---|---|---|
-| {개선 항목} | Layer 1 FR / Layer 2 NFR | H / M / L |
+| {improvement item} | Layer 1 FR / Layer 2 NFR | H / M / L |
 
-## 기존 기능 재사용 가능성
+## Existing feature reuse potential
 
-| 기능명 | 재사용 범위 | 비고 |
+| Feature | Reuse scope | Notes |
 |---|---|---|
 
-## 탐색 공백 및 미확인 항목
+## Discovery gaps and unconfirmed items
 
-{탐색 불가했던 소스와 이유를 기록}
+{Record which sources couldn't be explored and why}
 ```
 
 
-### 단계 7 — 품질 최소 임계값 확인
+### Step 7 — Verify minimum quality threshold
 
-다음 기준을 충족하지 못하면 PM에게 보완 여부를 확인한다:
+If the following criteria aren't met, confirm with the PM whether to supplement:
 
-| 항목 | 기준 |
+| Item | Criterion |
 |---|---|
-| existing-features.md 기능 수 | 운영 중 기능 1개 이상 |
-| pain-points.md 항목 수 | 총 1개 이상 |
-| overview.md 개선 기회 | 1개 이상 |
-| 탐색 공백 비율 | 전체 기능 수의 50% 미만 |
+| existing-features.md feature count | 1+ in-operation feature |
+| pain-points.md item count | 1+ total |
+| overview.md improvement opportunities | 1+ |
+| Discovery gap ratio | under 50% of total feature count |
 
-미달 항목이 있으면 `[품질 미달]` 경고를 표시하고
-/draft-req에서 synthesizer가 강제 진행 여부를 판단하도록 기록한다.
+If any item falls short, display a `[Quality shortfall]` warning and record it so the
+synthesizer in /draft-req can decide whether to force progression.
 
 
-### 단계 8 — session-log.md 및 open-issues.md 갱신
+### Step 8 — Update session-log.md and open-issues.md
 
-session-log.md에 추가한다:
+Add to session-log.md:
 ```markdown
-- {날짜} /product-audit: 기능 {N}개 / 페인포인트 {N}건 (H: {N}) / 탐색공백 {N}건
+- {date} /product-audit: {N} features / {N} pain points (H: {N}) / {N} discovery gaps
 ```
 
-open-issues.md에서 `[DISC-03]` 항목을 완료 처리한다:
+Mark the `[DISC-03]` item complete in open-issues.md:
 ```markdown
-- [x] [DISC-03] ~~자사 제품 현황 파악 미완료~~ → /product-audit 완료
+- [x] [DISC-03] ~~Own product status assessment incomplete~~ → /product-audit complete
 ```
 
-심각도 H 페인 포인트별 P1 항목을 추가한다.
+Add a P1 item per severity-H pain point.
 
 
-## 결과 파일 목록
+## Result file list
 
-| 파일 | 내용 |
+| File | Content |
 |---|---|
-| `inputs/discovery/product-audit/existing-features.md` | 기능 현황 + 상태 분류 |
-| `inputs/discovery/product-audit/pain-points.md` | 유형별 페인 포인트 + 심각도 |
-| `inputs/discovery/product-audit/overview.md` | 현황 요약 + 개선 기회 + 요구사항 연결 |
-| `open-issues.md` | DISC-03 완료 / 탐색 공백 P2 / 심각도 H P1 등록 |
-| `session-log.md` | product-audit 완료 기록 |
+| `inputs/discovery/product-audit/existing-features.md` | feature status + classification |
+| `inputs/discovery/product-audit/pain-points.md` | pain points by type + severity |
+| `inputs/discovery/product-audit/overview.md` | status summary + improvement opportunities + requirements linkage |
+| `open-issues.md` | DISC-03 complete / discovery gaps registered as P2 / severity-H registered as P1 |
+| `session-log.md` | product-audit completion record |
 
 
-## 다음 단계
+## Next step
 
-3개 Discovery 스트림 완료 후:
-- `/draft-req {product}`: requirements.md 초안 생성
+After all 3 Discovery streams are complete:
+- `/draft-req {product}`: generate requirements.md draft

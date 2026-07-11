@@ -1,356 +1,382 @@
 ---
 name: write
-description: policy WO 초안을 작성한다. 작성 전 반드시 {PREFIX}-B 공통 정책을 로드하고 Delta 범위(이 제품만의 예외·확장 사항)를 PM과 확인한 뒤 작성한다. {PREFIX}-B 내용과 동일한 항목은 절대 재작성하지 않는다. screen WO 초안은 /flow 스킬을 사용한다.
+description: Writes the policy WO draft. Before writing, always load the {PREFIX}-B common policy and confirm the Delta scope (this product's exceptions/extensions only) with the PM, then write. Content identical to {PREFIX}-B is never rewritten. For screen WO drafts, use the /flow skill.
 triggers:
   - "write"
   - "write wo"
   - "draft policy"
-  - "정책서 작성"
-  - "초안 작성"
 phase: 2
 effort: high
 model: opus
 user-invocable: true
 ---
 
-## Bootstrap 캐시 가드 (개선안 F — CONTEXT_OPTIMIZATION.md)
+## Bootstrap cache guard (Improvement F — CONTEXT_OPTIMIZATION.md)
 
-세션 첫 진입 시 `CONTEXT/_session-bootstrap.md` 를 1회만 로드한다.
-이미 같은 세션에서 본 파일을 읽었다면 재독을 금지한다.
-캐시가 없거나 stale 이면 다음 명령으로 갱신한 뒤 진행한다:
+Load `CONTEXT/_session-bootstrap.md` only once per session, on first entry.
+Do not re-read it if it was already read in the same session.
+If the cache is missing or stale, refresh it with the following command before proceeding:
 
 ```bash
 python ${CLAUDE_PLUGIN_ROOT}/scripts/build_bootstrap.py --hub-root .
 ```
 
-본 가드는 layer-config / about-pm / project-rules / brand-voice /
-doc-layer-schema / team-members 6개 원본 파일 재로드를 대체한다.
-원본 파일 직접 Read 는 본 skill 의 핵심 작업에 필수인 경우에만 허용된다.
+This guard replaces reloading the 6 source files layer-config / about-pm / project-rules / brand-voice /
+doc-layer-schema / team-members. Reading the source files directly is allowed only when it is essential
+to this skill's core task.
 
 
-## 공통 참조 가드 (C0·C-PIN — gates/master-derivation-gate.md SSoT)
+## Common-reference guard (C0, C-PIN — gates/master-derivation-gate.md SSoT)
 
-작성 전 적용한다. 상세 정책·판정은 `CONTEXT/gates/master-derivation-gate.md`.
+Applies before writing. See `CONTEXT/gates/master-derivation-gate.md` for detailed policy and judgment criteria.
 
-1. 공통 대조: 작성 항목이 G2-A/B 에 이미 있는지 `B-headings-index.json` 으로
-   후보 §섹션만 식별한다(원문 전체 로드 금지 — 토큰 경계). 이미 있으면 재작성
-   금지, `[{doc_id} §X] 참조` 링크로 대체. B 무시·자체 재서술도 금지.
-2. C-PIN: draft frontmatter `referenced_master: [{핀ID}@{version}]` 에 Delta
-   기준 공통를 핀한다. 핀 ID 는 `CONTEXT/reference-docs/master-id-map.yml`
-   권위 ID(G2-A-001 / G2-B-001~004). 비우면 공통 미참조(opt-out) →
-   decisions.md 근거 필수(없으면 WARN).
-3. PM 확인은 이 스킬의 기존 Delta 확인 단계(단계 2)에 통합한다
-   (가드 전용 직렬 프롬프트 추가 금지 — 단일 체크포인트).
-
-
-## 입출력 (안 A — WO 템플릿 ↔ draft 1-파일화)
-
-- **입력**: `PROJECTS/{product}/drafts/{WO_ID}.draft.md`
-  (fanout 단계에서 생성된 빈 셸 — frontmatter `status: empty`, 본문에 `## 1.~7.` 표준 섹션 골격 + `<!-- wikilinks:start/end -->` 블록 포함)
-- **출력**: `PROJECTS/{product}/drafts/{WO_ID}.draft.md`
-  (**동일 파일 수정** — `status: empty → ai-draft`, 표준 섹션 골격을 콘텐츠로 채움)
-
-> 이전 명세(work-orders/{WO_ID}.md 읽고 drafts/{WO_ID}.draft.md 신규 생성)는 폐기되었다.
-> fanout 이 빈 셸을 미리 만들어두므로 write 는 그 셸을 in-place 수정한다.
+1. Common cross-check: check whether the item being written already exists in G2-A/B by
+   identifying only the candidate §section via `B-headings-index.json` (no loading the full
+   source text — token boundary). If it already exists, do not rewrite it — replace it with a
+   `[{doc_id} §X] reference` link instead. Ignoring B or restating it in your own words is also prohibited.
+2. C-PIN: pin the common-policy basis for the Delta in the draft frontmatter
+   `referenced_master: [{pin ID}@{version}]`. The pin ID is the authoritative ID from
+   `CONTEXT/reference-docs/master-id-map.yml` (G2-A-001 / G2-B-001–004). Leaving it blank means
+   opting out of common-policy reference → requires justification in decisions.md (otherwise WARN).
+3. PM confirmation is folded into this skill's existing Delta-confirmation step (step 2)
+   (do not add a separate serial prompt just for this guard — single checkpoint).
 
 
-## 전제조건 검사
+## I/O (Plan A — WO template ↔ draft single-file model)
 
-1. `PROJECTS/{product}/drafts/{WO_ID}.draft.md` 가 존재하는지 확인한다.
-   없으면 `/fanout {product}` 실행을 안내하고 중단한다.
+- **Input**: `PROJECTS/{product}/drafts/{WO_ID}.draft.md`
+  (an empty shell generated during the fanout step — frontmatter `status: empty`, body containing
+  the standard `## 1.–7.` section skeleton plus a `<!-- wikilinks:start/end -->` block)
+- **Output**: `PROJECTS/{product}/drafts/{WO_ID}.draft.md`
+  (**modifies the same file** — `status: empty → ai-draft`, filling the standard section skeleton with content)
 
-2. **[status 분기 — 안 A 통합 schema]**
-   대상 draft 의 frontmatter `status` 값을 확인한다:
+> The previous spec (read work-orders/{WO_ID}.md and create a new drafts/{WO_ID}.draft.md) has
+> been deprecated. Since fanout pre-creates the empty shell, write modifies that shell in place.
 
-   - `status: empty` → 정상 진입. write 가 본문 채우고 `status: ai-draft` 로 전환.
-   - `status: ai-draft` → 사용자 확인 후 재작성 진행. 다음 경고 출력:
+
+## Prerequisite checks
+
+1. Check whether `PROJECTS/{product}/drafts/{WO_ID}.draft.md` exists.
+   If missing, direct the user to run `/fanout {product}` and stop.
+
+2. **[status branch — Plan A unified schema]**
+   Check the target draft's frontmatter `status` value:
+
+   - `status: empty` → proceed normally. write fills the body and transitions to `status: ai-draft`.
+   - `status: ai-draft` → proceed with the rewrite after user confirmation. Print the following warning:
      ```
-     ⚠️ 이 draft 는 이미 ai-draft 상태입니다 (이전 write 결과).
-        재작성하면 기존 본문이 덮어쓰여집니다. 계속하시겠습니까? (Y/N)
+     ⚠️ This draft is already in ai-draft status (result of a previous write run).
+        Rewriting it will overwrite the existing body. Continue? (Y/N)
      ```
-   - `status: human-reviewed` → 거부. PM 승인 없이 수정 금지.
-     `--force` 플래그가 명시되어야 진행. 그렇지 않으면 다음 안내 후 중단:
+   - `status: human-reviewed` → refuse. Do not modify without PM approval.
+     Requires the explicit `--force` flag to proceed. Otherwise, print the following notice and stop:
      ```
-     ❌ 이 draft 는 PM 검토 완료 상태(human-reviewed)입니다.
-        수정하려면 명시적으로 --force 플래그를 사용하세요.
+     ❌ This draft is in human-reviewed status (PM review complete).
+        Use the explicit --force flag to modify it.
      ```
-   - `status: frozen` → 거부. v1.0 확정본은 직접 수정할 수 없다.
-     새 DEC 등재 + 새 버전으로만 수정 가능. 다음 안내 후 중단:
+   - `status: frozen` → refuse. A v1.0 frozen document cannot be edited directly.
+     It can only be modified by registering a new DEC and creating a new-version draft.
+     Print the following notice and stop:
      ```
-     ❌ 이 draft 는 v1.0 확정(frozen) 상태입니다.
-        수정하려면 decisions.md 에 새 DEC 를 등재하고 새 버전 draft 를 생성해야 합니다.
+     ❌ This draft is in v1.0 frozen status.
+        To modify it, register a new DEC in decisions.md and create a new-version draft.
      ```
-   - `status` 필드 누락 → 마이그레이션 권고 후 중단:
+   - Missing `status` field → recommend migration and stop:
      ```
-     ⚠️ frontmatter 에 status 필드가 없습니다 (안 A schema 이전 draft).
-        다음 명령으로 마이그레이션 후 재실행하세요:
+     ⚠️ The frontmatter has no status field (a pre-Plan-A-schema draft).
+        Migrate with the following command and re-run:
         python ${CLAUDE_PLUGIN_ROOT}/scripts/migrate_draft_frontmatter.py --hub-root . --product {product}
      ```
-   - 파일 자체 부재 → `/fanout {product}` 미실행 권고 후 중단.
+   - File itself absent → recommend running `/fanout {product}` and stop.
 
-3. draft 파일의 frontmatter `type` 값을 읽는다.
-   - `type: screen` → `/flow {product} {screen_id}` 실행을 안내하고 중단한다.
-   - `type: cluster_draft` → `/write-cluster {product} {cluster_id}` 실행을 안내하고 중단한다.
-     (Track A cluster draft 는 4패널 양식이라 본 skill(node policy)과 본문 구조가 다르다.)
-   - `type: policy` → 계속 진행한다.
+3. Read the draft file's frontmatter `type` value.
+   - `type: screen` → direct the user to run `/flow {product} {screen_id}` and stop.
+   - `type: cluster_draft` → direct the user to run `/write-cluster {product} {cluster_id}` and stop.
+     (Track A cluster drafts use a 4-panel format, so their body structure differs from this
+     skill's (node policy).)
+   - `type: policy` → proceed.
 
-4. `PROJECTS/{product}/graph/graph.json` 을 읽어
-   해당 WO_ID 노드의 다음 필드를 확인한다:
-   - `delta_required` 값
-   - `inherits_from` 목록 (상위 {PREFIX}-B doc_id 목록)
-   - `includes` 목록 (참조할 {PREFIX}-C doc_id 목록)
+4. Read `PROJECTS/{product}/graph/graph.json` and check the following fields of the
+   corresponding WO_ID node:
+   - `delta_required` value
+   - `inherits_from` list (parent {PREFIX}-B doc_id list)
+   - `includes` list ({PREFIX}-C doc_id list to reference)
 
-5. `PROJECTS/{product}/decisions.md` 가 존재하는지 확인한다.
-   없으면 PM에게 생성을 요청하고 중단한다.
+5. Check whether `PROJECTS/{product}/decisions.md` exists.
+   If missing, ask the PM to create it and stop.
 
-6. `CONTEXT/layer-config.md` 에서 PREFIX를 읽고, `CONTEXT/reference-docs/{ACTIVE_PREFIX}/B/` 경로에서
-   {PREFIX}-B 파일을 로드한다.
+6. Read PREFIX from `CONTEXT/layer-config.md`, and load the {PREFIX}-B file from
+   `CONTEXT/reference-docs/{ACTIVE_PREFIX}/B/`.
 
 
-## 단계 1 — {PREFIX}-B 공통 정책 로드 (캐시 우선·섹션 발췌)
+## Step 1 — Load the {PREFIX}-B common policy (cache-first, section excerpt)
 
-> **개선안 A·B (CONTEXT_OPTIMIZATION.md)** — 원문 전체 로드를 금지하고
-> 캐시·인덱스 기반으로 필요한 섹션만 발췌 로드한다.
+> **Improvements A, B (CONTEXT_OPTIMIZATION.md)** — loading the full source text is prohibited;
+> load only the needed sections as excerpts, based on the cache/index.
 
-**로드 우선순위 (반드시 위에서부터 순서대로):**
+**Load priority (must follow this order from top to bottom):**
 
-1. **B-summary.md 캐시 (개선안 A)**
-   - `CONTEXT/.template-cache/B-summary.md` 가 존재하고
-     `CONTEXT/reference-docs/{ACTIVE_PREFIX}/B/*.md` 어떤 파일보다도 mtime 이 같거나 최신이면
-     캐시만 로드하고 본 단계 종료.
-   - 캐시 미존재 또는 stale → 다음 명령으로 갱신 후 재시도:
+1. **B-summary.md cache (Improvement A)**
+   - If `CONTEXT/.template-cache/B-summary.md` exists and its mtime is the same as or newer than
+     every file in `CONTEXT/reference-docs/{ACTIVE_PREFIX}/B/*.md`, load only the cache and end
+     this step.
+   - If the cache is missing or stale → refresh it with the following command and retry:
      `python ${CLAUDE_PLUGIN_ROOT}/scripts/build_b_cache.py --hub-root .`
 
-2. **헤딩 인덱스 기반 섹션 발췌 (개선안 B)**
-   - `CONTEXT/.template-cache/B-headings-index.json` 을 로드.
-   - `graph.json` 의 `inherits_from` 항목에서 `section: "3.2"` 같은 명시값이 있으면
-     해당 doc 의 `sections[]` 에서 `id == "3.2"` 항목을 찾아 `line_start` / `line_end` 추출.
-   - `Read` 도구로 `offset=line_start`, `limit=(line_end - line_start + 5)` 만큼만
-     **부분 로드** 한다. 원문 전체 로드는 사용 금지.
-   - 인덱스가 stale 이면 `python ${CLAUDE_PLUGIN_ROOT}/scripts/build_b_index.py --hub-root .` 으로 갱신.
+2. **Heading-index-based section excerpt (Improvement B)**
+   - Load `CONTEXT/.template-cache/B-headings-index.json`.
+   - If the `inherits_from` entry in `graph.json` has an explicit value like `section: "3.2"`,
+     find the item with `id == "3.2"` in that doc's `sections[]` and extract its `line_start` /
+     `line_end`.
+   - Use the `Read` tool to **partially load** only `offset=line_start`,
+     `limit=(line_end - line_start + 5)`. Loading the full source text is prohibited.
+   - If the index is stale, refresh it with
+     `python ${CLAUDE_PLUGIN_ROOT}/scripts/build_b_index.py --hub-root .`.
 
-3. **fallback (캐시·인덱스가 모두 없는 경우만)**
-   - `CONTEXT/reference-docs/{ACTIVE_PREFIX}/B/` 원문 직접 로드. 단, PM 에게 캐시 미생성을 보고하고
-     `/init-hub` 재실행을 안내한다. 정상 운영 환경에서는 본 분기에 진입하면 안 된다.
-   - 파일 자체가 없으면 `[{PREFIX}-B 파일 없음]` 안내 후 계속 진행.
+3. **Fallback (only when neither cache nor index exists)**
+   - Load the source text directly from `CONTEXT/reference-docs/{ACTIVE_PREFIX}/B/`. However,
+     report the missing cache to the PM and direct them to re-run `/init-hub`. In a normal
+     operating environment, this branch should never be reached.
+   - If the file itself is absent, proceed after the notice `[{PREFIX}-B file not found]`.
 
-**로드 결과를 다음 형식으로 출력한다:**
-
-```
-{PREFIX}-B 공통 정책 로드 완료 (캐시·발췌 모드)
-
-  소스: .template-cache/B-summary.md (캐시) + B-headings-index.json (발췌 위치)
-
-  이 WO({WO_ID})가 상속받는 섹션 (발췌 로드):
-  - {PREFIX}-B-001 §3.2 리소스 한도 계산 방식 (line 142-197, 발췌 로드)
-  - {PREFIX}-B-005 §2.1 기본 과금 단위         (line 88-119,  발췌 로드)
-```
-
-`includes` 목록의 {PREFIX}-C 문서도 동일한 캐시 우선·발췌 규칙으로 로드한다.
-
-
-## 단계 2 — Delta 범위 사전 확인 (PM과 협의)
-
-`delta_required` 값에 따라 분기한다.
-
-### 2-A. delta_required: false 인 경우
+**Print the load result in the following format:**
 
 ```
-⚠️ 이 노드는 delta_required: false 입니다.
+{PREFIX}-B common policy loaded (cache/excerpt mode)
 
-  {WO_ID} ({문서 제목})는 {PREFIX}-B 공통 정책을 완전 적용합니다.
-  별도 초안 내용이 필요하지 않습니다.
+  Source: .template-cache/B-summary.md (cache) + B-headings-index.json (excerpt locations)
 
-  초안 작성 시 내용:
-  "기본 정책 완전 적용 — [{PREFIX}-B-NNN 문서 제목] 참조"
-
-  이 한 줄짜리 초안을 생성할까요? (Y/N)
+  Sections this WO ({WO_ID}) inherits (excerpt-loaded):
+  - {PREFIX}-B-001 §3.2 Resource limit calculation method (line 142-197, excerpt-loaded)
+  - {PREFIX}-B-005 §2.1 Base billing unit             (line 88-119,  excerpt-loaded)
 ```
 
-PM이 Y → 단계 5로 건너뛰어 한 줄 초안 파일 생성.
-PM이 N → 이유를 확인하고 graph.json의 delta_required 수정 여부를 PM에게 안내.
+{PREFIX}-C documents in the `includes` list are also loaded under the same cache-first,
+excerpt-based rules.
 
-### 2-B. delta_required: true 인 경우
 
-**{PREFIX}-B 섹션별 항목 분류표를 작성한다:**
+## Step 2 — Delta scope pre-confirmation (discuss with PM)
+
+Branch according to the `delta_required` value.
+
+### 2-A. When delta_required: false
 
 ```
-Delta 범위 사전 분석 — {WO_ID}
+⚠️ This node has delta_required: false.
+
+  {WO_ID} ({document title}) fully applies the {PREFIX}-B common policy.
+  No separate draft content is needed.
+
+  Draft content to write:
+  "Base policy fully applied — see [{PREFIX}-B-NNN document title]"
+
+  Generate this one-line draft? (Y/N)
+```
+
+If PM answers Y → skip to step 5 and generate the one-line draft file.
+If PM answers N → check the reason and inform the PM whether to modify delta_required in graph.json.
+
+### 2-B. When delta_required: true
+
+**Create a classification table of items by {PREFIX}-B section:**
+
+```
+Delta scope pre-analysis — {WO_ID}
 
 ┌─────────────────────────────────────────────────────────────────┐
-│ 상속 문서: {PREFIX}-B-NNN {문서 제목}                            │
-│ 섹션: §{N}.{N} {섹션명}                                          │
+│ Inherited document: {PREFIX}-B-NNN {document title}              │
+│ Section: §{N}.{N} {section name}                                 │
 ├─────────────────────────────────────────────────────────────────┤
-│ B-정책 내용 (초안에 재작성 금지):                                 │
-│  · (핵심 조항 요약 — {PREFIX}-B 원문 기반)                        │
+│ B-policy content (must not be rewritten in the draft):           │
+│  · (summary of key provisions — based on {PREFIX}-B source text) │
 │  · ...                                                           │
 ├─────────────────────────────────────────────────────────────────┤
-│ Delta 후보 (이 제품에서 달라지는 항목):                           │
-│  · (requirements.md, decisions.md 기반으로 추출한 예외 후보)      │
-│  · (미확인 항목은 [TBD] 태그)                                     │
+│ Delta candidates (items that differ for this product):           │
+│  · (exception candidates extracted from requirements.md,         │
+│     decisions.md)                                                │
+│  · (unconfirmed items tagged [TBD])                              │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-표 출력 후 PM에게 확인을 요청한다:
+After printing the table, ask the PM to confirm:
 
 ```
-위 Delta 후보를 검토해주세요.
+Please review the Delta candidates above.
 
-  추가할 항목이 있으면 말씀해주세요.
-  제거할 항목이 있으면 번호로 알려주세요.
-  확인 완료 후 초안 작성을 시작합니다.
+  Let me know if there are items to add.
+  If there are items to remove, tell me the number.
+  Drafting will begin once confirmation is complete.
 ```
 
-PM 승인 없이 단계 3으로 진행하지 않는다.
+Do not proceed to step 3 without PM approval.
 
 
-## 단계 2-C — 충돌 가능 Delta 사전 등록
+## Step 2-C — Pre-registration of potentially conflicting Delta items
 
-단계 2-B에서 확정된 Delta 항목 중
-"{PREFIX}-B 규칙과 논리적으로 상충하는 항목"을 탐지한다.
+Among the Delta items finalized in step 2-B, detect
+"items that logically conflict with a {PREFIX}-B rule."
 
-**탐지 기준:**
-- Delta 항목이 B-정책의 동일 대상(동작, 조건, 제한값 등)에 대해 다른 값을 정의하는 경우
-- B-정책이 "금지"하는 동작을 Delta에서 허용하려는 경우
-- B-정책의 임계값(timeout, limit 등)을 이 제품에서 변경하는 경우
+**Detection criteria:**
+- A Delta item defines a different value for the same target (behavior, condition, limit value,
+  etc.) as the B-policy
+- The Delta tries to allow a behavior that the B-policy "prohibits"
+- This product changes a B-policy threshold (timeout, limit, etc.)
 
-**충돌 미탐지 시:** 단계 3으로 바로 진행한다.
+**If no conflict is detected:** proceed directly to step 3.
 
-**충돌 탐지 시:** PM에게 다음을 확인한다.
+**If a conflict is detected:** confirm the following with the PM.
 
 ```
-충돌 가능 항목이 발견되었습니다.
+A potentially conflicting item was found.
 
-  · {Delta 항목명}
-    충돌 근거: {PREFIX}-B-NNN §N.N "{B-정책 조항 요약}"과 상충
-    충돌 유형: {값 변경 / 금지 동작 허용 / 조건 역전}
+  · {Delta item name}
+    Conflict basis: conflicts with {PREFIX}-B-NNN §N.N "{summary of the B-policy provision}"
+    Conflict type: {value change / prohibited behavior allowed / condition reversed}
 
-이 항목은 비즈니스 판단에 의한 의도적 예외입니까?
+Is this item an intentional exception based on a business decision?
 
-  [Y] decisions.md에 사전 등록 후 작성 계속
-  [N] Delta 항목을 재검토한다 (단계 2-B로 돌아감)
-  [S] 지금 결정하지 않고 [TBD]로 표기한 뒤 계속 진행
-      (open-issues.md P1 등록, /integrate 전 해소 필요)
+  [Y] Pre-register it in decisions.md and continue writing
+  [N] Reconsider the Delta item (return to step 2-B)
+  [S] Don't decide now — tag it [TBD] and continue
+      (register in open-issues.md as P1, must be resolved before /integrate)
 ```
 
-**[Y] 선택 시:**
-`decisions.md` DEC 표에 후보 행을 자동 등재한다 (스키마: [[CONTEXT/dec-schema]]):
+**When [Y] is selected:**
+Automatically register a candidate row in the `decisions.md` DEC table (schema: [[CONTEXT/dec-schema]]):
 ```markdown
-| DEC-{NNN} | {MM-DD} | {도메인} | {Delta 항목명} — {PREFIX}-B-NNN §N.N 예외 ({근거 요약 60자}) | - | ⬜ | /write {WO_ID} |
+| DEC-{NNN} | {MM-DD} | {domain} | {Delta item name} — {PREFIX}-B-NNN §N.N exception ({60-char basis summary}) | - | ⬜ | /write {WO_ID} |
 ```
 
-- `DEC-{NNN}`: 표의 가장 큰 ID + 1 (3자리 0패딩)
-- `도메인`: WO 도메인 매핑에서 자동 추정 (PM이 정정 가능)
-- `핵심 결정` 셀에 충돌 대상 § + 근거 압축 표기
-- `승인` 셀 = `⬜` (미승인). PM이 표 직접 편집 또는 `/dec-approve` 로 승인해야 정본 효력
-- **integrator 처리**: I-03 위반 탐지 시 `승인=✅` 인 행만 정본으로 인정. `⬜` 는 INFO 분류
+- `DEC-{NNN}`: the largest ID in the table + 1 (3-digit zero-padded)
+- `Domain`: auto-estimated from the WO-domain mapping (PM can correct it)
+- The `Decision` cell states the conflicting target § + a condensed rationale
+- `Status` cell = `⬜` (not approved). Only takes canonical effect once the PM edits the table
+  directly or approves it with `/dec-approve`
+- **Integrator handling**: when an I-03 violation is detected, only rows with `Status=✅` are
+  treated as canonical. `⬜` rows are classified as INFO
 
-기록 완료 후 단계 3으로 진행한다.
+Once recorded, proceed to step 3.
 
-**[S] 선택 시:**
-해당 항목에 `[TBD:충돌미결]` 태그를 붙이고 진행한다.
-open-issues.md P1 등록: `[WO_ID-충돌] {항목명} — 의도적 예외 여부 미결. /integrate 전 해소 필요`
-
-
-## 단계 3 — {PREFIX}-A 어휘 기준 로드
-
-`CONTEXT/reference-docs/{ACTIVE_PREFIX}/A/` 에서 {PREFIX}-A-001 (용어 사전) 파일을 로드한다.
-
-로드 성공 시 → 이후 작성 단계에서 용어 대조에 사용한다.
-로드 실패 시 → open-issues.md P2 등록 후 계속 진행.
+**When [S] is selected:**
+Attach the `[TBD:unresolved-conflict]` tag to the item and proceed.
+Register in open-issues.md as P1: `[WO_ID-conflict] {item name} — whether this is an intentional
+exception is unresolved. Must be resolved before /integrate`
 
 
-## 단계 4 — policy 초안 작성
+## Step 3 — Load the {PREFIX}-A vocabulary standard
 
-단계 2에서 PM이 확인한 Delta 범위만을 초안에 작성한다.
+Load the {PREFIX}-A-001 (glossary) file from `CONTEXT/reference-docs/{ACTIVE_PREFIX}/A/`.
 
-**작성 원칙 (절대 규칙):**
+On success → use it for terminology cross-checking in subsequent writing steps.
+On failure → register in open-issues.md as P2 and continue.
 
-| 원칙 | 행동 |
+
+## Step 4 — Write the policy draft
+
+Write only the Delta scope confirmed by the PM in step 2 into the draft.
+
+**Writing principles (absolute rules):**
+
+| Principle | Action |
 |---|---|
-| {PREFIX}-B 내용 재작성 금지 | `[{doc_id} 문서 제목] §NNN 참조` 한 줄로만 표기 |
-| 예외 없으면 한 줄 처리 | `기본 정책 완전 적용 — [{doc_id} 문서 제목] 참조` |
-| {PREFIX}-A 미등재 어휘 사용 금지 | 사용 시 `[TBD:{어휘}]` 태그 삽입 |
-| decisions.md 위반 금지 | 상충 발견 시 `[정책 충돌 — {항목명}]` 태그 삽입 |
-| C-PIN 핀 기록 | frontmatter `referenced_master` 에 Delta 기준 공통 `{핀ID}@{version}` 기재 (master-id-map.yml 권위 ID) |
+| Do not rewrite {PREFIX}-B content | State it in a single line: `see [{doc_id} document title] §NNN` |
+| If there is no exception, use a one-line entry | `Base policy fully applied — see [{doc_id} document title]` |
+| Do not use vocabulary not registered in {PREFIX}-A | If used, insert a `[TBD:{term}]` tag |
+| Do not violate decisions.md | If a conflict is found, insert a `[policy conflict — {item name}]` tag |
+| Record the C-PIN pin | State the Delta's common-policy basis `{pin ID}@{version}` in frontmatter `referenced_master` (authoritative ID from master-id-map.yml) |
 
-**미결 태그 signal_type 분류 (작성 중 발견 즉시 분류):**
+**Open-item tag signal_type classification (classify as soon as found during writing):**
 
-작성 중 삽입하는 미결 태그는 아래 3종 signal_type 으로 분류한다.
-분류 결과를 단계 6 완료 보고의 `signal_type` 항목에 명기한다.
+Open-item tags inserted during writing are classified into the following 3 signal_types.
+State the classification result in the `signal_type` item of the step-6 completion report.
 
-| signal_type | 태그 형식 | 발생 조건 | 귀결 |
+| signal_type | Tag format | Trigger condition | Outcome |
 |---|---|---|---|
-| TERM_MISSING | `[TBD:{어휘}]` | `{PREFIX}-A` 용어 사전에 미등재된 어휘 사용 | {PREFIX}-A 보완 후보. open-issues.md P1 등록. 의미 B 신호 → PM 수동 인계 대상 |
-| POLICY_GAP | `[확인 필요: B 누락 — {항목}]` | `{PREFIX}-B` 공통 정책에 있어야 하는데 해당 항목이 없음 | {PREFIX}-B 보완 후보. open-issues.md P1 등록. 의미 B 신호 → PM 수동 인계 대상 |
-| DEFINITION_CONFLICT | `[정책 충돌 — {항목}]` | `{PREFIX}-B` 정의가 모순되거나 양립 불가한 경우 | 양쪽 보존. open-issues.md P0 등록. 의미 B 신호 → PM 수동 인계 대상 |
+| TERM_MISSING | `[TBD:{term}]` | A term not registered in the `{PREFIX}-A` glossary is used | {PREFIX}-A supplementation candidate. Register in open-issues.md as P1. Type B signal → subject to manual PM handoff |
+| POLICY_GAP | `[needs confirmation: B missing — {item}]` | An item that should exist in the `{PREFIX}-B` common policy is missing | {PREFIX}-B supplementation candidate. Register in open-issues.md as P1. Type B signal → subject to manual PM handoff |
+| DEFINITION_CONFLICT | `[policy conflict — {item}]` | `{PREFIX}-B` definitions contradict or are mutually incompatible | Keep both sides. Register in open-issues.md as P0. Type B signal → subject to manual PM handoff |
 
-> **주의**: POLICY_GAP / TERM_MISSING / DEFINITION_CONFLICT 는 공통({PREFIX}-A/B)
-> 보완이 필요한 **의미 B 신호**다. PM이 해당 부서 RE 담당자에게 직접 수동 인계한다.
-> **reverse-signal-queue.md 등 자동 파일 신설 절대 금지** — 부서별 1:1 인계 모델 유지.
-> 단순 내부 미결(의미 A)은 `[확인 필요: {내용}]` 으로 표기하고 open-issues.md P1/P0 처리로만 종결한다.
+> **Note**: POLICY_GAP / TERM_MISSING / DEFINITION_CONFLICT are **Type B signals** that require
+> a supplement to the common layer ({PREFIX}-A/B). The PM hands these off manually, directly, to
+> the relevant department's RE contact.
+> **Creating an automatic file such as reverse-signal-queue.md is strictly prohibited** — keep the
+> 1:1 per-department handoff model.
+> A simple internal open item (Type A) is marked `[needs confirmation: {content}]` and closed out
+> solely through open-issues.md P1/P0 handling.
 
-**signal_type 분류 결정 가이드 (의미 A vs 의미 B 판단 — γ-1):**
+**signal_type classification decision guide (Type A vs Type B judgment — γ-1):**
 
-작성 중 미결 태그를 삽입할 때, 아래 3단계 판단을 순서대로 적용한다.
+When inserting an open-item tag during writing, apply the following 3-step judgment in order.
 
 ```
-판단 1: 이 항목은 "이 제품(C) 범위 내 결정"인가, "공통(A/B) 차원 결정"인가?
-  - 이 제품 범위에서 해소 가능 (예: 내부 플로우 확인, 개발팀 협의)
-    → 의미 A (내부 미결) — [확인 필요: {내용}] 태그 + open-issues.md P0/P1 처리로 종결.
-  - 공통(A/B) 정의가 있어야 해소 가능한 경우
-    → 판단 2로 진행.
+Judgment 1: Is this item "a decision within this product's (C) scope" or "a common (A/B) layer
+  decision"?
+  - Resolvable within this product's scope (e.g. internal flow check, discussion with the dev team)
+    → Type A (internal open item) — tag [needs confirmation: {content}] + close it out via
+      open-issues.md P0/P1 handling.
+  - Resolvable only if a common (A/B) definition exists
+    → proceed to Judgment 2.
 
-판단 2 (공통 차원 확정): 어느 공통가 보완되어야 하는가?
-  - {PREFIX}-A 용어 사전에 해당 어휘가 없음
-    → TERM_MISSING — [TBD:{어휘}] 태그. {PREFIX}-A 백필 후보.
-  - {PREFIX}-B에 있어야 할 공통 정책 조항이 없음
-    → POLICY_GAP — [확인 필요: B 누락 — {항목}] 태그. {PREFIX}-B 보완 후보.
-  - {PREFIX}-B 정의 간 모순·양립 불가 상황
-    → DEFINITION_CONFLICT — [정책 충돌 — {항목}] 태그. {PREFIX}-B 정의 정정 후보.
+Judgment 2 (confirm the common-layer dimension): which common layer needs the supplement?
+  - The term is missing from the {PREFIX}-A glossary
+    → TERM_MISSING — tag [TBD:{term}]. {PREFIX}-A backfill candidate.
+  - A common policy provision that should be in {PREFIX}-B is missing
+    → POLICY_GAP — tag [needs confirmation: B missing — {item}]. {PREFIX}-B supplementation candidate.
+  - {PREFIX}-B definitions contradict each other / are mutually incompatible
+    → DEFINITION_CONFLICT — tag [policy conflict — {item}]. {PREFIX}-B definition-correction candidate.
 
-판단 3 (경계 모호): "이 항목을 부서 RE 담당자에게 보고했다고 가정 시 받아들일 만한
-  정보(공통 보완 근거)인가?"
-  - YES → 의미 B (signal_type 분류 적용, open-issues.md ## RE 인계 추적 등록)
-  - NO  → 의미 A (내부 미결로 처리, open-issues.md P0/P1만 등록)
+Judgment 3 (boundary is ambiguous): "If this item were reported to the department's RE contact,
+  would it be accepted as useful information (grounds for a common-layer supplement)?"
+  - YES → Type B (apply signal_type classification, register in open-issues.md ## RE handoff tracking)
+  - NO  → Type A (treat as an internal open item, register only in open-issues.md P0/P1)
 ```
 
-> 경계 판단이 어려우면 판단 3을 먼저 적용한다.
-> 의미 A로 처리한 항목도 이후 맥락 변화로 의미 B로 재분류 가능 — open-issues.md 수정으로 처리.
+> If the boundary judgment is difficult, apply Judgment 3 first.
+> An item handled as Type A can later be reclassified as Type B if the context changes — handle
+> this by editing open-issues.md.
 
-**계산형(요금 산식) 제품 추가 규칙 (C2 — master-derivation-gate):**
-- 요금 산식은 G2-B 상품요금결제정책 §B(수식 처리 원칙·할인 적용 순서·무료
-  트래픽 일할) **파생**이며 재정의 금지 — 산식 본문에 G2-B §링크 병기.
-- 산식 변수는 `inputs/spec-catalog.md` 의 **변수ID 만** 인용한다(자유 변수명 금지).
-- 초안 작성 후 `graph/formula-binding.md`(템플릿: `templates/formula-binding-template.md`)
-  를 갱신: 산식 변수 ↔ spec-catalog 필드 1:1 바인딩. UNBOUND 1건이라도 있으면
-  자기 BLOCK(단계 5) → spec-catalog 보강 또는 산식 정정 후 재작성.
-- 콘솔형(비산식) 제품은 본 규칙·formula-binding 비대상.
+**Additional rule for calculation-type (billing formula) products (C2 — master-derivation-gate):**
 
-**초안 구조 (무손실·가변 섹션 — 골드스탠다드/critique 9축 기준):**
+- Billing formulas are **derivations** of G2-B Product Billing Policy §B (formula-handling
+  principles, discount-application order, pro-rated free traffic) and must not be redefined —
+  attach the G2-B § link alongside the formula body.
+- Formula variables cite **only the variable ID** from `inputs/spec-catalog.md` (free-form
+  variable names are prohibited).
+- After writing the draft, update `graph/formula-binding.md` (template:
+  `templates/formula-binding-template.md`): a 1:1 binding of formula variables to spec-catalog
+  fields. If even one UNBOUND item remains, self-BLOCK (step 5) → reinforce spec-catalog or
+  correct the formula, then rewrite.
+- Console-type (non-formula) products are not subject to this rule or to formula-binding.
 
-> **고정 8섹션(●◐○ 패턴) 방식은 폐기되었다.** 고정 섹션·"간략 기재/생략"이 원문 정책
-> 사실을 대량 누락시켰다. 이제 **무손실 재구성 + 가변 섹션 라이브러리**를 따른다.
+**Draft structure (lossless, variable sections — gold-standard/critique 9-axis criteria):**
 
-**무손실 원칙 (최우선 — 위반이 가장 큰 결함):**
-- 원문/입력의 모든 정책 사실·수치·케이스·예외·UI 문구·표를 하나도 버리지 않는다.
-  요약이 아니라 **구조 재배치**다. 어디에도 안 맞는 사실은 버리지 말고 마지막
-  `## 부록 Z. 미분류 원문 사실`에 원문 그대로 이관한다.
-- 분량을 이유로 축약·생략 금지("간략 기재" 같은 지시는 없다 — 표·중첩으로 다 담는다).
-- 원문에 없는 내용 창작 금지. 불확실하면 `[확인 필요: {무엇}]`. 원문이 모순되면 한쪽을
-  고르지 말고 `[정책 충돌 — {항목}]`으로 **양쪽 다 보존**한다.
+> **The fixed 8-section (●◐○ pattern) approach has been deprecated.** Fixed sections and
+> "abbreviated entries/omissions" caused mass omission of source-policy facts. It now follows
+> **lossless restructuring + a variable section library**.
 
-섹션은 **가변 길이**다(고정 개수 아님). 원문 분량만큼 섹션·하위섹션을 늘린다.
-{PREFIX}-B(공통)와 동일한 항목은 재작성하지 않고 `[{PREFIX}-B-NNN 문서 제목] §N 참조`
-한 줄로만 표기한다(Delta+링크 SSoT 유지). 단가·요율·수치는 재기재 금지 —
-`inputs/spec-catalog.md` 변수ID/§참조(C-RENDER 완전판이 자동 전개).
+**Lossless principle (top priority — violating it is the most serious defect):**
+- Do not discard a single policy fact, figure, case, exception, UI phrase, or table from the
+  source/input. This is not a summary — it is a **structural rearrangement**. Facts that don't
+  fit anywhere must not be discarded — carry them over verbatim to the final
+  `## Appendix Z. Unclassified source facts`.
+- Do not abbreviate or omit content for the sake of length (there is no instruction to "keep it
+  brief" — fit everything in using tables and nesting).
+- Do not fabricate content absent from the source. If uncertain, use `[needs confirmation: {what}]`.
+  If the source is self-contradictory, don't pick one side — **preserve both** with
+  `[policy conflict — {item}]`.
+
+Sections are **variable length** (not a fixed count). Add as many sections/subsections as the
+source content requires. Items identical to {PREFIX}-B (common) are not rewritten — state them in
+a single line as `see [{PREFIX}-B-NNN document title] §N` (keeping the Delta + link as SSoT).
+Do not re-enter unit prices, rates, or figures — use the `inputs/spec-catalog.md` variable
+ID/§reference instead (the C-RENDER full version expands them automatically).
 
 ```markdown
 ---
 doc_id: {WO_ID}
 type: policy
 version: draft
-written_at: {UTC 타임스탬프}
+written_at: {UTC timestamp}
 inherits_from: [{PREFIX}-B-NNN, ...]
 referenced_master: [{PREFIX}-B-NNN@{version}, {PREFIX}-A-001@{version}]
 includes: [{PREFIX}-C-NNN, ...]
@@ -358,279 +384,290 @@ delta_required: true
 pattern: {A|B|C}
 ---
 
-**태깅**
+**Tagging**
 **doc_id:** {WO_ID}
-**version:** {버전}
+**version:** {version}
 **pattern:** {A|B|C}
 **status:** draft
-**owner:** 기획자
+**owner:** Planner
 
 ---
 
-# {문서 제목}
+# {document title}
 
-> 본 문서는 {제품명}을 위한 정책정의서입니다.
-
----
-
-## 메타 블록 (문서 최상단)
-
-- **문서 설명** — 1~2문장 목적
-- **목차** — 전체 섹션/하위섹션 목록
-- **관련 기획 문서 / 참고 문서** — 알려진 링크 (없으면 `[확인 필요: 관련 문서]`)
-- **개정 이력** — | 버전 | 일자 | 변경자 | 코멘트 |
+> This document is the policy definition for {product name}.
 
 ---
 
-## 1. 정책 개요
+## Meta block (top of document)
 
-### 1-1. 목적
-### 1-2. 적용 범위
-### 1-3. 핵심 원칙
-### 1-4. 용어 정의 (정본 표현)
+- **Document description** — 1–2 sentence purpose
+- **Table of contents** — full list of sections/subsections
+- **Related planning documents / reference documents** — known links (if none, `[needs confirmation: related documents]`)
+- **Revision history** — | Version | Date | Changed by | Comment |
 
-| 정본 표현 | 정의 | 비정본(사용 금지) |
+---
+
+## 1. Policy overview
+
+### 1-1. Purpose
+### 1-2. Scope of application
+### 1-3. Core principles
+### 1-4. Term definitions (canonical terms)
+
+| Canonical term | Definition | Non-canonical (prohibited) |
 |---|---|---|
-| (정본) | (정의) | (금지 동의어) |
+| (canonical term) | (definition) | (prohibited synonym) |
 
-> 본 표가 SSoT. 이후 본문·표·UI 문구는 정본 표현만 사용(동의어 혼용 금지 — critique AXIS-01/02).
+> This table is the SSoT. Afterward, the body/tables/UI copy use only canonical terms (no mixing
+> in synonyms — critique AXIS-01/02).
 
 ---
 
-## 2. 공통 정책
+## 2. Common policy
 
-### 2-1. 상태 정의
+### 2-1. State definitions
 
-전 상태 열거+정의. 콘솔 표시명 = 내부 코드 매핑 명시.
+Enumerate + define every state. State the console display name = internal code mapping explicitly.
 
-### 2-2. 상태별 허용 액션
+### 2-2. Allowed actions by state
 
-| 상태 \ 액션 | (액션1) | (액션2) | … |
+| State \ Action | (action 1) | (action 2) | … |
 |---|---|---|---|
-| (상태) | 허용/불가 | … | |
+| (state) | allowed/not allowed | … | |
 
-> 모든 상태 × 모든 액션 매트릭스. 실패 복귀 케이스 세분화(critique AXIS-09).
+> Full state × action matrix. Break down failure-recovery cases (critique AXIS-09).
 
-### 2-3. 권한별 접근 제어 / 역할 정의
-### 2-4. (서비스 고유 공통 규칙)
+### 2-3. Access control by permission / role definitions
+### 2-4. (Service-specific common rules)
 
 ---
 
-## 3. 생성/신청 정책
+## 3. Creation/application policy
 
-### 3-1. 진입 조건 / 입력 항목·유효성
+### 3-1. Entry conditions / input items and validity
 
-| 구분 | 항목 | 유효성 규칙·제한 | 비고 |
+| Category | Item | Validity rule/restriction | Notes |
 |---|---|---|---|
-| (구분) | (항목) | (범위·형식·예약어) | |
+| (category) | (item) | (range/format/reserved words) | |
 
-### 3-2. 케이스별 처리 흐름
+### 3-2. Processing flow by case
 
-정상/실패/취소/타임아웃/0개/중복/동시 — **분기 전수**(critique AXIS-03).
+Normal / failure / cancellation / timeout / zero-count / duplicate / concurrent — **full accounting
+of every branch** (critique AXIS-03).
 
-### 3-3. 완료 처리
+### 3-3. Completion handling
 
-생성완료 = 실사용 가능 상태 여부 명시 + 다음 단계 유도(critique AXIS-05).
-
----
-
-## 4. 삭제/해지 정책
-
-### 4-1. 삭제 가능 조건
-### 4-2. 삭제 처리 및 데이터 정리
-
-Cascade/연쇄, 연관 자원 영향 범위.
+Creation-complete = state whether the resource is actually usable + guide the next step (critique
+AXIS-05).
 
 ---
 
-## (선택 섹션 라이브러리 — 원문에 해당 내용 있으면 반드시 섹션 생성)
+## 4. Deletion/termination policy
 
-> 원문 기능 수만큼 섹션·하위섹션을 **추가**한다. 해당 없는 표준 섹션은 헤딩 유지 + `해당 없음 — {사유}` 한 줄.
+### 4-1. Conditions for deletion
+### 4-2. Deletion handling and data cleanup
 
-- `## 핵심 운영 정책` — 서비스 본연 기능별(레코드·IP·스냅샷·파라미터그룹·스케일링 등). 원문 기능 수만큼 N-x 분할
-- `## 위임·연동 정책` / `## 라우팅·네트워크 연동`
-- `## 보안·트래픽 정책` — 마스킹·인증·민감정보(AXIS-08)
-- `## 장애·복구 정책` — 간 상태·실패 복귀 케이스 세분화
-- `## 상품·요금 정책` — 단위·연산·중도가입·해지·일할·위약금. 수치는 spec-catalog §참조, 산식 구조만(AXIS-07)
-- `## 이벤트 로그 정책` — | 이벤트 | 내용 | 유형 | 출처(콘솔/API/자동) | 고객노출 |
-- `## 알림(이메일/SMS) 발송 정책` — 발송 이벤트 목록 + **이벤트×상태별 메일 템플릿 명세**(제목/인사말/본문/유의사항/CTA + `{변수}`, 실제 문구 전수) + 미발송 이벤트
-- `## 백오피스 정책` — 리스트 페이지 정책+컬럼 / 상세 페이지(영역별). 콘솔 정책과 정합
-- `## 모니터링 정책` — 집계 단위·조회 항목
-- `## 추후 고도화 고려사항` — BACKLOG(v2)
-
-> **서비스 아키타입 힌트**(선택 섹션 가중 — 구조 강제 아님): 인프라형=단계별 Validation·어드민 수동제어 / 컴퓨팅형(AutoScale·LB)=상태머신 그룹·멤버 2단계·예약/임계치 분리 / 보안신청형=플로우 다이어그램·운영포털 API·수동 절차 / 스냅샷형=원본 doc_id 라이프사이클 강결합 / 컨테이너형=플랫폼 vs 고객 자원 경계·레지스트리>이미지>아티팩트.
+Cascade/chained effects, scope of impact on related resources.
 
 ---
 
-## 인터페이스 바인딩 (해당 시)
+## (Optional section library — create a section whenever the source has corresponding content)
 
-상세 API 명세는 {PREFIX}-E. 본 절은 정책 관점 URL/포털 바인딩만(해당 없으면 헤딩+사유).
+> **Add** as many sections/subsections as the source has features. For standard sections that don't apply, keep the heading + one line `Not applicable — {reason}`.
+
+- `## Core operational policy` — by the service's core feature (record/IP/snapshot/parameter group/scaling, etc.). Split into N-x subsections matching the number of source features
+- `## Delegation/integration policy` / `## Routing/network integration`
+- `## Security/traffic policy` — masking, authentication, sensitive information (AXIS-08)
+- `## Incident/recovery policy` — break down inter-state failure-recovery cases
+- `## Product/billing policy` — units, calculations, mid-term enrollment, termination, pro-rating, penalties. Figures use spec-catalog § references; formula structure only (AXIS-07)
+- `## Event log policy` — | Event | Content | Type | Source (console/API/automatic) | Customer-visible |
+- `## Notification (email/SMS) dispatch policy` — list of dispatch events + **mail template spec per event × state** (subject/greeting/body/caveats/CTA + `{variable}`, full actual copy) + events not dispatched
+- `## Back-office policy` — list-page policy + columns / detail page (by area). Must be consistent with the console policy
+- `## Monitoring policy` — aggregation units, lookup items
+- `## Future enhancement considerations` — BACKLOG (v2)
+
+> **Service archetype hints** (weighting for optional sections — not a structural requirement): infrastructure type = staged validation, admin manual control / compute type (AutoScale, LB) = state-machine group, 2-tier member, reservation/threshold separation / security-application type = flow diagram, ops-portal API, manual procedure / snapshot type = tight coupling to the source doc_id's lifecycle / container type = platform vs. customer resource boundary, registry > image > artifact.
 
 ---
 
-## 의존성 & 영향 범위
+## Interface binding (if applicable)
 
-Upstream/Downstream을 **doc_id 기반**으로 명시. 연관 제품 담당자와 양방향 영향 교차 검증.
+Detailed API specs live in {PREFIX}-E. This section covers only the policy-level URL/portal
+binding (if not applicable, heading + reason).
 
 ---
 
-## 미결 사항
+## Dependencies & scope of impact
 
-### P1 미결 — 협의 필요
+State Upstream/Downstream **by doc_id**. Cross-validate bidirectional impact with the owners of
+related products.
 
-| ID | 내용 | 확인 대상 | 관련 정책 |
+---
+
+## Open items
+
+### P1 open items — needs discussion
+
+| ID | Content | Who to confirm with | Related policy |
 |---|---|---|---|
-| [TBD] | (내용) | (개발팀/사업부/보안팀) | §N |
+| [TBD] | (content) | (dev team/business unit/security team) | §N |
 
-### P2 미결 — 선택적 보완
+### P2 open items — optional supplement
 
-(원문에 협의 추적 있으면) `## 미결 협의 항목 현황` — | No | 섹션 | 협의 항목 | 처리 상태 | 비고 |
-(미분류 원문 사실 있으면) `## 부록 Z. 미분류 원문 사실` — 원문 그대로 보존
+(If the source tracks discussions) `## Open discussion-item status` — | No | Section | Discussion item | Handling status | Notes |
+(If unclassified source facts exist) `## Appendix Z. Unclassified source facts` — preserved verbatim from the source
 
 ---
 
 ## Workflow Connections
 
-관련 문서/다음 단계 [[링크]].
+Related documents/next steps [[link]].
 
 ---
-## 자기 검증 체크리스트
+## Self-verification checklist
 
-- [ ] 무손실: 원문 사실 전수 매핑(누락 0, 미분류는 부록 Z, 모순은 [정책 충돌] 양쪽 보존)
-- [ ] {PREFIX}-B 내용 재작성 없음 — Delta + `[{PREFIX}-B-NNN] §N 참조` 링크만
-- [ ] 1-4 용어 정의(정본 표현) 표 선언 + 이후 정본 표현만 사용
-- [ ] 2-2 상태×액션 매트릭스 전 상태 커버 (critique AXIS-09)
-- [ ] 3-2 케이스 분기 전수: 정상/실패/취소/타임아웃/0개/중복/동시 (AXIS-03)
-- [ ] 수치·단가 재기재 없음 — spec-catalog 변수ID/§참조 (계산형: formula-binding UNBOUND 0건)
-- [ ] frontmatter referenced_master 핀 기재 (빈 목록이면 decisions.md opt-out 근거)
-- [ ] Delta 범위 PM 확인 완료
-- [ ] {PREFIX}-A 어휘 기준 준수 (이탈 시 [TBD:] + open-issues P1)
-- [ ] decisions.md 위반 없음 (충돌 시 [정책 충돌] + open-issues P0)
-- [ ] 의존성 doc_id 기반 양방향 명시
-- [ ] 미결 P1/P2 표 작성 + open-issues.md 연동
-- [ ] critique 9축 자가 점검 통과 (미통과 시 보강 후 제출)
+- [ ] Lossless: full mapping of source facts (0 omissions; unclassified items in Appendix Z; contradictions preserved on both sides with [policy conflict])
+- [ ] No rewriting of {PREFIX}-B content — Delta + `[{PREFIX}-B-NNN] §N reference` link only
+- [ ] 1-4 term definitions (canonical terms) table declared + only canonical terms used thereafter
+- [ ] 2-2 state × action matrix covers every state (critique AXIS-09)
+- [ ] 3-2 full accounting of case branches: normal/failure/cancellation/timeout/zero-count/duplicate/concurrent (AXIS-03)
+- [ ] No re-entering figures/unit prices — spec-catalog variable ID/§ reference (calculation type: formula-binding UNBOUND count 0)
+- [ ] frontmatter referenced_master pin recorded (if list is empty, decisions.md opt-out justification present)
+- [ ] Delta scope confirmed by PM
+- [ ] {PREFIX}-A vocabulary standard followed (if deviating, [TBD:] + open-issues P1)
+- [ ] No decisions.md violations (if conflicting, [policy conflict] + open-issues P0)
+- [ ] Dependencies stated bidirectionally by doc_id
+- [ ] P1/P2 open-item tables written + linked to open-issues.md
+- [ ] Passes critique 9-axis self-check (if not passed, reinforce and resubmit)
 ```
 
-**작성 중 발견 항목 처리:**
-- `[TBD:{어휘}]` 발생 → 작성 완료 후 open-issues.md P1 등록
-- `[정책 충돌 — {항목명}]` 발생 → open-issues.md P0 등록 후 PM에게 즉시 보고
+**Handling items found during writing:**
+- `[TBD:{term}]` occurs → after finishing the draft, register in open-issues.md as P1
+- `[policy conflict — {item name}]` occurs → register in open-issues.md as P0 and report to the PM immediately
 
 
-## 단계 4-B — 섹션 채움 지침 (안 A — work-order-template.md 통합 schema)
+## Step 4-B — Section-fill guidance (Plan A — work-order-template.md unified schema)
 
-draft 본문에는 fanout 이 미리 삽입한 표준 섹션 골격이 존재한다
-(`<Hub 루트>/templates/work-order-template.md` 의 `## 1.~7.` 번호 섹션 헤딩 —
-Hub 작업 디렉토리 기준 상대경로. `${CLAUDE_PLUGIN_ROOT}` 아님).
-본문 하단의 `<!-- wikilinks:start -->` … `<!-- wikilinks:end -->` 블록은
-fanout 이 연결 WO 링크를 자동 채우는 영역이므로 write 가 임의로 손대지 않는다.
+The draft body already contains the standard section skeleton pre-inserted by fanout
+(the `## 1.–7.` numbered section headings from `<Hub root>/templates/work-order-template.md` —
+a relative path based on the Hub working directory, not `${CLAUDE_PLUGIN_ROOT}`).
+The `<!-- wikilinks:start -->` … `<!-- wikilinks:end -->` block at the bottom of the body is an
+area that fanout auto-fills with linked-WO links, so write must not touch it arbitrarily.
 
-**섹션 채움 규칙:**
+**Section-fill rules:**
 
-- 본문 작성 시 각 `## N. {섹션 제목}` 헤딩 아래에 정확히 콘텐츠를 채운다.
-- **어떤 표준 섹션도 비워두지 말 것** — fanout 이 만든 모든 섹션을 채우는 것이
-  의무다. 해당 섹션 내용이 원문에 없으면 `해당 없음 — {사유}` 한 줄로 채운다.
-- `{{...}}` 형태의 미치환 플레이스홀더(예: `{SECTION_SUMMARY}`)가 남으면 안 된다 —
-  전수 실제 콘텐츠로 치환한다.
-- 템플릿 표준 섹션 외 추가 섹션은 자유롭게 추가 가능(무손실 원칙).
+- When writing the body, fill in content precisely under each `## N. {section title}` heading.
+- **Do not leave any standard section empty** — filling every section created by fanout is
+  mandatory. If a section's content does not exist in the source, fill it with the one line
+  `Not applicable — {reason}`.
+- No unreplaced `{{...}}`-style placeholders (e.g. `{SECTION_SUMMARY}`) may remain — replace all
+  of them with actual content.
+- Additional sections beyond the standard template sections may be freely added (lossless principle).
 
 
-## 단계 5 — 자기 검증 수행
+## Step 5 — Perform self-verification
 
-초안 작성 완료 후 다음 항목을 순서대로 검사한다.
+After completing the draft, check the following items in order.
 
-| 검증 항목 | 기준 | 판정 |
+| Verification item | Criterion | Verdict |
 |---|---|---|
-| {PREFIX}-B 재작성 여부 | 상속 섹션 내용을 그대로 복사한 문단 탐지 | FAIL → 해당 문단 삭제 |
-| Delta 선언 존재 | Section 0-2 작성 여부 | FAIL → 작성 후 재검증 |
-| C-PIN 핀 존재 | frontmatter `referenced_master` 기재 여부 | FAIL → 핀 기재 후 재검증 (빈 목록=opt-out 은 decisions.md 근거 시 통과) |
-| formula-binding (계산형) | `graph/formula-binding.md` UNBOUND 0건 | FAIL → spec-catalog 보강/산식 정정 (콘솔형 N/A) |
-| TBD 항목 수 | 핵심 규칙 영역의 TBD | FAIL → P1 등록 |
-| decisions.md 충돌 | 충돌 태그 수 | FAIL → P0 등록 |
-| {PREFIX}-A 어휘 | 미등재 어휘 수 | WARN |
-| 섹션 채움 누락 (안 A) | 템플릿 표준 섹션(`## 1.~7.`) 전부 작성 + `{{...}}` 플레이스홀더 0건 | FAIL → 빈 섹션 채움 / 플레이스홀더 제거 |
-| [자기 검증] signal_type 분류 일치 | 각 미결 태그가 분류 결정 가이드(판단 1-2-3)와 일치하는가? 경계 모호 항목은 PM 재확인 후 분류 확정 | WARN → 불일치 시 PM 재확인 |
+| {PREFIX}-B rewritten? | Detect paragraphs that copy an inherited section's content verbatim | FAIL → delete that paragraph |
+| Delta declaration exists | Whether Section 0-2 is written | FAIL → write it and re-verify |
+| C-PIN pin exists | Whether frontmatter `referenced_master` is recorded | FAIL → record the pin and re-verify (an empty list = opt-out passes if justified in decisions.md) |
+| formula-binding (calculation type) | `graph/formula-binding.md` UNBOUND count is 0 | FAIL → reinforce spec-catalog / correct the formula (N/A for console type) |
+| Number of TBD items | TBD in core-rule areas | FAIL → register as P1 |
+| decisions.md conflicts | Number of conflict tags | FAIL → register as P0 |
+| {PREFIX}-A vocabulary | Number of unregistered terms | WARN |
+| Missing section fill (Plan A) | All standard template sections (`## 1.–7.`) written + 0 `{{...}}` placeholders | FAIL → fill empty sections / remove placeholders |
+| [Self-verification] signal_type classification match | Does every open-item tag match the classification decision guide (Judgment 1-2-3)? For boundary-ambiguous items, confirm with the PM before finalizing classification | WARN → if mismatched, re-confirm with PM |
 
 
-## 단계 5-B — frontmatter 갱신 (안 A — status 전환)
+## Step 5-B — Frontmatter update (Plan A — status transition)
 
-자기 검증 통과 후, draft 의 frontmatter 를 다음과 같이 갱신한다 (동일 파일 in-place 수정):
+After passing self-verification, update the draft's frontmatter as follows (modify the same
+file in place):
 
 - `status: empty` → `status: ai-draft`
-- `last_updated: {현재 ISO8601 타임스탬프}` (없으면 신규 추가, 있으면 갱신)
-- `review_status: ai-draft` (유지 또는 신규 추가 — human-reviewed 로 자동 승격 금지)
+- `last_updated: {current ISO8601 timestamp}` (add if missing, update if present)
+- `review_status: ai-draft` (keep or add new — do not auto-promote to human-reviewed)
 
-> 본 단계는 `drafts/{WO_ID}.draft.md` 를 신규 생성하지 않는다. fanout 이 만든 셸을
-> in-place 수정하는 것이 안 A 핵심이다.
+> This step does not create a new `drafts/{WO_ID}.draft.md`. Modifying the shell created by
+> fanout in place is the core of Plan A.
 
 
-## 단계 6 — 완료 보고 및 session-log 기록
+## Step 6 — Completion report and session-log entry
 
 ```
-/write 완료 — {WO_ID}
+/write complete — {WO_ID}
 
-  초안 위치: drafts/{WO_ID}.draft.md
-  Delta 항목 수: {N}개
-  TBD 항목: {N}건 (open-issues.md P1 등록)
-  정책 충돌: {N}건 (open-issues.md P0 등록)
-  {PREFIX}-B 재작성: 0건 ✅
+  Draft location: drafts/{WO_ID}.draft.md
+  Number of Delta items: {N}
+  TBD items: {N} (registered in open-issues.md as P1)
+  Policy conflicts: {N} (registered in open-issues.md as P0)
+  {PREFIX}-B rewrites: 0 ✅
 
-  signal_type 요약:
-    TERM_MISSING:        {N}건  → {PREFIX}-A 보완 후보 (PM 수동 인계 대상)
-    POLICY_GAP:          {N}건  → {PREFIX}-B 보완 후보 (PM 수동 인계 대상)
-    DEFINITION_CONFLICT: {N}건  → {PREFIX}-B 정의 정정 후보 (PM 수동 인계 대상)
-    내부 미결(의미 A):    {N}건  → open-issues.md 처리로 종결
+  signal_type summary:
+    TERM_MISSING:        {N}  → {PREFIX}-A supplementation candidate (subject to manual PM handoff)
+    POLICY_GAP:          {N}  → {PREFIX}-B supplementation candidate (subject to manual PM handoff)
+    DEFINITION_CONFLICT: {N}  → {PREFIX}-B definition-correction candidate (subject to manual PM handoff)
+    Internal open items (Type A): {N}  → closed out via open-issues.md handling
 
-  의미 B 신호 부서 RE 인계 추적 (γ-2):
-    의미 B 합계: {N}건
-    {N > 0} → open-issues.md ## RE 인계 추적 섹션에 RH-NNN 행 등록 완료
-    {N = 0} → 의미 B 신호 없음 (공통 정합 확인 ✅)
-    ※ 실제 인계는 PM이 부서 RE 담당자에게 직접 수동 전달. 자동 sync 없음.
+  Type B signal department RE handoff tracking (γ-2):
+    Type B total: {N}
+    {N > 0} → RH-NNN row registered in the open-issues.md ## RE handoff tracking section
+    {N = 0} → no Type B signals (common-layer consistency confirmed ✅)
+    * Actual handoff is done manually by the PM directly to the department's RE contact. No automatic sync.
 
-다음 단계: /review drafts/{WO_ID}.draft.md
+Next step: /review drafts/{WO_ID}.draft.md
 ```
 
-session-log.md 에 추가한다:
+Append to session-log.md:
 ```markdown
-- {날짜} /write {WO_ID}: policy 초안 생성 / Delta {N}개 / TBD {N}건 / 충돌 {N}건
+- {date} /write {WO_ID}: policy draft created / Delta {N} / TBD {N} / conflicts {N}
 ```
 
 
-## 결과 파일 목록
+## Result file list
 
-| 파일 | 내용 |
+| File | Content |
 |---|---|
-| `drafts/{WO_ID}.draft.md` | Delta 전용 policy 초안 |
-| `open-issues.md` | TBD (P1) / 정책 충돌 (P0) / {PREFIX}-B 미로드 (P1) / RE 인계 추적 (의미 B 신호) |
-| `session-log.md` | 작성 요약 기록 |
+| `drafts/{WO_ID}.draft.md` | Delta-only policy draft |
+| `open-issues.md` | TBD (P1) / policy conflict (P0) / {PREFIX}-B not loaded (P1) / RE handoff tracking (Type B signals) |
+| `session-log.md` | Summary record of the draft |
 
-**open-issues.md 표준 섹션 구조 (write 스킬 산출 기준):**
+**open-issues.md standard section structure (based on write-skill output):**
 
-기존 P0/P1 섹션은 그대로 유지한다. 의미 B 신호가 1건 이상 발생한 /write 실행 시,
-아래 섹션을 `open-issues.md` 말미에 추가(없으면 신규 생성, 있으면 행 추가)한다.
+Keep the existing P0/P1 sections as-is. When a /write run produces 1 or more Type B signals,
+add the following section at the end of `open-issues.md` (create it if missing, add a row if it
+already exists).
 
 ```markdown
-## RE 인계 추적 (의미 B 신호)
+## RE handoff tracking (Type B signals)
 
-> 이 섹션은 공통({PREFIX}-A/B) 보완이 필요한 의미 B 신호를 PM이 수동으로 추적하는 공간이다.
-> 자동 sync 없음 — PM이 부서 RE 담당자에게 직접 인계 후 상태를 수기 갱신한다.
-> 의미 A(내부 미결) 항목은 기존 P0/P1 섹션에서 처리하고 이 섹션에 등록하지 않는다.
+> This section is where the PM manually tracks Type B signals that require a supplement to the
+> common layer ({PREFIX}-A/B).
+> No automatic sync — the PM hands these off directly to the department's RE contact and updates
+> the status by hand.
+> Type A (internal open item) items are handled in the existing P0/P1 sections and are not
+> registered in this section.
 
-| signal_id | signal_type | 발견 컨텍스트 | 공통 도메인 | 인계 상태 | 인계일 | 공통 반영 확인일 |
+| signal_id | signal_type | Discovery context | Common domain | Handoff status | Handoff date | Common-layer reflection confirmed date |
 |---|---|---|---|---|---|---|
-| RH-001 | POLICY_GAP | {WO_ID} draft §{섹션번호} | {PREFIX}-B.{도메인} | ⬜ 미인계 | - | - |
+| RH-001 | POLICY_GAP | {WO_ID} draft §{section number} | {PREFIX}-B.{domain} | ⬜ not handed off | - | - |
 ```
 
-**signal_id 규칙**: `RH-NNN` (Reverse Handoff, 3자리 순번 — 프로젝트 전체 연번)
+**signal_id rule**: `RH-NNN` (Reverse Handoff, 3-digit sequence — project-wide running number)
 
-**인계 상태 열거형 (PM 수기 갱신):**
-- `⬜ 미인계` — 아직 부서 RE에 전달하지 않은 상태 (기본값)
-- `🟡 인계됨` — PM이 부서 RE 담당자에게 전달 완료 (인계일 기재)
-- `✅ 공통 반영` — RE가 {PREFIX}-A/B 공통에 반영 확인 (공통 반영 확인일 기재)
+**Handoff status enum (updated manually by PM):**
+- `⬜ not handed off` — not yet delivered to the department's RE (default)
+- `🟡 handed off` — PM has delivered it to the department's RE contact (handoff date recorded)
+- `✅ reflected in common layer` — RE confirmed it has been reflected in {PREFIX}-A/B common layer (reflection-confirmation date recorded)
 
-의미 B 신호가 0건인 경우 이 섹션을 생성하지 않는다(또는 기존 섹션에 행 추가 없음).
+If there are 0 Type B signals, do not create this section (or, if it already exists, do not add a row).
 
 
-## 다음 단계
+## Next steps
 
 ```
 /review drafts/{WO_ID}.draft.md

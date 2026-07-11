@@ -3,146 +3,146 @@ publication:
   header:
     style: info
     body: |
-      **본 문서는 {{PRODUCT_NAME}}의 서비스 정책 정의서다. {{PRODUCT_NAME}}이 표시하는 모든 규칙·정책의 정본이다.**
+      **This document is the service policy definition for {{PRODUCT_NAME}}. It is the canonical source for every rule and policy that {{PRODUCT_NAME}} displays.**
       
-      doc_id: {{DOC_ID}} 버전: {{VERSION}} 최종 수정: {{DATE}}
+      doc_id: {{DOC_ID}} Version: {{VERSION}} Last updated: {{DATE}}
   meta:
     layout: two_equal
     cells:
       - panel:
-          title: "참고 자료"
+          title: "References"
           body: |
-            **관련 문서**
+            **Related Documents**
             
-            - [[page:[요구사항 정의서] {{PRODUCT_NAME}}]]
-            - [[page:[화면설계서] {{PRODUCT_NAME}}]]
+            - [[page:[Requirements Definition] {{PRODUCT_NAME}}]]
+            - [[page:[Screen Design] {{PRODUCT_NAME}}]]
       - change_history: 3
 ---
 
-::: {.panel section="§1 정책 개요"}
-## §1 정책 개요
+::: {.panel section="§1 Policy Overview"}
+## §1 Policy Overview
 
 ---
 
-### §1-1 목적
+### §1-1 Purpose
 
 <!-- col-widths: 15%, 85% -->
-| **목적** | {{본 정책서의 목적 한 문장}} |
+| **Purpose** | {{one-sentence purpose of this policy document}} |
 |---|---|
-| **적용 범위** | {{정책이 적용되는 범위}} |
-| **우선순위** | {{상충 시 우선순위 원칙}} |
+| **Scope** | {{the scope this policy applies to}} |
+| **Priority** | {{the priority principle in case of conflict}} |
 
-### §1-2 적용 범위
+### §1-2 Scope
 
-{{적용 범위 상세}}
+{{scope details}}
 
-### §1-3 핵심 원칙
+### §1-3 Core Principles
 
 <!-- col-widths: 20%, 80% -->
-| 원칙 | 내용 |
+| Principle | Content |
 |---|---|
-| {{원칙명}} | {{내용}} |
+| {{principle name}} | {{content}} |
 
-### §1-4 용어 정의
+### §1-4 Term Definitions
 
 <!-- col-widths: 20%, 80% -->
-| 용어 | 정의 (정본 표현) |
+| Term | Definition (canonical wording) |
 |---|---|
-| **{{용어}}** | {{정의}} |
+| **{{term}}** | {{definition}} |
 :::
 
-::: {.panel section="§2 공통 정책"}
-## §2 공통 정책
+::: {.panel section="§2 Common Policy"}
+## §2 Common Policy
 
 ---
 
-### §2-1 상태 정의
+### §2-1 Status Definitions
 
 <!-- col-widths: 20%, 50%, 30% -->
-| 상태 | 정의 | 진입 조건 |
+| Status | Definition | Entry Condition |
 |---|---|---|
-| **{{상태명}}** | {{정의}} | {{진입 조건}} |
+| **{{status name}}** | {{definition}} | {{entry condition}} |
 
-### §2-2 상태별 허용 액션 매트릭스
+### §2-2 Allowed-Actions-by-Status Matrix
 
 <!-- col-widths: 20%, 20%, 20%, 40% -->
-| 상태 | 허용 액션 | 금지 액션 | 비고 |
+| Status | Allowed Actions | Prohibited Actions | Notes |
 |---|---|---|---|
-| {{상태}} | {{허용}} | {{금지}} | {{비고}} |
+| {{status}} | {{allowed}} | {{prohibited}} | {{notes}} |
 
-### §2-3 권한
+### §2-3 Permissions
 
 <!-- col-widths: 20%, 80% -->
-| 역할 | 허용 범위 |
+| Role | Allowed Scope |
 |---|---|
-| {{역할}} | {{허용 범위}} |
+| {{role}} | {{allowed scope}} |
 
-### §2-4 공통 규칙
+### §2-4 Common Rules
 
-{{공통 적용 규칙 기술}}
+{{describe the commonly applied rule}}
 :::
 
-::: {.panel section="§3 생성 / 신청 정책"}
-## §3 생성 / 신청 정책
+::: {.panel section="§3 Creation / Request Policy"}
+## §3 Creation / Request Policy
 
 ---
 
-### §3-0 노출 범위
+### §3-0 Exposure Scope
 
-{{어떤 조건에서 생성/신청이 노출되는지}}
+{{under what conditions creation/request is exposed}}
 
-### §3-1 입력 유효성
+### §3-1 Input Validation
 
 <!-- col-widths: 15%, 20%, 35%, 30% -->
-| 필드 | 규칙 유형 | 조건 | 오류 메시지 / 처리 |
+| Field | Rule Type | Condition | Error Message / Handling |
 |---|---|---|---|
-| {{필드명}} | {{필수 / 형식 / 범위}} | {{조건}} | {{처리}} |
+| {{field name}} | {{required / format / range}} | {{condition}} | {{handling}} |
 
-### §3-2 케이스 분기
+### §3-2 Case Branching
 
 <!-- col-widths: 15%, 30%, 55% -->
-| 케이스 | 조건 | 처리 |
+| Case | Condition | Handling |
 |---|---|---|
-| C-001 | {{조건}} | {{처리}} |
+| C-001 | {{condition}} | {{handling}} |
 :::
 
-::: {.panel section="§4 삭제 / 해지 정책"}
-## §4 삭제 / 해지 정책
+::: {.panel section="§4 Deletion / Termination Policy"}
+## §4 Deletion / Termination Policy
 
 ---
 
-### §4-1 삭제 조건
+### §4-1 Deletion Conditions
 
-{{삭제 가능 조건 및 제약}}
+{{conditions and constraints under which deletion is possible}}
 
-### §4-2 삭제 처리 흐름
+### §4-2 Deletion Handling Flow
 
 <!-- col-widths: 10%, 30%, 60% -->
-| 단계 | 주체 | 처리 |
+| Step | Actor | Handling |
 |---|---|---|
-| 1 | {{주체}} | {{처리}} |
+| 1 | {{actor}} | {{handling}} |
 
-### §4-3 연쇄 삭제 / 종속 처리
+### §4-3 Cascading Deletion / Dependent Resource Handling
 
-{{종속 자원 처리 규칙}}
+{{rule for handling dependent resources}}
 :::
 
-::: {.panel section="미결 사항"}
-## 미결 사항
+::: {.panel section="Open Items"}
+## Open Items
 
 ---
 
-### P1 — 협의 필요 (블로킹)
+### P1 — Needs Discussion (blocking)
 
 <!-- col-widths: 8%, 30%, 35%, 15%, 12% -->
-| ID | 항목 | 현황 / 옵션 | 담당 | 목표일 |
+| ID | Item | Status / Options | Owner | Target Date |
 |---|---|---|---|---|
-| OI-001 | {{항목}} | {{현황}} | {{담당}} | {{목표일}} |
+| OI-001 | {{item}} | {{status}} | {{owner}} | {{target date}} |
 
-### P2 — 선택 보완 (비블로킹)
+### P2 — Optional Enhancement (non-blocking)
 
 <!-- col-widths: 8%, 30%, 35%, 15%, 12% -->
-| ID | 항목 | 현황 | 담당 | 목표일 |
+| ID | Item | Status | Owner | Target Date |
 |---|---|---|---|---|
-| OI-002 | {{항목}} | {{현황}} | {{담당}} | {{목표일}} |
+| OI-002 | {{item}} | {{status}} | {{owner}} | {{target date}} |
 :::

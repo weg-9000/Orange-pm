@@ -1,30 +1,32 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-r"""C-RENDER 완전판(후자) 결정적 조립기 (WP5).
+r"""C-RENDER complete-version (secondary) deterministic assembler (WP5).
 
-목적:
-    소스 draft(전자: Delta + [{doc_id} §X 참조] 링크)를 입력받아 공통
-    (G2-A/G2-B) 참조분을 **결정적 텍스트 치환**으로 인라인 전개한
-    기획자 정본(후자)을 생성한다. 모델 미관여 — 공통 텍스트 재출력 없음
-    (토큰 경계·SSoT 정확성). 공통는 읽기 전용.
+Purpose:
+    Takes a source draft (primary: Delta + [{doc_id} §X reference] links) as
+    input and generates the planner's canonical secondary view by inlining
+    common (G2-A/G2-B) references via **deterministic text substitution**.
+    No model involved — no re-emission of common text (token-boundary/SSoT
+    accuracy). Common content is read-only.
 
-해소 체인:
-    [{ID} ... §{sec} 참조]  /  기본 정책 완전 적용 — [{ID} ...] 참조
-      → master-id-map.yml(핀ID→파일 stem)
-      → B-headings-index.json(stem 키 → path·sections 라인범위)
-      → 공통 파일 해당 §라인 슬라이스를 출처 태그와 함께 인라인.
-    G2-A 용어: terms.yml(파생 캐시)에서 본문 등장 canonical 정의를 부록 전개.
+Resolution chain:
+    [{ID} ... §{sec} reference]  /  Full base-policy application — reference [{ID} ...]
+      → master-id-map.yml (pin ID → file stem)
+      → B-headings-index.json (stem key → path·section line ranges)
+      → inline the matching §-line slice of the common file, tagged with its source.
+    G2-A terms: expand the canonical definition (as it appears in the body)
+      from terms.yml (derived cache) into an appendix.
 
-산출:
-    reports/render/{WO_ID}.complete.md  (단일)
+Output:
+    reports/render/{WO_ID}.complete.md  (single)
     reports/render/{product}.full.complete.md  (--all)
-    frontmatter rendered_from_master: [{id}@{version}] 핀 →
-      drift_scan.py 가 완전판 stale 도 대조(WP5 연계).
+    frontmatter rendered_from_master: [{id}@{version}] pins →
+      drift_scan.py also checks the complete version for staleness (WP5 integration).
 
-사용법:
+Usage:
     python render_assemble.py --hub-root <Hub> --product <p> [--wo <WO_ID>] [--all]
 
-exit code: 0 성공 / 1 입력 없음·치명 / 2 인자 오류
+exit code: 0 success / 1 no input · fatal / 2 argument error
 """
 from __future__ import annotations
 
@@ -43,8 +45,12 @@ for _s in (sys.stdout, sys.stderr):
 
 FRONTMATTER = re.compile(r"\A---\n(.*?)\n---\n", re.DOTALL)
 PIN = re.compile(r"^\s*([^@\s]+)\s*@\s*v?([0-9][0-9.]*)\s*$")
-WHOLE_REF = re.compile(r"기본 정책 완전 적용\s*[—\-]\s*\[([^\]]+)\]\s*참조")
-SEC_REF = re.compile(r"\[([^\]\n]+?)\]\s*§?\s*([A-Za-z0-9][\w.\-]*)?\s*참조")
+# Marker phrasing PMs write in Hub draft documents to request an inline
+# expansion — matches the "Resolution chain" formats documented above:
+# whole-document delegation ("Full base-policy application — reference [{ID}]")
+# and section-level reference ("[{ID} §X reference]").
+WHOLE_REF = re.compile(r"Full base-policy application\s*[—\-]\s*reference\s*\[([^\]]+)\]")
+SEC_REF = re.compile(r"\[([^\]\n§]+?)(?:\s*§\s*([A-Za-z0-9][\w.\-]*))?\s*reference\]")
 ID_TOKEN = re.compile(r"([A-Za-z0-9]+-[ABC]-\d+|PLATFORM\.[A-Za-z.]+|common\.[\w.\-]+|[A-Za-z0-9_\-]+)")
 
 
@@ -98,7 +104,7 @@ def _active_prefix(hub: Path) -> str | None:
 
 def _load_b_index(hub: Path) -> dict:
     cache_dir = hub / "CONTEXT" / ".template-cache"
-    # PREFIX 네임스페이스 인덱스 우선, 없으면 레거시 무네임스페이스로 폴백.
+    # Prefer the PREFIX-namespaced index; fall back to the legacy non-namespaced one.
     prefix = _active_prefix(hub)
     candidates = []
     if prefix:
@@ -151,17 +157,17 @@ def _resolve_doc(token: str, amap: dict, bidx: dict) -> dict | None:
 
 
 def _section_text(hub: Path, entry: dict, sec: str | None) -> tuple[str, str]:
-    """(추출 텍스트, 라벨). sec 없으면 문서 전체(상한 400줄)."""
+    """(extracted text, label). If sec is absent, the entire document (capped at 400 lines)."""
     fp = hub / entry["path"]
     if not fp.exists():
-        return f"⚠️ 공통 파일 없음: {entry['path']}", "MISSING"
+        return f"⚠️ Common file not found: {entry['path']}", "MISSING"
     lines = fp.read_text(encoding="utf-8", errors="replace").splitlines()
     if sec:
         def _norm(x: str) -> str:
             return re.sub(r"[\s.\-]+", "", str(x)).lower()
         nsec = _norm(sec)
         secs = entry.get("sections", [])
-        # 1) id 정확 일치  2) 제목 정규화 prefix/포함 (실측 공통는 A/B/B-1 알파섹션)
+        # 1) exact id match  2) normalized-title prefix/contains match (real-world common docs use A/B/B-1 alpha sections)
         for s in secs:
             if s["id"] == sec:
                 seg = lines[s["line_start"] - 1: s["line_end"]]
@@ -171,11 +177,11 @@ def _section_text(hub: Path, entry: dict, sec: str | None) -> tuple[str, str]:
             if nsec and (nt.startswith(nsec) or nsec in nt):
                 seg = lines[s["line_start"] - 1: s["line_end"]]
                 return "\n".join(seg).strip(), f"§{sec} {s.get('title','')}".strip()
-        return (f"⚠️ §{sec} 미발견 — B-headings-index 갱신(build_b_index.py) "
-                f"또는 핀·§표기 정정 필요", f"§{sec} (미발견)")
+        return (f"⚠️ §{sec} not found — refresh B-headings-index (run build_b_index.py) "
+                f"or correct the pin/§ notation", f"§{sec} (not found)")
     seg = lines[:400]
-    tail = "" if len(lines) <= 400 else "\n\n…(이하 생략 — 전체는 공통 원문 참조)"
-    return "\n".join(seg).strip() + tail, "전체"
+    tail = "" if len(lines) <= 400 else "\n\n…(truncated — see the full common source for the complete text)"
+    return "\n".join(seg).strip() + tail, "entire document"
 
 
 def _pin_version(token: str, pins: list[str], amap: dict) -> str:
@@ -201,13 +207,13 @@ def assemble_one(hub: Path, draft: Path, amap: dict, bidx: dict,
         token = tok_m.group(1) if tok_m else token_raw.strip().split()[0]
         entry = _resolve_doc(token, amap, bidx)
         if entry is None:
-            return (f"\n> ⟦전개 실패: '{token}' 해소 불가 — master-id-map.yml "
-                    f"등록 또는 핀 정정 필요⟧\n")
+            return (f"\n> ⟦expand failed: '{token}' could not be resolved — register it in "
+                    f"master-id-map.yml or correct the pin⟧\n")
         text, label = _section_text(hub, entry, sec)
         ver = _pin_version(token, pins, amap)
         rendered_from.add(f"{token}@v{ver}")
-        return (f"\n> ⟦전개: {token}@v{ver} {label} — 출처 {entry['path']} "
-                f"(자동 인라인, 수정은 소스에서)⟧\n\n{text}\n\n> ⟦/전개⟧\n")
+        return (f"\n> ⟦expand: {token}@v{ver} {label} — source {entry['path']} "
+                f"(auto-inlined, edit at the source)⟧\n\n{text}\n\n> ⟦/expand⟧\n")
 
     body = WHOLE_REF.sub(lambda m: _inline(m.group(1), None), body)
     body = SEC_REF.sub(lambda m: _inline(m.group(1), m.group(2)), body)
@@ -216,7 +222,7 @@ def assemble_one(hub: Path, draft: Path, amap: dict, bidx: dict,
     appendix = ""
     if used_terms:
         term_doc = f"{_active_prefix(hub) or 'PX'}-A-001"
-        appendix = f"\n\n---\n\n## 부록 A. 용어 정의 ({term_doc} 전개)\n\n"
+        appendix = f"\n\n---\n\n## Appendix A. Term definitions ({term_doc} expansion)\n\n"
         appendix += "\n".join(f"- **{c}**: {d}" for c, d in used_terms[:80])
         rendered_from.add(f"{term_doc}@v?")
 
@@ -227,25 +233,27 @@ def assemble_one(hub: Path, draft: Path, amap: dict, bidx: dict,
         f"source_doc_id: {wo_id}\n"
         f"type: {fm.get('type','')}\n"
         f"rendered_at: {datetime.now().isoformat(timespec='seconds')}\n"
-        f"rendered_by: render_assemble.py (C-RENDER, 결정적·모델 미관여)\n"
+        f"rendered_by: render_assemble.py (C-RENDER, deterministic, no model involved)\n"
         f"rendered_from_master: [{', '.join(rf)}]\n"
         f"source_referenced_master: [{', '.join(pins)}]\n"
         "---\n\n"
-        "> **자동 전개 정본 뷰 (C-RENDER)** — render_assemble.py 가 소스 draft +\n"
-        "> 공통(G2-A/B)를 결정적으로 인라인 전개한 기획자 정본이다.\n"
-        "> 직접 수정 금지(이중 작성=SSoT 붕괴). 수정은 소스(/write·/flow)에서.\n"
-        "> 공통 version↑ 시 drift_scan 이 stale 표시 → 재-render 필요.\n\n"
+        "> **Auto-expanded canonical view (C-RENDER)** — render_assemble.py is the\n"
+        "> planner's canonical view that deterministically inlines the source draft +\n"
+        "> common content (G2-A/B).\n"
+        "> Do not edit directly (dual authoring = SSoT collapse). Edit the source\n"
+        "> (/write · /flow) instead.\n"
+        "> When the common version bumps, drift_scan flags this as stale → re-render is required.\n\n"
         "---\n"
     )
     return header + body + appendix + "\n", rf
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description="C-RENDER 완전판 결정적 조립")
+    ap = argparse.ArgumentParser(description="C-RENDER complete-version deterministic assembly")
     ap.add_argument("--hub-root", required=True, type=Path)
     ap.add_argument("--product", required=True)
-    ap.add_argument("--wo", default=None, help="단일 WO_ID (생략=전체 draft)")
-    ap.add_argument("--all", action="store_true", help="추가로 {product}.full.complete.md 생성")
+    ap.add_argument("--wo", default=None, help="Single WO_ID (omit = all drafts)")
+    ap.add_argument("--all", action="store_true", help="Additionally generate {product}.full.complete.md")
     args = ap.parse_args()
     if not args.hub_root.is_dir():
         sys.stderr.write(f"hub-root not found: {args.hub_root}\n")
@@ -262,8 +270,8 @@ def main() -> int:
     bidx = _load_b_index(hub)
     terms = _load_terms(hub)
     if not bidx:
-        print("[render_assemble] WARN: B-headings-index.json 없음 — "
-              "build_b_index.py 실행 권고. §참조 인라인 제한됨")
+        print("[render_assemble] WARN: B-headings-index.json not found — "
+              "recommend running build_b_index.py. §-reference inlining will be limited")
 
     targets = (
         [drafts_dir / f"{args.wo}.draft.md"] if args.wo
@@ -271,7 +279,7 @@ def main() -> int:
     )
     targets = [t for t in targets if t.exists()]
     if not targets:
-        sys.stderr.write("대상 draft 없음\n")
+        sys.stderr.write("No target drafts\n")
         return 1
 
     out_dir = proj / "reports" / "render"
@@ -289,7 +297,7 @@ def main() -> int:
             "".join(full_parts), encoding="utf-8")
         print(f"[render_assemble] {args.product}.full.complete.md ({len(targets)} draft)")
 
-    print(f"[render_assemble] 완료 — {len(targets)}건 → "
+    print(f"[render_assemble] done — {len(targets)} file(s) → "
           f"{(out_dir).relative_to(hub)}")
     return 0
 

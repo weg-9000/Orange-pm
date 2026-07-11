@@ -1,23 +1,24 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""정책팩 패키징/설치/조회 — 플러그인 future (멀티테넌트 SaaS Phase 5).
+"""Policy pack packaging/install/list — plugin future (multi-tenant SaaS Phase 5).
 
-정책팩(policy pack): 배포 가능한 정책 컨텍스트 번들.
+Policy pack: a deployable policy-context bundle.
     packs/{name}/
       pack.json                      ← {name, version, type, prefixes[], depends_on[], ...}
-      reference-docs/{PREFIX}/{A,B,C} ← 정책 데이터
+      reference-docs/{PREFIX}/{A,B,C} ← policy data
       reference-docs/master-id-map.yml
 
-테넌트는 marketplace(packs/registry.json)에서 팩을 골라 install 하면 해당 PREFIX 가
-자신의 hub 로 비파괴 병합된다. 설치 이력은 CONTEXT/installed-packs.json 에 버전과
-함께 기록되어 업데이트·감사에 쓰인다.
+When a tenant picks a pack from the marketplace (packs/registry.json) and installs
+it, the corresponding PREFIX is non-destructively merged into their hub. The
+install history is recorded with its version in CONTEXT/installed-packs.json,
+used for updates and audits.
 
-명령:
+Commands:
   package --hub-root <tenant> --name <pack> --out <packs-dir> [--prefix G2 ...] [--version 1.0.0]
   install --hub-root <tenant> --pack <name> [--packs-dir packs] [--force]
   list    [--packs-dir packs]
 
-exit code: 0 성공 / 1 실패 / 2 인자 오류
+exit code: 0 success / 1 failure / 2 argument error
 """
 from __future__ import annotations
 
@@ -52,7 +53,7 @@ def list_packs(packs_dir: Path) -> list[dict]:
 def package(hub_root: Path, name: str, out_dir: Path, *,
             prefixes: list[str] | None = None, version: str = "1.0.0",
             description: str = "") -> dict:
-    """테넌트 reference-docs 를 배포 가능한 정책팩으로 번들."""
+    """Bundle a tenant's reference-docs into a deployable policy pack."""
     src_ref = _ref_dir(hub_root)
     if not src_ref.is_dir():
         return {"status": "no-reference-docs"}
@@ -70,7 +71,7 @@ def package(hub_root: Path, name: str, out_dir: Path, *,
     for pfx in chosen:
         shutil.copytree(src_ref / pfx, dst_ref / pfx, dirs_exist_ok=True)
         doc_count += sum(1 for _ in (dst_ref / pfx).rglob("*.md"))
-    # master-id-map 동봉(있으면)
+    # bundle master-id-map (if present)
     src_map = src_ref / "master-id-map.yml"
     if src_map.exists():
         shutil.copyfile(src_map, dst_ref / "master-id-map.yml")
@@ -81,7 +82,7 @@ def package(hub_root: Path, name: str, out_dir: Path, *,
         "type": "policy",
         "prefixes": chosen,
         "depends_on": [],
-        "description": description or f"{name} 정책팩",
+        "description": description or f"{name} policy pack",
         "doc_count": doc_count,
         "created_at": date.today().isoformat(),
     }
@@ -91,7 +92,7 @@ def package(hub_root: Path, name: str, out_dir: Path, *,
 
 
 def install(tenant_root: Path, pack_dir: Path, *, force: bool = False) -> dict:
-    """정책팩을 테넌트 hub 로 비파괴 병합 설치 + 이력 기록."""
+    """Install a policy pack into the tenant hub via non-destructive merge + record history."""
     manifest_path = pack_dir / "pack.json"
     if not manifest_path.exists():
         return {"status": "no-manifest"}
@@ -111,7 +112,7 @@ def install(tenant_root: Path, pack_dir: Path, *, force: bool = False) -> dict:
             copied.append(pfx_dir.name)
     added = _merge_master_id_map(src_ref / "master-id-map.yml", dst_ref / "master-id-map.yml")
 
-    # 설치 이력
+    # install history
     rec_path = tenant_root / "CONTEXT" / "installed-packs.json"
     records = []
     if rec_path.exists():
@@ -119,7 +120,7 @@ def install(tenant_root: Path, pack_dir: Path, *, force: bool = False) -> dict:
             records = json.loads(rec_path.read_text(encoding="utf-8"))
         except Exception:
             records = []
-    records = [r for r in records if r.get("name") != manifest["name"]]  # 동일 팩 최신화
+    records = [r for r in records if r.get("name") != manifest["name"]]  # refresh same pack
     records.append({
         "name": manifest["name"],
         "version": manifest["version"],
@@ -134,7 +135,7 @@ def install(tenant_root: Path, pack_dir: Path, *, force: bool = False) -> dict:
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description="정책팩 패키징/설치/조회")
+    ap = argparse.ArgumentParser(description="Policy pack packaging/install/list")
     ap.add_argument("command", choices=["package", "install", "list"])
     ap.add_argument("--hub-root", type=Path, default=None)
     ap.add_argument("--name", default=None)
@@ -150,7 +151,7 @@ def main() -> int:
     if args.command == "list":
         packs = list_packs(args.packs_dir)
         if not packs:
-            print(f"[pack_admin] 팩 없음: {args.packs_dir}")
+            print(f"[pack_admin] no packs found: {args.packs_dir}")
             return 0
         for p in packs:
             print(f"  - {p['name']}@{p.get('version','?')} "
@@ -159,7 +160,7 @@ def main() -> int:
 
     if args.command == "package":
         if not (args.hub_root and args.name):
-            sys.stderr.write("--hub-root, --name 필요\n")
+            sys.stderr.write("--hub-root, --name required\n")
             return 2
         if not args.hub_root.is_dir():
             sys.stderr.write(f"hub-root not found: {args.hub_root}\n")
@@ -167,7 +168,7 @@ def main() -> int:
         r = package(args.hub_root, args.name, args.out, prefixes=args.prefix,
                     version=args.version, description=args.description)
         if r["status"] != "packaged":
-            sys.stderr.write(f"[pack_admin] 패키징 실패: {r}\n")
+            sys.stderr.write(f"[pack_admin] packaging failed: {r}\n")
             return 1
         print(f"[pack_admin] packaged {r['pack_dir']} "
               f"(prefixes={r['prefixes']}, docs={r['doc_count']}, v{r['version']})")
@@ -175,7 +176,7 @@ def main() -> int:
 
     # install
     if not (args.hub_root and args.pack):
-        sys.stderr.write("--hub-root, --pack 필요\n")
+        sys.stderr.write("--hub-root, --pack required\n")
         return 2
     if not args.hub_root.is_dir():
         sys.stderr.write(f"hub-root not found: {args.hub_root}\n")
@@ -186,11 +187,11 @@ def main() -> int:
         return 1
     r = install(args.hub_root, pack_dir, force=args.force)
     if r["status"] != "installed":
-        sys.stderr.write(f"[pack_admin] 설치 실패: {r}\n")
+        sys.stderr.write(f"[pack_admin] install failed: {r}\n")
         return 1
     print(f"[pack_admin] installed {r['name']}@{r['version']} "
           f"copied={r['copied']} skipped={r['skipped']} map+={r['map_entries_added']}")
-    print("  다음: build_b_cache/build_b_index/build_a_index/build_c_index 로 캐시 생성")
+    print("  next: generate caches with build_b_cache/build_b_index/build_a_index/build_c_index")
     return 0
 
 

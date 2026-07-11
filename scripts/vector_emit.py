@@ -1,19 +1,19 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""vector_emit — Neo4j 벡터 인덱스 현황 → 정규화 JSON (viz 거버넌스, Phase 6).
+"""vector_emit — Neo4j vector index status → normalized JSON (viz governance, Phase 6).
 
-Neo4j 에 실제로 적재된 :Chunk(임베딩 문서)가 무엇인지 보여준다:
-  - 벡터 인덱스 이름·차원
-  - 총 청크 수
-  - 문서별(doc_id/prefix/layer/service) 청크 수
-  - PREFIX 별 집계
+Shows what's actually loaded into Neo4j as :Chunk (embedded documents):
+  - vector index name/dimensions
+  - total chunk count
+  - chunk count per document (doc_id/prefix/layer/service)
+  - aggregation by PREFIX
 
-읽기 전용. Neo4j 미가용(드라이버·비밀번호·연결 실패) 시 status="unavailable" 로
-graceful degrade — 인프라/오프라인/CI 에서도 안전.
+Read-only. When Neo4j is unavailable (driver/password/connection failure),
+gracefully degrades to status="unavailable" — safe in infra/offline/CI environments.
 
     python vector_emit.py --emit-json
-출력: {kind:"vector-index", status, indexName, dimensions, totalChunks, docs[], byPrefix[], version}
-환경: NEO4J_URI / NEO4J_USER / NEO4J_PASSWORD
+Output: {kind:"vector-index", status, indexName, dimensions, totalChunks, docs[], byPrefix[], version}
+Environment: NEO4J_URI / NEO4J_USER / NEO4J_PASSWORD
 """
 from __future__ import annotations
 
@@ -24,13 +24,13 @@ import _emit_common as C
 
 
 def _connect():
-    """(driver, None) 또는 (None, 사유). 실패해도 예외 없이 사유 문자열 반환."""
+    """Returns (driver, None) or (None, reason). Returns a reason string instead of raising on failure."""
     if not os.environ.get("NEO4J_PASSWORD"):
-        return None, "NEO4J_PASSWORD 미설정"
+        return None, "NEO4J_PASSWORD not set"
     try:
         from neo4j import GraphDatabase
     except Exception:
-        return None, "neo4j 드라이버 미설치 (pip install neo4j)"
+        return None, "neo4j driver not installed (pip install neo4j)"
     uri = os.environ.get("NEO4J_URI", "bolt://localhost:7687")
     user = os.environ.get("NEO4J_USER", "neo4j")
     try:
@@ -38,11 +38,11 @@ def _connect():
         d.verify_connectivity()
         return d, None
     except Exception as e:
-        return None, f"연결 실패: {e}"
+        return None, f"connection failed: {e}"
 
 
 def query_stats(session) -> dict:
-    """세션에서 인덱스·청크 통계를 수집(쿼리는 best-effort)."""
+    """Collects index/chunk statistics from the session (queries are best-effort)."""
     index_name = None
     dimensions = None
     try:
@@ -53,7 +53,7 @@ def query_stats(session) -> dict:
             dimensions = cfg.get("vector.dimensions")
             break
     except Exception:
-        pass  # 구버전/권한 등 — 인덱스 메타 없이 통계만
+        pass  # older version/permissions, etc. — fall back to stats without index metadata
 
     docs: list[dict] = []
     total = 0

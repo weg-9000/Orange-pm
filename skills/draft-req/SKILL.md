@@ -1,6 +1,6 @@
 ---
 name: draft-req
-description: Discovery 3개 스트림을 synthesizer 에이전트에 전달해 requirements.md와 research.md를 생성하고 discovery-exit-gate를 검증한다.
+description: Passes the 3 Discovery streams to the synthesizer agent to generate requirements.md and research.md, and validates the discovery-exit-gate.
 triggers:
   - "draft-req"
   - "synthesize requirements"
@@ -12,276 +12,318 @@ model: opus
 user-invocable: true
 ---
 
-## Bootstrap 캐시 가드 (개선안 F — CONTEXT_OPTIMIZATION.md)
+## Bootstrap Cache Guard (Improvement F — CONTEXT_OPTIMIZATION.md)
 
-세션 첫 진입 시 `CONTEXT/_session-bootstrap.md` 를 1회만 로드한다.
-이미 같은 세션에서 본 파일을 읽었다면 재독을 금지한다.
-캐시가 없거나 stale 이면 다음 명령으로 갱신한 뒤 진행한다:
+Load `CONTEXT/_session-bootstrap.md` once on first entry to the session.
+If this file has already been read in the same session, re-reading it is forbidden.
+If the cache is missing or stale, refresh it with the following command before proceeding:
 
 ```bash
 python ${CLAUDE_PLUGIN_ROOT}/scripts/build_bootstrap.py --hub-root .
 ```
 
-본 가드는 layer-config / about-pm / project-rules / brand-voice /
-doc-layer-schema / team-members 6개 원본 파일 재로드를 대체한다.
-원본 파일 직접 Read 는 본 skill 의 핵심 작업에 필수인 경우에만 허용된다.
+This guard replaces re-loading the 6 source files: layer-config / about-pm /
+project-rules / brand-voice / doc-layer-schema / team-members.
+Directly reading the source files is allowed only when strictly necessary
+for this skill's core work.
 
 
-## 공통 참조 가드 (C0·C-PIN — gates/master-derivation-gate.md SSoT)
+## Common Reference Guard (C0·C-PIN — gates/master-derivation-gate.md SSoT)
 
-requirements·spec-catalog 합성 시 적용. 상세는 `CONTEXT/gates/master-derivation-gate.md`.
+Applies when synthesizing requirements/spec-catalog. See
+`CONTEXT/gates/master-derivation-gate.md` for details.
 
-1. 공통 대조: G2-A/B 에 이미 있는 정책·용어는 requirements/spec-catalog 에
-   재작성 금지 — `[{doc_id} §X] 참조` 링크로만(B-headings-index 후보 §만,
-   원문 전체 로드 금지).
-2. spec-catalog 출처 분류: 모든 입력 변수 행의 `출처` 는
-   `G2-B §X | 제품 Delta | [확인필요:사유]` 중 하나. **추정·환각 채움 금지**
-   (원천 미확보 변수는 [확인필요] + open-issues 등록).
-3. PM 확인은 단계 2(생성 결과 수신)에 통합(직렬 프롬프트 추가 금지).
+1. Common cross-check: policy/terminology already present in G2-A/B must
+   not be rewritten in requirements/spec-catalog — reference only via a
+   `[{doc_id} §X] reference` link (only candidate §s from the
+   B-headings-index; do not load the full source text).
+2. spec-catalog source classification: every input-variable row's
+   `source` must be one of `G2-B §X | Product Delta | [needs-confirmation:reason]`.
+   **Filling in by guessing or hallucination is forbidden** (a variable
+   whose source is not secured gets [needs-confirmation] + an open-issues
+   entry).
+3. PM confirmation is consolidated into step 2 (receiving the generated
+   result) — do not add a separate serial prompt.
 
-## 전제조건 검사
+## Precondition Checks
 
-### 1. 스트림 파일 존재 여부 확인
+### 1. Check that the stream files exist
 
-다음 6개 파일의 존재 여부를 확인한다:
+Check whether the following 6 files exist:
 - `inputs/discovery/competitor/overview.md`
-- `inputs/discovery/competitor/*.md` (1개 이상)
+- `inputs/discovery/competitor/*.md` (1 or more)
 - `inputs/discovery/stakeholder/overview.md`
-- `inputs/discovery/stakeholder/*.md` (1개 이상)
+- `inputs/discovery/stakeholder/*.md` (1 or more)
 - `inputs/discovery/product-audit/overview.md`
-- `inputs/discovery/product-audit/*.md` (1개 이상)
+- `inputs/discovery/product-audit/*.md` (1 or more)
 
-파일이 없는 스트림이 있으면 해당 스킬(`/research`, `/stakeholder`, `/product-audit`)
-실행을 안내하고 중단한다.
+If any stream is missing files, instruct the PM to run the corresponding
+skill (`/research`, `/stakeholder`, `/product-audit`) and stop.
 
 
-### 2. 스트림 최소 품질 임계값 확인
+### 2. Check the minimum quality threshold for each stream
 
-각 파일을 읽어 다음 기준을 충족하는지 확인한다:
+Read each file and check whether it meets the following criteria:
 
-| 스트림 | 최소 요구사항 |
+| Stream | Minimum requirement |
 |---|---|
-| competitor | 비교 매트릭스 행 3개 이상 / `[미입력]` 셀이 전체의 50% 미만 |
-| stakeholder | 이해관계자 2명 이상 등록 / 요구사항 항목 5개 이상 |
-| product-audit | 기존 기능 목록 1개 이상 / pain point 1개 이상 |
+| competitor | 3+ rows in the comparison matrix / fewer than 50% `[not entered]` cells |
+| stakeholder | 2+ stakeholders registered / 5+ requirement items |
+| product-audit | 1+ existing feature listed / 1+ pain point |
 
-미달 스트림이 있으면 구체적인 미달 내용을 출력하고 PM에게 계속 진행 여부를 묻는다.
-PM이 강제 진행을 선택하면 해당 스트림에 `[품질 미달 — 강제 진행]` 경고를 붙이고 계속한다.
-
-
-### 3. open-issues.md P0 항목 확인
-
-P0 항목이 1건 이상이면 목록을 출력하고 중단한다.
+If any stream falls short, print the specific shortfall and ask the PM
+whether to proceed anyway.
+If the PM chooses to force proceed, attach a `[quality below threshold —
+forced]` warning to that stream and continue.
 
 
-### 4. {PREFIX}-B 공통 정책 접근 가능 여부 확인
+### 3. Check P0 items in open-issues.md
 
-`CONTEXT/layer-config.md`에서 `{PREFIX}-B` 문서 링크(wiki)를 읽는다.
-링크가 없거나 wiki 커넥터(사용자가 연결한 MCP 도구 — 예: Confluence·Notion 등,
-CONNECTORS.md 탐지 프로토콜로 확인) 부재·연결 실패 시 open-issues.md에 P2로 등록하고
-{PREFIX}-B 없이 합성을 계속 진행한다.
-(이 경우 requirements.md의 {PREFIX}-B 중복 항목은 Link 처리 없이 전문 작성된다.)
+If there is 1 or more P0 item, print the list and stop.
 
 
-## 실행 단계
+### 4. Check whether the {PREFIX}-B common policy is accessible
 
-### 단계 1 — synthesizer 에이전트 기동
+Read the `{PREFIX}-B` document link (wiki) from `CONTEXT/layer-config.md`.
+If the link is missing, or the wiki connector (an MCP tool the user has
+connected — e.g. Confluence, Notion, checked via the CONNECTORS.md
+detection protocol) is absent or fails to connect, register a P2 item in
+open-issues.md and proceed with synthesis without {PREFIX}-B.
+(In this case, items in requirements.md that duplicate {PREFIX}-B are
+written out in full, without link handling.)
 
-synthesizer 에이전트에 다음 컨텍스트를 전달해 기동한다:
+
+## Execution Steps
+
+### Step 1 — Launch the synthesizer agent
+
+Launch the synthesizer agent, passing it the following context:
 
 ```
-입력 파일:
-  - inputs/discovery/competitor/ (전체)
-  - inputs/discovery/stakeholder/ (전체)
-  - inputs/discovery/product-audit/ (전체)
+Input files:
+  - inputs/discovery/competitor/ (all)
+  - inputs/discovery/stakeholder/ (all)
+  - inputs/discovery/product-audit/ (all)
 
-설정값:
-  - PREFIX: {PREFIX} (layer-config.md에서 로드)
-  - {PREFIX}-B 문서 링크(wiki): {URL 또는 N/A}
+Settings:
+  - PREFIX: {PREFIX} (loaded from layer-config.md)
+  - {PREFIX}-B document link (wiki): {URL or N/A}
 
-출력 대상:
+Output targets:
   - PROJECTS/{product}/inputs/requirements.md
-  - PROJECTS/{product}/inputs/requirements.seeds.yml  (capability 씨앗 사이드카)
+  - PROJECTS/{product}/inputs/requirements.seeds.yml  (capability seed sidecar)
   - PROJECTS/{product}/inputs/research.md
-  - PROJECTS/{product}/inputs/spec-catalog.md  (templates/standard/spec-catalog-template.md 기준)
+  - PROJECTS/{product}/inputs/spec-catalog.md  (per templates/standard/spec-catalog-template.md)
 
-합성 우선순위: 이해관계자 요구사항 1순위
-상충 요구사항 처리: 삭제 금지, open-issues.md에 기록
-{PREFIX}-B 중복 항목: requirements.md·spec-catalog 에 Link로만 표기 (재작성 금지)
-spec-catalog 출처 규칙: 모든 입력 변수 행 `출처` = G2-B §X | 제품 Delta |
-  [확인필요:사유] 중 하나. 원천 미확보 변수는 [확인필요]+open-issues 등록.
-  **추정·환각 채움 절대 금지** (값 미상이면 빈칸이 아니라 [확인필요]).
-mode: 요금 산식형이면 calculation, 콘솔형이면 console 로 frontmatter 기재.
-FR capability 씨앗 (P1 — docs/fr-cluster-alignment.md DEC-A/B): requirements.md 와 같은
-  디렉토리에 사이드카 `requirements.seeds.yml` 을 함께 생성/갱신한다. FR 표 본문에는
-  인라인 셀을 넣지 않는다(D1 FR 표는 깨끗한 4열 유지). 사이드카는 FR ID 를 키로 하는
-  top-level 맵이며, 각 FR 당 `capability` 가설을 1개씩 부여한다:
+Synthesis priority: stakeholder requirements first
+Conflicting requirements handling: do not delete, record in open-issues.md
+{PREFIX}-B duplicate items: mark as a Link only in requirements.md/spec-catalog (do not rewrite)
+spec-catalog source rule: every input-variable row's `source` must be one
+  of G2-B §X | Product Delta | [needs-confirmation:reason]. A variable
+  whose source is not secured gets [needs-confirmation] + an open-issues
+  entry.
+  **Filling in by guessing or hallucination is strictly forbidden** (if a
+  value is unknown, use [needs-confirmation], not a blank cell).
+mode: state `calculation` in frontmatter for fee-formula type, `console`
+  for console type.
+FR capability seed (P1 — docs/fr-cluster-alignment.md DEC-A/B): create/update
+  a sidecar `requirements.seeds.yml` in the same directory as
+  requirements.md. Do not put inline cells in the FR table body (keep D1's
+  FR table a clean 4 columns). The sidecar is a top-level map keyed by FR
+  ID, giving each FR one `capability` hypothesis:
   ```yaml
   "FR-101":
     capability: "Provisioning"
-    cluster_hint: "PR-01"   # 선택
-    lock: false             # 선택, 기본 false
+    cluster_hint: "PR-01"   # optional
+    lock: false             # optional, default false
   "FR-102":
-    capability: "[확인필요]"
+    capability: "[needs-confirmation]"
   ```
-  - `cluster_hint`·`lock` 은 선택. **씨앗=가설(seed)이지 고정 경계 아님(DEC-B)** —
-    최종 경계는 cluster_identify(5축·threshold)가 확정하므로 FR 을 capability 산문
-    섹션으로 하드 그룹핑 금지. capability 불명확 시 추정 금지 →
-    `capability: "[확인필요]"` 로 기입하고 open-issues P1 등록.
-  - 무태그 제품은 `cluster_seed_backfill` 으로 사이드카를 사후 부트스트랩할 수 있다(P5).
+  - `cluster_hint`/`lock` are optional. **The seed is a hypothesis, not a
+    fixed boundary (DEC-B)** — the final boundary is settled by
+    cluster_identify (5-axis, threshold), so do not hard-group FRs into
+    capability prose sections. If capability is unclear, do not guess →
+    write `capability: "[needs-confirmation]"` and register a P1 open
+    issue.
+  - For an untagged product, the sidecar can be bootstrapped after the
+    fact with `cluster_seed_backfill` (P5).
 ```
 
-synthesizer는 내부적으로 discovery-exit-gate 자기 검증을 수행한다.
-(세부 합성 절차는 `agents/synthesizer.md` 참조)
+The synthesizer performs its own internal discovery-exit-gate
+self-validation.
+(See `agents/synthesizer.md` for detailed synthesis procedures)
 
 
-### 단계 2 — 생성 결과 수신 및 기록
+### Step 2 — Receive and record the generated result
 
-synthesizer 완료 후 다음 항목을 확인한다:
+After the synthesizer completes, check the following items:
 
-- `inputs/requirements.md` 생성 여부
-- `inputs/requirements.seeds.yml` 생성 여부 (사이드카 — capability 씨앗)
-- `inputs/research.md` 생성 여부
-- `inputs/spec-catalog.md` 생성 여부 + 출처 미태깅(빈칸) 행 0건 / [확인필요] 행 수
-- Layer 1~5 항목 수 (synthesizer 자기 검증 결과 수신)
-- **FR capability 씨앗 현황** (P1): 사이드카 `requirements.seeds.yml` 에 각 FR ID 키
-  존재 여부 / capability 미부여(무키) FR 수 / `[확인필요]` capability FR 수.
-  무키 FR 이 남으면 synthesizer 보강하거나, 사후 `cluster_seed_backfill`
-  부트스트랩(P5) 으로 사이드카를 채울 수 있음을 안내한다. `[확인필요]` 는 open-issues 등록 확인.
-- open-issues.md 신규 등록 항목 수
+- Whether `inputs/requirements.md` was created
+- Whether `inputs/requirements.seeds.yml` was created (sidecar — capability
+  seeds)
+- Whether `inputs/research.md` was created
+- Whether `inputs/spec-catalog.md` was created + 0 rows with an untagged
+  (blank) source / count of [needs-confirmation] rows
+- Layer 1–5 item counts (received from the synthesizer's self-validation
+  result)
+- **FR capability seed status** (P1): whether each FR ID key exists in the
+  sidecar `requirements.seeds.yml` / count of FRs with no capability
+  assigned (no key) / count of FRs with `[needs-confirmation]` capability.
+  If keyless FRs remain, explain that the synthesizer can be re-run to
+  fill them in, or the sidecar can be filled afterward via the
+  `cluster_seed_backfill` bootstrap (P5). Confirm that
+  `[needs-confirmation]` items are registered in open-issues.
+- Number of newly registered open-issues.md items
 
-#### Phase 5B — requirements.md FR 메타 확장 (Track A cluster 군집 입력)
+#### Phase 5B — requirements.md FR metadata expansion (Track A cluster grouping input)
 
-Track A (Full Product) 의 cluster_identify.py 와 fanout 의 cluster mode 가 사용
-하기 위해, FR 레코드에 다음 메타 필드를 추가한다 (후방 호환 — 없어도 동작).
+To be used by Track A (Full Product)'s cluster_identify.py and fanout's
+cluster mode, add the following metadata fields to FR records
+(backward-compatible — works fine without them).
 
 ```yaml
 - id: FR-103
   layer: 1
-  title: "DBaaS 인스턴스 생성 정책"
+  title: "DBaaS Instance Creation Policy"
   priority: P0
-  # ── Phase 5B 신규 필드 ──
-  domain_object: ["Instance", "InstanceSpec"]   # 객체 공유 축
-  policy_axis: ["인스턴스 라이프사이클", "자원 한도"]  # 정책 도메인 축
-  primary_screen: "SCR-001"                      # 화면 표면 축
-  cluster_ref: null                              # 채워질 예정 (cluster_identify 후)
-  capability_hint: "Provisioning"                # capability 후보 (옵션)
+  # ── New fields in Phase 5B ──
+  domain_object: ["Instance", "InstanceSpec"]   # object-sharing axis
+  policy_axis: ["Instance Lifecycle", "Resource Limits"]  # policy-domain axis
+  primary_screen: "SCR-001"                      # screen-surface axis
+  cluster_ref: null                              # to be filled in (after cluster_identify)
+  capability_hint: "Provisioning"                # capability candidate (optional)
 ```
 
-활용:
-- **cluster_identify.py** — 4축 점수 산정 입력 (publication-map.md §1)
-- **fanout --cluster-mode** — cluster 단위 WO 생성 (cluster-draft.md 양식 적용)
-- **cluster draft frontmatter** — `fr_refs` / `domain_objects` / `policy_axes` /
-  `primary_screen` 의 SSoT 출처
+Usage:
+- **cluster_identify.py** — input for scoring the 4 axes (publication-map.md §1)
+- **fanout --cluster-mode** — generates per-cluster WOs (applies the
+  cluster-draft.md template)
+- **cluster draft frontmatter** — the SSoT source for `fr_refs` /
+  `domain_objects` / `policy_axes` / `primary_screen`
 
-미지정 시 동작:
-- `cluster_identify.py` 가 default 값 + heuristic 으로 진행
-- `domain_object/policy_axis` 누락 시 결합 점수 낮음 → 노드별 독립 cluster
-- `capability_hint` 누락 시 default `"Default"` capability
+Behavior when unspecified:
+- `cluster_identify.py` proceeds with default values + heuristics
+- If `domain_object`/`policy_axis` are missing, the combination score is
+  low → each node becomes its own independent cluster
+- If `capability_hint` is missing, the default `"Default"` capability is
+  used
 
-PM 작성 권장 순서:
-1. Track A 시작 시 FR 목록을 먼저 작성 (기본 필드)
-2. `/cluster-identify {product}` 실행 → 산출 cluster summary 검토
-3. 결과가 만족스럽지 않으면 위 5축 필드 보강 → 재실행 (동일 cluster_id 유지 — 안정 매핑)
-4. 확정 후 `/fanout --cluster-mode` 진입
+Recommended PM authoring order:
+1. When starting Track A, first write the FR list (basic fields)
+2. Run `/cluster-identify {product}` → review the generated cluster summary
+3. If the result is unsatisfactory, fill in the 5-axis fields above → re-run
+   (keeps the same cluster_id — stable mapping)
+4. Once finalized, proceed with `/fanout --cluster-mode`
 
-결과를 session-log.md에 기록한다:
+Record the result in session-log.md:
 ```markdown
-| 0 (Requirements) | {UTC 타임스탬프} | /draft-req | FR {N}개 / NFR {N}개 / open-issues 신규 {N}건 |
+| 0 (Requirements) | {UTC timestamp} | /draft-req | FR: {N} / NFR: {N} / new open-issues: {N} |
 ```
 
 
-### 단계 3 — open-issues.md Discovery 항목 종결
+### Step 3 — Close out Discovery items in open-issues.md
 
-`open-issues.md`에서 다음 항목을 완료 처리한다:
-- `[DISC-01]` 경쟁사 분석 미완료
-- `[DISC-02]` 이해관계자 요구사항 수집 미완료
-- `[DISC-03]` 자사 제품 현황 파악 미완료
+Mark the following items complete in `open-issues.md`:
+- `[DISC-01]` Competitor analysis incomplete
+- `[DISC-02]` Stakeholder requirements gathering incomplete
+- `[DISC-03]` Own-product status assessment incomplete
 
-완료 처리 형식: `- [x] [DISC-0N] ~~원래 내용~~ → /draft-req 완료`
+Completion format: `- [x] [DISC-0N] ~~original content~~ → completed via /draft-req`
 
 
-### 단계 4 — discovery-exit-gate 검증
+### Step 4 — Validate the discovery-exit-gate
 
-`/lc {product}`를 실행한다.
+Run `/lc {product}`.
 
-exit-gate 검증 기준:
+exit-gate validation criteria:
 
-| 항목 | 기준 | 미달 시 조치 |
+| Item | Criterion | Action if not met |
 |---|---|---|
-| Layer 1 FR | 10개 이상 | synthesizer 재실행 |
-| Layer 2 NFR | 5개 이상 | product-audit 재탐색 후 보완 |
-| Layer 4 액터 정의 | 완료 | stakeholder 재참조 |
-| Layer 5 외부 연동 | 목록 존재 | TBD 처리 + P1 등록 |
-| FR 화면 단위 분리 | 전수 확인 | 해당 항목 분리 재작성 |
-| spec-catalog 출처 분류 | 전 변수 행 출처 태깅(빈칸 0) | 빈칸 행 [확인필요] 보강 |
-| open-issues P0 | 0건 | PM 보고 후 중단 |
+| Layer 1 FR | 10 or more | re-run the synthesizer |
+| Layer 2 NFR | 5 or more | re-explore product-audit, then supplement |
+| Layer 4 actor definitions | complete | re-reference stakeholder |
+| Layer 5 external integrations | list exists | mark TBD + register P1 |
+| FR split by screen unit | fully checked | rewrite the item split correctly |
+| spec-catalog source classification | every variable row's source tagged (0 blanks) | fill blank rows with [needs-confirmation] |
+| open-issues P0 | 0 | report to PM and stop |
 
-exit-gate 통과 시 Phase를 0으로 업데이트하고 다음 단계를 안내한다.
-exit-gate 미통과 시 미충족 항목 목록을 출력하고 synthesizer 재실행 여부를 묻는다.
+If the exit-gate passes, update the Phase to 0 and explain the next
+step.
+If the exit-gate does not pass, print the list of unmet items and ask
+whether to re-run the synthesizer.
 
 
-## 결과 파일 목록
+## Output Files
 
-| 파일 | 변경 내용 |
+| File | Change |
 |---|---|
-| `inputs/requirements.md` | Layer 1~5 구조, REQ-NNN ID, 우선순위 포함 (FR 표는 깨끗한 4열) |
-| `inputs/requirements.seeds.yml` | capability 씨앗 사이드카 (FR ID → capability 가설, 선택 cluster_hint/lock) |
-| `inputs/spec-catalog.md` | 입력 변수 SSoT (7열+출처, calc/console mode). 추정 금지·[확인필요] 추적 |
-| `inputs/research.md` | 경쟁사 분석 요약 + FR 매핑 + 경쟁력 근거 |
-| `open-issues.md` | DISC-01~03 완료 처리 / 신규 상충·TBD 항목 추가 |
-| `session-log.md` | Phase 0 진입 기록 |
+| `inputs/requirements.md` | Layer 1–5 structure, REQ-NNN IDs, priority included (FR table stays a clean 4 columns) |
+| `inputs/requirements.seeds.yml` | capability seed sidecar (FR ID → capability hypothesis, optional cluster_hint/lock) |
+| `inputs/spec-catalog.md` | Input-variable SSoT (7 columns + source, calc/console mode). No guessing · [needs-confirmation] tracked |
+| `inputs/research.md` | Competitor analysis summary + FR mapping + competitive rationale |
+| `open-issues.md` | DISC-01~03 marked complete / new conflict/TBD items added |
+| `session-log.md` | Records Phase 0 entry |
 
 
-## Upstream Feedback 환류 (Phase 4 R5 — cluster work → discovery 리비전)
+## Upstream Feedback Loop (Phase 4 R5 — cluster work → discovery revision)
 
-> Track A (Full Product) 의 Phase 2~3 cluster 작성 중에 `/integrate` 가
-> `UPSTREAM_GAP` BLOCK 으로 분류한 항목 → Phase -1 산출물 (requirements.md /
-> research.md / decisions.md) 의 리비전이 필요한 신호.
+> During cluster authoring in Phase 2–3 of Track A (Full Product), an
+> item that `/integrate` classifies as an `UPSTREAM_GAP` BLOCK is a signal
+> that the Phase -1 outputs (requirements.md / research.md / decisions.md)
+> need revision.
 
-### 트리거 조건
-다음 중 하나로 `--upstream-feedback` 모드 진입:
-- `/integrate {product}` 실행 시 `UPSTREAM_GAP` BLOCK 발견 → 본 스킬 재호출 권고
-- PM 명시 호출: `/draft-req {product} --upstream-feedback`
-- cluster draft §4 `Open Questions / Upstream Feedback` 섹션에 기록된 항목이 있음
+### Trigger Conditions
+Enter `--upstream-feedback` mode via any of the following:
+- An `UPSTREAM_GAP` BLOCK is found when running `/integrate {product}` →
+  re-invoking this skill is recommended
+- Explicit PM invocation: `/draft-req {product} --upstream-feedback`
+- There are items recorded in a cluster draft's §4 `Open Questions /
+  Upstream Feedback` section
 
-### 처리 절차
-1. **수집**: 다음 위치에서 feedback 항목 수집
-   - `reports/integrate/{product}.upstream-gap.md` (integrate 산출)
-   - 각 cluster_draft 의 §4 섹션 (수동 PM 기재 포함)
+### Processing Procedure
+1. **Collect**: gather feedback items from the following locations
+   - `reports/integrate/{product}.upstream-gap.md` (produced by integrate)
+   - each cluster_draft's §4 section (including manual PM entries)
 
-2. **분류**:
-   - **REQ_MISSING** — 누락된 FR (requirements.md 추가 필요)
-   - **POLICY_CONFLICT** — 정책 충돌 (decisions.md 신규 DEC 후보)
-   - **RESEARCH_GAP** — 타사조사 부족 (research.md 보강 필요, research-auto 재실행 검토)
-   - **TERM_AMBIGUOUS** — 용어 모호 (terms.yml / spec-catalog.md 추가)
+2. **Classify**:
+   - **REQ_MISSING** — a missing FR (needs to be added to requirements.md)
+   - **POLICY_CONFLICT** — a policy conflict (candidate for a new DEC in decisions.md)
+   - **RESEARCH_GAP** — insufficient competitor research (research.md needs
+     supplementing; consider re-running research-auto)
+   - **TERM_AMBIGUOUS** — ambiguous terminology (add to terms.yml / spec-catalog.md)
 
-3. **PM 승인 게이트**:
-   - 자동 리비전 금지 — 모든 환류는 PM 승인 1건씩
-   - "다음 항목을 D1 요구사항정의서에 추가할까요? [y/n]" 식 명시 확인
-   - 승인된 항목만 v{n+1} 리비전에 반영
+3. **PM Approval Gate**:
+   - Automatic revision is forbidden — every feedback item requires
+     individual PM approval
+   - Confirm explicitly, e.g. "Add the following item to the D1
+     Requirements Definition? [y/n]"
+   - Only approved items are reflected in the v{n+1} revision
 
-4. **버전 증가**:
+4. **Version Increment**:
    - requirements.md `version: X.Y` → `X.(Y+1)` (minor bump)
-   - research.md / decisions.md 도 동일 정책
-   - 변경 이력 표에 환류 출처 기록 (cluster_id + UPSTREAM_GAP item ID)
+   - Same policy for research.md / decisions.md
+   - Record the feedback source (cluster_id + UPSTREAM_GAP item ID) in the
+     change history table
 
-5. **영향 cluster 재방문 안내**:
-   - 리비전 후 영향받은 cluster (`feedback.affected_clusters`) 에
-     `/lc {cluster_id}` 실행 권고 (lifecycle 검증 재실행)
+5. **Notify Affected Clusters to Revisit**:
+   - After the revision, recommend running `/lc {cluster_id}` (re-running
+     lifecycle validation) on the affected clusters
+     (`feedback.affected_clusters`)
 
-### 산출물
-- `inputs/requirements.md` (v++) — REQ 추가/수정 시
-- `inputs/research.md` (v++) — RESEARCH_GAP 환류 시
-- `decisions.md` (DEC 신규 행) — POLICY_CONFLICT 환류 시
-- `reports/upstream-feedback/{date}.applied.md` — 환류 처리 결과 archive
+### Outputs
+- `inputs/requirements.md` (v++) — when REQs are added/modified
+- `inputs/research.md` (v++) — for RESEARCH_GAP feedback
+- `decisions.md` (new DEC row) — for POLICY_CONFLICT feedback
+- `reports/upstream-feedback/{date}.applied.md` — archive of the feedback processing result
 
-### Track B/C 와의 차이
-- Track B/C 는 단일 deliverable 직선 경로 — `UPSTREAM_GAP` 발생 가능성 낮음 (cluster 없음)
-- 발생 시 별도 single-deliverable 양식 안에서 직접 수정 (별도 환류 절차 불요)
+### Differences from Track B/C
+- Track B/C follows a single-deliverable linear path — `UPSTREAM_GAP` is
+  unlikely to occur (no clusters)
+- If it does occur, fix it directly within the single-deliverable template
+  (no separate feedback procedure needed)
 
 
-## 다음 단계
+## Next Steps
 
-discovery-exit-gate 통과 시:
-- `/graph-gen {product}`: graph.json 생성 및 노드·엣지 설계
+Once the discovery-exit-gate passes:
+- `/graph-gen {product}`: generate graph.json and design nodes/edges

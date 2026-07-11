@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""tenant_emit / policy_emit 거버넌스 어댑터 회귀 테스트 (Phase 6)."""
+"""tenant_emit / policy_emit governance-adapter regression tests (Phase 6)."""
 from __future__ import annotations
 
 import json
@@ -17,7 +17,7 @@ def _platform(tmp_path: Path) -> Path:
     hub.mkdir()
     (hub / "tenant-config.yml").write_text(
         "active_tenant: default\n\ntenants:\n"
-        '  - id: default\n    label: 기본\n    root: "."\n    gate_preset: standard\n'
+        '  - id: default\n    label: Default\n    root: "."\n    gate_preset: standard\n'
         "  - id: acme\n    label: Acme\n    root: tenants/acme\n    gate_preset: strict\n",
         encoding="utf-8")
     return hub
@@ -28,9 +28,9 @@ def _tenant(tmp_path: Path) -> Path:
     ref = hub / "CONTEXT" / "reference-docs" / "G2"
     (ref / "A").mkdir(parents=True)
     (ref / "B").mkdir(parents=True)
-    (ref / "A" / "G2-A-001.md").write_text("# 용어\n", encoding="utf-8")
-    (ref / "B" / "G2-B-001.md").write_text("# 정책\n", encoding="utf-8")
-    (ref / "B" / "README.md").write_text("# readme\n", encoding="utf-8")  # 제외
+    (ref / "A" / "G2-A-001.md").write_text("# Glossary\n", encoding="utf-8")
+    (ref / "B" / "G2-B-001.md").write_text("# Policy\n", encoding="utf-8")
+    (ref / "B" / "README.md").write_text("# readme\n", encoding="utf-8")  # excluded
     (hub / "CONTEXT" / "gates").mkdir(parents=True)
     (hub / "CONTEXT" / "gates" / "_active-preset.txt").write_text("strict\n", encoding="utf-8")
     (hub / "CONTEXT" / "installed-packs.json").write_text(
@@ -57,7 +57,7 @@ def test_policy_emit_counts_and_packs(tmp_path):
     out = policy_emit.transform(str(hub))
     assert out["kind"] == "policy-packs" and out["gatePreset"] == "strict"
     g2 = next(p for p in out["prefixes"] if p["id"] == "G2")
-    assert g2["a"] == 1 and g2["b"] == 1 and g2["c"] == 0   # README 제외
+    assert g2["a"] == 1 and g2["b"] == 1 and g2["c"] == 0   # README excluded
     assert out["installedPacks"][0]["name"] == "p1"
 
 
@@ -66,11 +66,11 @@ def test_policy_emit_empty_tenant(tmp_path):
     (hub / "CONTEXT").mkdir(parents=True)
     out = policy_emit.transform(str(hub))
     assert out["prefixes"] == [] and out["installedPacks"] == []
-    assert out["gatePreset"] == "standard"   # 마커 없으면 기본값
+    assert out["gatePreset"] == "standard"   # default value when no marker
 
 
 def test_policy_emit_finds_registry(tmp_path):
-    # 플랫폼/packs/registry.json 을 테넌트 상위에서 발견
+    # discover platform/packs/registry.json from an ancestor of the tenant
     platform = tmp_path / "P"
     (platform / "packs").mkdir(parents=True)
     (platform / "packs" / "registry.json").write_text(

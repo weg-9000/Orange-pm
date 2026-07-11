@@ -1,24 +1,25 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""journey_build — draft 산출물에서 표준 스토리보드를 결정적으로 생성 (자동화 빌더).
+"""journey_build — deterministically generates a standard storyboard from draft artifacts (automated builder).
 
-/journey 스킬(LLM)의 결정적 부분(화면 순서 재구성·draft 상태 수집)을 스크립트화한다.
-PostToolUse 훅(--from-hook)이 drafts/*.draft.md 편집을 감지할 때마다 자동 실행되어
-`reports/journey-latest.md` 를 갱신한다 — viz 프로토타입 뷰의 사용자 여정이
-수동 /journey 호출 없이도 상시 최신으로 유지된다.
+Scripts the deterministic part of the /journey skill (LLM) — screen order
+reconstruction and draft status collection. The PostToolUse hook (--from-hook)
+runs automatically whenever it detects an edit to drafts/*.draft.md and
+refreshes `reports/journey-latest.md` — so the user journey shown in the viz
+prototype view stays current at all times without a manual /journey call.
 
-역할 분담:
-    journey_build.py (자동)  — 표준 storyboard: 순서·상태·전환 골격 (LLM 토큰 0)
-    /journey 스킬 (수동)     — --actor 필터·핵심 행동/전환 조건 서사 보강
-    journey_emit.py          — 최신 journey-*.md → viz JSON (mtime 기준)
+Division of responsibilities:
+    journey_build.py (automatic) — standard storyboard: order/status/transition skeleton (0 LLM tokens)
+    /journey skill (manual)      — --actor filter, narrative enrichment of key actions/transition conditions
+    journey_emit.py              — latest journey-*.md → viz JSON (by mtime)
 
-산출 형식은 skills/journey/SKILL.md 단계 4·5 와 동일 — journey_emit 이 그대로 파싱한다.
-자동 생성본은 session-log 에 기록하지 않는다(편집마다 비대해지는 것을 방지).
+Output format matches skills/journey/SKILL.md steps 4-5 — journey_emit parses it as-is.
+Auto-generated output is not recorded in the session log (to avoid bloat on every edit).
 
 CLI:
     python journey_build.py --hub-root <Hub> --product <name> [--output <path>]
-    python journey_build.py --from-hook        # PostToolUse 페이로드(stdin) 모드
-exit: 0 정상(또는 hook dormant) / 1 화면 소스 없음 / 2 인자 오류
+    python journey_build.py --from-hook        # PostToolUse payload (stdin) mode
+exit: 0 success (or hook dormant) / 1 no screen source / 2 argument error
 """
 from __future__ import annotations
 
@@ -54,7 +55,7 @@ DRAFT_PATH_RE = re.compile(
 
 
 def _parse_frontmatter(text: str) -> dict:
-    """평탄 key:value 파서 — nested 키(cluster.cluster_id 등)도 평탄화해 잡는다."""
+    """Flat key:value parser — also flattens and captures nested keys (e.g. cluster.cluster_id)."""
     m = FRONTMATTER.match(text)
     if not m:
         return {}
@@ -68,7 +69,7 @@ def _parse_frontmatter(text: str) -> dict:
 
 
 def _extract_screen_items(text: str) -> list[str]:
-    """draft 본문 §2 화면 섹션의 최상위 불릿 항목."""
+    """Top-level bullet items from the §2 screen section of the draft body."""
     m = FRONTMATTER.match(text)
     body = text[m.end():] if m else text
     sec = SECTION2.search(body)
@@ -85,7 +86,7 @@ def _extract_screen_items(text: str) -> list[str]:
 
 
 def _draft_status(fm: dict, has_items: bool) -> str:
-    """SKILL.md 단계 2 — dossier draft 상태 → done/draft/todo."""
+    """SKILL.md step 2 — dossier draft status → done/draft/todo."""
     rs = fm.get("review_status", "") or fm.get("status", "")
     if rs == "human-reviewed" or fm.get("reviewed", "").lower() == "true":
         return "done"
@@ -95,7 +96,7 @@ def _draft_status(fm: dict, has_items: bool) -> str:
 
 
 def build_dossier_steps(pdir: Path) -> list[dict] | None:
-    """dossier(Track A) 모델 — cluster_index 순서대로 §2 화면 항목 추출."""
+    """dossier (Track A) model — extracts §2 screen items in cluster_index order."""
     cidx = pdir / "work-orders" / "cluster_index.json"
     if not cidx.is_file():
         return None
@@ -125,13 +126,13 @@ def build_dossier_steps(pdir: Path) -> list[dict] | None:
                               "capability": capability})
         else:
             steps.append({"id": f"{cluster_id}-S1",
-                          "label": f"{capability or cluster_id} [§2 미작성]",
+                          "label": f"{capability or cluster_id} [§2 not written]",
                           "status": "todo", "capability": capability})
     return steps or None
 
 
 def build_legacy_steps(pdir: Path) -> list[dict] | None:
-    """section/screen(legacy) 모델 — screen-list.md 표의 SCR 행."""
+    """section/screen (legacy) model — SCR rows from the screen-list.md table."""
     sl = pdir / "graph" / "screen-list.md"
     if not sl.is_file():
         return None
@@ -156,7 +157,7 @@ def build_legacy_steps(pdir: Path) -> list[dict] | None:
 
 
 def render_storyboard(product: str, steps: list[dict]) -> str:
-    """SKILL.md 단계 4·5 형식의 storyboard MD (journey_emit 파싱 호환)."""
+    """storyboard MD in the SKILL.md steps 4-5 format (parseable by journey_emit)."""
     now = datetime.now(timezone.utc).isoformat(timespec="seconds")
     counts = {s: sum(1 for st in steps if st["status"] == s)
               for s in ("done", "draft", "sketch", "todo")}
@@ -174,9 +175,9 @@ def render_storyboard(product: str, steps: list[dict]) -> str:
         "generated_by: journey_build.py (auto)",
         "---",
         "",
-        f"고객 여정 스토리보드 — {product}",
-        f"액터: 전체 / 생성 시각: {now}",
-        f"총 {len(steps)}개 화면 ({counts['done']} ✅ / {counts['draft']} 📝 / "
+        f"Customer journey storyboard — {product}",
+        f"Actor: all / Generated at: {now}",
+        f"Total {len(steps)} screens ({counts['done']} ✅ / {counts['draft']} 📝 / "
         f"{counts['sketch']} 🔲 / {counts['todo']} ⬜)",
         "─" * 65,
         "",
@@ -186,36 +187,42 @@ def render_storyboard(product: str, steps: list[dict]) -> str:
         lines.append(f"[{i + 1}] {st['id']} {st['label']}  {icon}")
         if st["status"] == "todo":
             if st.get("purpose"):
+                # NOTE: "목적:" is a Korean field-label kept as-is — it is a parsing
+                # contract with journey_emit.py's _DETAIL_KEYS/_DETAIL_RE (out of
+                # scope for this translation pass). Only the value is translated.
                 lines.append(f"  목적: {st['purpose']}")
-            lines.append("  전환: [미확정]")
+            lines.append("  전환: [undetermined]")
         else:
-            entry = "서비스 진입 (첫 화면)" if i == 0 else f"{steps[i - 1]['id']} 전환"
+            entry = "Service entry (first screen)" if i == 0 else f"{steps[i - 1]['id']} transition"
+            # NOTE: "진입 조건:"/"핵심 행동:"/"전환:" labels below are kept in Korean —
+            # they are a parsing contract with journey_emit.py's _DETAIL_KEYS/_DETAIL_RE
+            # (out of scope for this translation pass, still expects Korean labels).
             lines.append(f"  진입 조건: {entry}")
-            lines.append("  핵심 행동: [자동 생성 — /journey 로 보강]")
+            lines.append("  핵심 행동: [auto-generated — enrich via /journey]")
             if i + 1 < len(steps):
-                lines.append(f"  전환:      → {steps[i + 1]['id']} ([전환 조건 미확정])")
+                lines.append(f"  전환:      → {steps[i + 1]['id']} ([transition condition undetermined])")
         lines.append("")
     path_ids = " → ".join(st["id"] for st in steps)
-    todo_list = ", ".join(st["id"] for st in steps if st["status"] == "todo") or "없음"
+    todo_list = ", ".join(st["id"] for st in steps if st["status"] == "todo") or "none"
     lines += [
         "─" * 65,
-        "여정 요약",
-        f"  진입점:      {steps[0]['id']} {steps[0]['label']}",
-        f"  핵심 경로:   {path_ids}",
-        f"  미확정 구간: {todo_list}",
+        "Journey summary",
+        f"  Entry point:  {steps[0]['id']} {steps[0]['label']}",
+        f"  Key path:     {path_ids}",
+        f"  Undetermined: {todo_list}",
         "",
-        "> 본 파일은 journey_build.py 가 draft 변경 시 자동 생성한 표준 storyboard 이다.",
-        "> 액터 필터·전환 조건 서사 보강은 /journey {product} 로 생성한다.",
+        "> This file is a standard storyboard automatically generated by journey_build.py on draft changes.",
+        "> Actor filtering and transition-condition narrative enrichment are generated via /journey {product}.",
         "",
     ]
     return "\n".join(lines)
 
 
 def _strip_volatile(text: str) -> str:
-    """generated_at/생성 시각 라인 제외 본문 — 무변경 재기록 방지 비교용."""
+    """Body excluding generated_at/Generated at lines — for comparison to avoid rewriting when unchanged."""
     return "\n".join(
         ln for ln in text.splitlines()
-        if not ln.startswith("generated_at:") and "생성 시각:" not in ln
+        if not ln.startswith("generated_at:") and "Generated at:" not in ln
     )
 
 
@@ -225,14 +232,14 @@ def build(hub_root: Path, product: str, output: Path | None = None,
     steps = build_dossier_steps(pdir) or build_legacy_steps(pdir)
     if not steps:
         if not quiet:
-            sys.stderr.write(f"화면 소스 없음(cluster_index/screen-list): {pdir}\n")
+            sys.stderr.write(f"No screen source (cluster_index/screen-list): {pdir}\n")
         return 1
     md = render_storyboard(product, steps)
     out = output or (pdir / "reports" / OUTPUT_NAME)
     if out.is_file():
         try:
             if _strip_volatile(out.read_text(encoding="utf-8")) == _strip_volatile(md):
-                return 0  # 실질 무변경 — 재기록·워처 트리거 방지
+                return 0  # no substantive change — avoid rewrite and watcher trigger
         except OSError:
             pass
     out.parent.mkdir(parents=True, exist_ok=True)
@@ -242,7 +249,7 @@ def build(hub_root: Path, product: str, output: Path | None = None,
     return 0
 
 
-# ── PostToolUse 훅 모드 (auto_assemble_on_draft_edit 패턴) ───────────────────
+# ── PostToolUse hook mode (auto_assemble_on_draft_edit pattern) ─────────────
 
 def _is_hub(cwd: Path) -> bool:
     return cwd.is_dir() and any((cwd / m).is_file() for m in HUB_MARKERS)
@@ -262,28 +269,28 @@ def _hook_main() -> int:
     m = DRAFT_PATH_RE.search(file_path)
     if not m:
         return 0
-    # 실패해도 PM 작업 흐름을 막지 않는다 — 항상 0 반환.
+    # Never block the PM's workflow even on failure — always return 0.
     try:
         rc = build(cwd, m.group("product"), quiet=True)
         if rc == 0:
-            print(f"[auto-journey] {m.group('product')} {OUTPUT_NAME} 갱신")
+            print(f"[auto-journey] {m.group('product')} {OUTPUT_NAME} refreshed")
     except Exception as exc:
         print(f"[auto-journey] WARN: {exc}", file=sys.stderr)
     return 0
 
 
 def main(argv: list[str]) -> int:
-    ap = argparse.ArgumentParser(description="결정적 journey storyboard 빌더")
+    ap = argparse.ArgumentParser(description="Deterministic journey storyboard builder")
     ap.add_argument("--hub-root", type=Path)
     ap.add_argument("--product")
     ap.add_argument("--output", type=Path)
     ap.add_argument("--from-hook", action="store_true",
-                    help="PostToolUse 페이로드(stdin) 모드 — draft 편집 시 자동 갱신")
+                    help="PostToolUse payload (stdin) mode — auto-refresh on draft edits")
     args = ap.parse_args(argv)
     if args.from_hook:
         return _hook_main()
     if not (args.hub_root and args.product):
-        sys.stderr.write("--hub-root, --product 필요 (또는 --from-hook)\n")
+        sys.stderr.write("--hub-root, --product required (or --from-hook)\n")
         return 2
     return build(args.hub_root, args.product, args.output)
 

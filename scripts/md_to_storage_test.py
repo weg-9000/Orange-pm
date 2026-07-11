@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""md_to_storage.py 단위 테스트 (stdlib unittest).
+"""Unit tests for md_to_storage.py (stdlib unittest).
 
-실행:
+Run:
     python md_to_storage_test.py
 """
 from __future__ import annotations
@@ -13,7 +13,7 @@ import sys
 import unittest
 from pathlib import Path
 
-# 같은 디렉터리의 md_to_storage 를 임포트
+# Import md_to_storage from the same directory
 _THIS_DIR = Path(__file__).resolve().parent
 if str(_THIS_DIR) not in sys.path:
     sys.path.insert(0, str(_THIS_DIR))
@@ -22,29 +22,29 @@ import md_to_storage as mts  # noqa: E402
 
 
 def _normalize(s: str) -> str:
-    """공백·줄바꿈 정규화 — 비교를 견고하게."""
+    """Normalize whitespace/line breaks — make comparisons more robust."""
     return "\n".join(line.rstrip() for line in s.splitlines() if line.strip())
 
 
 class TestBasicPanel(unittest.TestCase):
-    """T1: 기본 panel (common style)."""
+    """T1: basic panel (common style)."""
 
     def test_basic_panel(self):
         md = (
-            "::: {.panel section=\"§1 개요\"}\n"
-            "## §1 개요\n"
+            "::: {.panel section=\"§1 Overview\"}\n"
+            "## §1 Overview\n"
             "\n"
-            "본문 단락.\n"
+            "Body paragraph.\n"
             ":::\n"
         )
         xml = mts.convert(md)
-        # 핵심 요소 존재 확인
+        # Verify core elements are present
         self.assertIn('<ac:layout>', xml)
         self.assertIn('<ac:layout-section ac:type="single">', xml)
         self.assertIn('<ac:structured-macro ac:name="panel"', xml)
-        self.assertIn('<ac:parameter ac:name="title">§1 개요</ac:parameter>',
+        self.assertIn('<ac:parameter ac:name="title">§1 Overview</ac:parameter>',
                       xml)
-        # 기본 style=common 의 borderColor
+        # borderColor for the default style=common
         self.assertIn(
             '<ac:parameter ac:name="borderColor">#24FE00</ac:parameter>',
             xml,
@@ -53,9 +53,9 @@ class TestBasicPanel(unittest.TestCase):
             '<ac:parameter ac:name="titleColor">#002FD5</ac:parameter>',
             xml,
         )
-        self.assertIn('<h2>§1 개요</h2>', xml)
-        self.assertIn('<p>본문 단락.</p>', xml)
-        # 후행 spacer 자동 삽입
+        self.assertIn('<h2>§1 Overview</h2>', xml)
+        self.assertIn('<p>Body paragraph.</p>', xml)
+        # Trailing spacer auto-inserted
         self.assertIn(
             '<ac:layout-cell><p><br/></p></ac:layout-cell>',
             xml,
@@ -63,12 +63,12 @@ class TestBasicPanel(unittest.TestCase):
 
 
 class TestPanelStyleVariant(unittest.TestCase):
-    """T2: panel style 변형 (tbd / product)."""
+    """T2: panel style variants (tbd / product)."""
 
     def test_panel_tbd_style(self):
         md = (
             "::: {.panel section=\"TBD\" style=\"tbd\"}\n"
-            "검토 필요.\n"
+            "Needs review.\n"
             ":::\n"
         )
         xml = mts.convert(md)
@@ -83,8 +83,8 @@ class TestPanelStyleVariant(unittest.TestCase):
 
     def test_panel_product_style(self):
         md = (
-            "::: {.panel section=\"제품\" style=\"product\"}\n"
-            "본문.\n"
+            "::: {.panel section=\"Product\" style=\"product\"}\n"
+            "Body text.\n"
             ":::\n"
         )
         xml = mts.convert(md)
@@ -95,12 +95,12 @@ class TestPanelStyleVariant(unittest.TestCase):
 
 
 class TestInfoCallout(unittest.TestCase):
-    """T3: Info / Warning 콜아웃 (layout 래퍼 없음)."""
+    """T3: Info / Warning callouts (no layout wrapper)."""
 
     def test_info_callout(self):
         md = (
             "::: {.info}\n"
-            "일반 정보.\n"
+            "General information.\n"
             ":::\n"
         )
         xml = mts.convert(md)
@@ -108,36 +108,36 @@ class TestInfoCallout(unittest.TestCase):
             '<ac:structured-macro ac:name="info" ac:schema-version="1">',
             xml,
         )
-        self.assertIn('<p>일반 정보.</p>', xml)
-        # info 콜아웃은 layout-section 래퍼가 없어야 함 (사양 §7 규칙3)
-        # 검증: 콜아웃이 layout-section single 안에 즉시 들어있지 않아야
-        # (frontmatter 없으니 본문 흐름)
-        # info 매크로 line 이 layout-cell 의 바로 자식이 아닌지는 indent로 확인
-        # 간단 어설션: <ac:layout> 직후 첫 매크로가 info여야 함
+        self.assertIn('<p>General information.</p>', xml)
+        # the info callout must have no layout-section wrapper (spec §7 rule 3)
+        # verify: the callout should not be immediately inside a layout-section single
+        # (no frontmatter, so it's in the body flow)
+        # whether the info macro line is not a direct child of layout-cell is checked via indent
+        # simple assertion: the first macro right after <ac:layout> should be info
         self.assertIn(
             '<ac:structured-macro ac:name="info"', xml.split('<ac:layout>')[1]
         )
 
     def test_warning_callout(self):
-        md = "::: {.warning}\n주의.\n:::\n"
+        md = "::: {.warning}\nCaution.\n:::\n"
         xml = mts.convert(md)
         self.assertIn('<ac:structured-macro ac:name="warning"', xml)
 
     def test_note_and_tip(self):
         for cls in ("note", "tip"):
-            xml = mts.convert(f"::: {{.{cls}}}\n본문.\n:::\n")
+            xml = mts.convert(f"::: {{.{cls}}}\nBody text.\n:::\n")
             self.assertIn(f'<ac:structured-macro ac:name="{cls}"', xml)
 
 
 class TestTable(unittest.TestCase):
-    """T4: 표 + col-widths directive."""
+    """T4: table + col-widths directive."""
 
     def test_table_basic_equal_widths(self):
         md = (
-            "| 항목 | 내용 |\n"
+            "| Item | Content |\n"
             "|---|---|\n"
-            "| **목적** | 본 정책 |\n"
-            "| 범위 | 전체 |\n"
+            "| **Purpose** | The policy |\n"
+            "| Scope | All |\n"
         )
         xml = mts.convert(md)
         self.assertIn(
@@ -145,19 +145,19 @@ class TestTable(unittest.TestCase):
             xml,
         )
         self.assertIn('<colgroup>', xml)
-        # 균등 분배 — 2 col → 50% / 50%
+        # even distribution — 2 col → 50% / 50%
         self.assertIn('<col style="width: 50%;"/>', xml)
-        self.assertIn('<th>항목</th>', xml)
-        self.assertIn('<th>내용</th>', xml)
-        self.assertIn('<td><strong>목적</strong></td>', xml)
-        self.assertIn('<td>본 정책</td>', xml)
+        self.assertIn('<th>Item</th>', xml)
+        self.assertIn('<th>Content</th>', xml)
+        self.assertIn('<td><strong>Purpose</strong></td>', xml)
+        self.assertIn('<td>The policy</td>', xml)
 
     def test_table_with_col_widths_directive(self):
         md = (
             "<!-- col-widths: 15%, 85% -->\n"
-            "| 항목 | 내용 |\n"
+            "| Item | Content |\n"
             "|---|---|\n"
-            "| 목적 | 정책서 |\n"
+            "| Purpose | Policy document |\n"
         )
         xml = mts.convert(md)
         self.assertIn('<col style="width: 15%;"/>', xml)
@@ -170,13 +170,13 @@ class TestTable(unittest.TestCase):
             "| 1 | 2 | 3 |\n"
         )
         xml = mts.convert(md)
-        # 100 // 3 = 33, remainder 1 → 마지막 34%
+        # 100 // 3 = 33, remainder 1 → last one gets 34%
         self.assertIn('<col style="width: 33%;"/>', xml)
         self.assertIn('<col style="width: 34%;"/>', xml)
 
 
 class TestCodeBlock(unittest.TestCase):
-    """T5: 코드블록."""
+    """T5: code block."""
 
     def test_code_block_with_language(self):
         md = (
@@ -204,18 +204,18 @@ class TestCodeBlock(unittest.TestCase):
         md = "```\nplain text\n```\n"
         xml = mts.convert(md)
         self.assertIn('<ac:structured-macro ac:name="code"', xml)
-        # language 파라미터 없음
+        # no language parameter
         self.assertNotIn('<ac:parameter ac:name="language">', xml)
 
 
 class TestInlineMacros(unittest.TestCase):
-    """T6: 인라인 매크로 (page link, toc, change_history, placeholders)."""
+    """T6: inline macros (page link, toc, change_history, placeholders)."""
 
     def test_page_link(self):
-        md = "참고: [[page:[정책정의서] DBaaS]]\n"
+        md = "Reference: [[page:[Policy Definition] DBaaS]]\n"
         xml = mts.convert(md)
         self.assertIn(
-            '<ac:link><ri:page ri:content-title="[정책정의서] DBaaS"/></ac:link>',
+            '<ac:link><ri:page ri:content-title="[Policy Definition] DBaaS"/></ac:link>',
             xml,
         )
 
@@ -235,35 +235,35 @@ class TestInlineMacros(unittest.TestCase):
         self.assertIn('<ac:parameter ac:name="limit">5</ac:parameter>', xml)
 
     def test_placeholder_preserved(self):
-        md = "이 페이지는 {{PRODUCT_NAME}} 의 정본.\n"
+        md = "This page is the canonical version of {{PRODUCT_NAME}}.\n"
         xml = mts.convert(md)
-        # 치환 모드 OFF → placeholder 텍스트 그대로
+        # substitution mode OFF → placeholder text stays as-is
         self.assertIn('{{PRODUCT_NAME}}', xml)
 
     def test_regular_link(self):
-        md = "[문서](https://example.com)\n"
+        md = "[Document](https://example.com)\n"
         xml = mts.convert(md)
-        self.assertIn('<a href="https://example.com">문서</a>', xml)
+        self.assertIn('<a href="https://example.com">Document</a>', xml)
 
 
 class TestFrontmatter(unittest.TestCase):
-    """T7: Frontmatter publication 영역 → header/meta 자동 layout."""
+    """T7: Frontmatter publication section → automatic header/meta layout."""
 
     def test_header_info(self):
         md = (
             "---\n"
-            "title: \"[정책정의서] X\"\n"
+            "title: \"[Policy Definition] X\"\n"
             "publication:\n"
             "  header:\n"
             "    style: info\n"
             "    body: |\n"
-            "      **본 문서는 X 의 정책서다.**\n"
+            "      **This document is the policy document for X.**\n"
             "---\n"
-            "본문 시작.\n"
+            "Body starts.\n"
         )
         xml = mts.convert(md)
         self.assertIn('<ac:structured-macro ac:name="info"', xml)
-        self.assertIn('<strong>본 문서는 X 의 정책서다.</strong>', xml)
+        self.assertIn('<strong>This document is the policy document for X.</strong>', xml)
 
     def test_meta_two_equal(self):
         md = (
@@ -274,27 +274,27 @@ class TestFrontmatter(unittest.TestCase):
             "    layout: two_equal\n"
             "    cells:\n"
             "      - panel:\n"
-            "          title: \"참고\"\n"
+            "          title: \"Reference\"\n"
             "          body: |\n"
-            "            - 항목1\n"
+            "            - Item 1\n"
             "      - change_history: 3\n"
             "---\n"
-            "본문.\n"
+            "Body text.\n"
         )
         xml = mts.convert(md)
         self.assertIn('<ac:layout-section ac:type="two_equal">', xml)
-        self.assertIn('<ac:parameter ac:name="title">참고</ac:parameter>', xml)
+        self.assertIn('<ac:parameter ac:name="title">Reference</ac:parameter>', xml)
         self.assertIn('<ac:parameter ac:name="limit">3</ac:parameter>', xml)
 
 
 class TestDeterminism(unittest.TestCase):
-    """T8: 결정성 — 동일 입력 → 동일 바이트 출력 (사양 §9)."""
+    """T8: determinism — same input → same byte output (spec §9)."""
 
     def test_same_input_same_hash(self):
         md = (
             "::: {.panel section=\"§A\"}\n"
             "## §A\n"
-            "내용 1.\n"
+            "Content 1.\n"
             "\n"
             "| A | B |\n"
             "|---|---|\n"
@@ -303,7 +303,7 @@ class TestDeterminism(unittest.TestCase):
             "\n"
             "::: {.panel section=\"§B\" style=\"product\"}\n"
             "## §B\n"
-            "내용 2.\n"
+            "Content 2.\n"
             ":::\n"
         )
         xml1 = mts.convert(md)
@@ -315,13 +315,13 @@ class TestDeterminism(unittest.TestCase):
 
 
 class TestExpand(unittest.TestCase):
-    """T9: Expand 매크로."""
+    """T9: Expand macro."""
 
     def test_expand(self):
         md = (
-            "::: {.expand title=\"이력\"}\n"
-            "- 2026-05-01: 초안\n"
-            "- 2026-05-15: 반영\n"
+            "::: {.expand title=\"History\"}\n"
+            "- 2026-05-01: draft\n"
+            "- 2026-05-15: incorporated\n"
             ":::\n"
         )
         xml = mts.convert(md)
@@ -329,34 +329,34 @@ class TestExpand(unittest.TestCase):
             '<ac:structured-macro ac:name="expand"', xml
         )
         self.assertIn(
-            '<ac:parameter ac:name="title">이력</ac:parameter>', xml
+            '<ac:parameter ac:name="title">History</ac:parameter>', xml
         )
-        self.assertIn('<li>2026-05-01: 초안</li>', xml)
+        self.assertIn('<li>2026-05-01: draft</li>', xml)
 
 
 class TestSpacingBetweenPanels(unittest.TestCase):
-    """T10: panel 사이 자동 spacer (사양 §7)."""
+    """T10: automatic spacer between panels (spec §7)."""
 
     def test_two_panels_have_spacer_between(self):
         md = (
             "::: {.panel section=\"A\"}\n"
-            "내용 A.\n"
+            "Content A.\n"
             ":::\n"
             "::: {.panel section=\"B\"}\n"
-            "내용 B.\n"
+            "Content B.\n"
             ":::\n"
         )
         xml = mts.convert(md)
-        # 패널 사이 + 마지막 후행 — spacer 2개 발생해야 함
+        # between panels + trailing at the end — 2 spacers should occur
         spacer_marker = '<ac:layout-cell><p><br/></p></ac:layout-cell>'
         count = xml.count(spacer_marker)
         self.assertGreaterEqual(
-            count, 2, f"spacer 개수 부족: {count}\n--- XML ---\n{xml}"
+            count, 2, f"not enough spacers: {count}\n--- XML ---\n{xml}"
         )
 
 
 class TestCodeBlockCDATAEscape(unittest.TestCase):
-    """T11: 코드블록 내 ]]> 분할 처리."""
+    """T11: splitting ]]> inside a code block."""
 
     def test_cdata_close_marker_split(self):
         md = (
@@ -365,7 +365,7 @@ class TestCodeBlockCDATAEscape(unittest.TestCase):
             "```\n"
         )
         xml = mts.convert(md)
-        # 원본 ]]> 가 그대로 들어가면 CDATA 깨짐 → 분할되어야
+        # if the raw ]]> were inserted as-is it would break the CDATA → it must be split
         self.assertIn(']]]]><![CDATA[>', xml)
 
 

@@ -1,24 +1,25 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""reference-docs 를 GitLab 정책 레포 서브모듈로 연결/갱신하는 헬퍼.
+"""Helper to connect/update reference-docs as a GitLab policy-repo submodule.
 
-URL 을 코드에 하드코딩하지 않고 **사용자가 입력**한다(인자 또는 프롬프트).
-정책 진본(A/B/C)은 별도 정책 레포에서 관리하고, 허브는 그 레포를
-CONTEXT/reference-docs 서브모듈로 참조한다(가이드: docs/reference-docs-submodule.md).
+The URL is never hardcoded — the **user provides it** (argument or prompt).
+The canonical policy sources (A/B/C) are managed in a separate policy repo,
+and the hub references that repo as a CONTEXT/reference-docs submodule
+(guide: docs/reference-docs-submodule.md).
 
-사용법:
-    # 최초 연결(URL 은 사용자가 입력 — 인자 생략 시 프롬프트)
+Usage:
+    # Initial connection (the user provides the URL — prompted if the argument is omitted)
     python reference_submodule.py add --url <git@gitlab:planning/policy-docs.git> \
         [--path CONTEXT/reference-docs] [--branch main]
 
-    # 클론 후 초기화 / 최신 핀으로 갱신
+    # Init after clone / update to the latest pin
     python reference_submodule.py update [--remote]
 
-주의:
-    - add 대상 경로가 이미 추적 중이면 먼저 `git rm -r <path>` 후 실행한다(가이드 §2).
-    - 실제 git 명령을 수행하므로 허브(작업 트리) 루트에서 실행한다.
+Notes:
+    - If the `add` target path is already tracked, run `git rm -r <path>` first (guide §2).
+    - This runs real git commands, so run it from the hub (working tree) root.
 
-exit code: 0 성공 / 1 실패(경로 충돌·git 오류) / 2 인자 오류
+exit code: 0 success / 1 failure (path conflict / git error) / 2 argument error
 """
 from __future__ import annotations
 
@@ -29,7 +30,7 @@ from pathlib import Path
 
 
 def build_add_cmd(url: str, path: str, branch: str | None) -> list[str]:
-    """git submodule add 명령 구성(순수 함수 — 테스트 대상)."""
+    """Build the git submodule add command (pure function — under test)."""
     cmd = ["git", "submodule", "add"]
     if branch:
         cmd += ["-b", branch]
@@ -45,11 +46,11 @@ def build_update_cmd(remote: bool) -> list[str]:
 
 
 def _prompt_url(given: str | None) -> str:
-    """URL 은 사용자 입력. 인자 없으면 대화형 프롬프트."""
+    """The URL is user input. If no argument is given, prompt interactively."""
     url = (given or "").strip()
     if not url:
         try:
-            url = input("정책 레포 URL 을 입력하세요 (예: git@gitlab.example.com:planning/policy-docs.git): ").strip()
+            url = input("Enter the policy repo URL (e.g. git@gitlab.example.com:planning/policy-docs.git): ").strip()
         except EOFError:
             url = ""
     return url
@@ -61,16 +62,16 @@ def _run(cmd: list[str]) -> int:
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description="reference-docs 정책 레포 서브모듈 연결/갱신")
+    ap = argparse.ArgumentParser(description="Connect/update the reference-docs policy-repo submodule")
     sub = ap.add_subparsers(dest="command", required=True)
 
-    p_add = sub.add_parser("add", help="정책 레포를 서브모듈로 연결(URL 사용자 입력)")
-    p_add.add_argument("--url", default=None, help="정책 레포 URL(미지정 시 프롬프트)")
+    p_add = sub.add_parser("add", help="Connect the policy repo as a submodule (user-provided URL)")
+    p_add.add_argument("--url", default=None, help="Policy repo URL (prompted if not specified)")
     p_add.add_argument("--path", default="CONTEXT/reference-docs")
     p_add.add_argument("--branch", default="main")
 
-    p_upd = sub.add_parser("update", help="서브모듈 초기화/갱신")
-    p_upd.add_argument("--remote", action="store_true", help="원격 최신 커밋으로 갱신")
+    p_upd = sub.add_parser("update", help="Initialize/update the submodule")
+    p_upd.add_argument("--remote", action="store_true", help="Update to the latest remote commit")
 
     args = ap.parse_args()
 
@@ -80,13 +81,13 @@ def main() -> int:
     # add
     url = _prompt_url(args.url)
     if not url:
-        sys.stderr.write("URL 이 필요합니다(인자 --url 또는 프롬프트 입력)\n")
+        sys.stderr.write("A URL is required (via --url argument or the prompt)\n")
         return 2
     target = Path(args.path)
     if target.exists() and any(target.iterdir()):
         sys.stderr.write(
-            f"경로가 비어있지 않습니다: {target}\n"
-            f"  먼저 진본을 정책 레포로 옮긴 뒤 `git rm -r {args.path}` 후 다시 실행하세요.\n"
+            f"Path is not empty: {target}\n"
+            f"  First move the canonical source into the policy repo, then run `git rm -r {args.path}` and try again.\n"
         )
         return 1
     return 0 if _run(build_add_cmd(url, args.path, args.branch)) == 0 else 1

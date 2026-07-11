@@ -1,32 +1,35 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-r"""C-BDD 수용 기준(.feature) 결정적 조립기 (WP-BDD).
+r"""C-BDD acceptance-criteria (.feature) deterministic assembler (WP-BDD).
 
-목적:
-    {PREFIX}-C draft 의 행위 명세 표 — policy WO 의 `상태 × 액션 매트릭스`,
-    screen WO 의 `4-state 인터랙션 시퀀스` — 를 입력받아 Gherkin `.feature`
-    수용 기준으로 **결정적 텍스트 변환**한다. 모델 미관여 — 표 셀을 그대로
-    Given/When/Then 으로 사상할 뿐 창작하지 않는다(render_assemble 의 BDD 사촌).
-    draft 는 읽기 전용. 산출물은 수기 수정 금지(이중 작성=SSoT 붕괴).
+Purpose:
+    Takes the behavior-spec tables of a {PREFIX}-C draft — the `Status × Action
+    matrix` of a policy WO, the `4-state interaction sequence` of a screen WO —
+    and performs a **deterministic text transform** into Gherkin `.feature`
+    acceptance criteria. No model involved — table cells are mapped verbatim to
+    Given/When/Then, nothing is invented (render_assemble's BDD cousin).
+    Drafts are read-only. Outputs must not be hand-edited (double authoring =
+    SSoT collapse).
 
-사상 규칙(결정적):
-    policy 매트릭스 셀 (상태 Si, 액션 Aj, 값 V≠공백)
-      → Scenario: Given 시스템이 "Si" 상태이고 / When "Aj" 시도 / Then 결과 "V"
-    screen 4-state 행 (상태 / 조건 / UI 표현 / 사용자 액션 / 다음 상태)
-      → Scenario: Given 화면 "상태"(+조건) / When 사용자 "액션" / Then "UI" 표시
-    셀·행에 박힌 `[[POL §X-Y]]` 마커와 frontmatter `referenced_policy` 핀은
-    Gherkin 태그(@POL-§…)로 보존 → 개발팀 테스트까지 정책 추적 연결.
+Mapping rules (deterministic):
+    policy matrix cell (status Si, action Aj, value V≠blank)
+      → Scenario: Given the system is in "Si" state / When "Aj" is attempted / Then result "V"
+    screen 4-state row (Status / Condition / UI Display / User Action / Next Status)
+      → Scenario: Given the screen is in "Status" (+condition) / When user "Action" / Then "UI" displayed
+    `[[POL §X-Y]]` markers embedded in cells/rows and the frontmatter
+    `referenced_policy` pin are preserved as Gherkin tags (@POL-§…) → policy
+    traceability carries through to the dev team's tests.
 
-산출:
-    reports/bdd/{WO_ID}.feature                 (단일)
+Outputs:
+    reports/bdd/{WO_ID}.feature                 (single)
     reports/bdd/{product}.all.feature           (--all)
-    헤더 주석에 source_referenced_master 핀 →
-      drift / bdd_coverage_scan 이 stale·미커버 대조.
+    The header comment pins source_referenced_master →
+      drift / bdd_coverage_scan compare stale/uncovered against it.
 
-사용법:
+Usage:
     python bdd_assemble.py --hub-root <Hub> --product <p> [--wo <WO_ID>] [--all]
 
-exit code: 0 성공 / 1 입력 없음·치명 / 2 인자 오류
+exit code: 0 success / 1 no input·fatal / 2 argument error
 """
 from __future__ import annotations
 
@@ -44,31 +47,33 @@ for _s in (sys.stdout, sys.stderr):
 
 FRONTMATTER = re.compile(r"\A---\n(.*?)\n---\n", re.DOTALL)
 POL_MARKER = re.compile(r"\[\[\s*POL\s*§?\s*([A-Za-z0-9][\w.\-()]*?)\s*\]\]")
-# 매트릭스 표 헤더 식별: 첫 셀이 "상태"+"액션"(또는 \ / × 구분)을 포함.
-MATRIX_HEAD = re.compile(r"상태.*[\\×xX].*액션|상태\s*\\\s*액션|state.*action", re.I)
-# 화면 4-state 표 식별용 컬럼 키워드.
-STATE_COL = re.compile(r"^\s*상태\s*$|^\s*state\s*$", re.I)
-COND_COL = re.compile(r"조건|condition", re.I)
-UI_COL = re.compile(r"UI|표현|화면", re.I)
-ACT_COL = re.compile(r"액션|행동|동작|action", re.I)
-NEXT_COL = re.compile(r"다음|전이|next", re.I)
+# matrix table header detection: first cell contains "Status"+"Action" (or \ / × separator).
+MATRIX_HEAD = re.compile(r"stat(?:us|e).*[\\×xX].*action|status\s*\\\s*action", re.I)
+# column keywords for detecting the screen 4-state table.
+STATE_COL = re.compile(r"^\s*status\s*$|^\s*state\s*$", re.I)
+COND_COL = re.compile(r"condition", re.I)
+UI_COL = re.compile(r"UI|display", re.I)
+ACT_COL = re.compile(r"action|behavior", re.I)
+NEXT_COL = re.compile(r"next|transition", re.I)
 EMPTY_CELL = re.compile(r"^[\s\-–—]*$")
 
-# 화면 필수 상태 — flow(idle/loading/success/error)·템플릿(Empty/Loading/Loaded/Error)
-# 양쪽 네이밍을 동의어 그룹으로 흡수. bdd_coverage_scan 과 공유하는 SSoT.
+# required screen states — flow (idle/loading/success/error) and template
+# (Empty/Loading/Loaded/Error) naming absorbed as synonym groups. SSoT shared
+# with bdd_coverage_scan.
 STATE_GROUPS = {
-    "idle": re.compile(r"idle|empty|초기|대기(?!중)|빈\s*상태", re.I),
-    "loading": re.compile(r"loading|로딩|진행|대기중", re.I),
-    "success": re.compile(r"success|loaded|성공|완료|정상", re.I),
-    "error": re.compile(r"error|오류|실패|에러", re.I),
+    "idle": re.compile(r"idle|empty|initial", re.I),
+    "loading": re.compile(r"loading|in[- ]?progress", re.I),
+    "success": re.compile(r"success|loaded|completed?|done", re.I),
+    "error": re.compile(r"error|fail(?:ed|ure)?", re.I),
 }
-# '### 5-1. idle (초기 진입)' 형식의 4-state 하위섹션 헤딩 (### 또는 ####).
+# 4-state subsection heading of the form '### 5-1. idle (initial entry)' (### or ####).
 SUBHEAD = re.compile(r"^\s{0,3}#{3,4}\s+(.+?)\s*$")
 TOPHEAD = re.compile(r"^\s{0,3}#{1,2}\s+")
-# 상태 N/A(해당 없음) 면제 표기 — bdd_coverage_scan 과 공유 SSoT.
-NA = re.compile(r"해당\s*없음|N/?A|불필요|없음", re.I)
-# fanout 이 생성한 WO 지시 템플릿(스텁) 식별 — 행위 명세가 아닌 작업 지시서다.
-# 실제 산출물은 별도 콘텐츠 draft(예: S01)에 있으므로 BDD 대상에서 제외.
+# state N/A (not applicable) exemption markers — SSoT shared with bdd_coverage_scan.
+NA = re.compile(r"N/?A\b|not\s+applicable|\bnone\b", re.I)
+# detect WO instruction template (stub) generated by fanout — it is a work order,
+# not a behavior spec. The real deliverable lives in a separate content draft
+# (e.g. S01), so exclude stubs from BDD.
 WO_STUB = re.compile(r"^#\s+Work Order:", re.M)
 
 
@@ -90,7 +95,7 @@ def _parse_frontmatter(text: str) -> tuple[dict, str]:
 
 
 def _refs(text: str) -> list[str]:
-    """셀·행 텍스트에 박힌 [[POL §X-Y]] 마커를 §id 리스트로 추출."""
+    """Extract [[POL §X-Y]] markers embedded in cell/row text as a §id list."""
     seen, out = set(), []
     for r in POL_MARKER.findall(text or ""):
         if r not in seen:
@@ -100,14 +105,14 @@ def _refs(text: str) -> list[str]:
 
 
 def _tag(s: str) -> str:
-    """Gherkin 태그용 정규화 — 공백·구분자를 하이픈으로(태그에 공백 불가)."""
+    """Normalize for Gherkin tags — whitespace/separators to hyphens (no spaces in tags)."""
     s = re.sub(r"\s+", "-", str(s).strip())
     s = re.sub(r"[^\w§.\-]", "", s)
     return s.strip("-") or "x"
 
 
 def extract_tables(body: str) -> list[tuple[list[str], list[list[str]]]]:
-    """본문에서 마크다운 표를 (헤더셀, 데이터행들) 목록으로 추출."""
+    """Extract markdown tables from the body as a list of (header cells, data rows)."""
     tables: list[tuple[list[str], list[list[str]]]] = []
     rows: list[list[str]] = []
     for raw in body.splitlines():
@@ -136,7 +141,7 @@ def find_matrix_table(tables) -> tuple[list[str], list[list[str]]] | None:
     for header, data in tables:
         if header and MATRIX_HEAD.search(header[0]):
             return header, data
-        if header and ("상태" in header[0] and any("A" == c[:1] or "액션" in c for c in header[1:])):
+        if header and ("Status" in header[0] and any(c[:1] == "A" or "Action" in c for c in header[1:])):
             return header, data
     return None
 
@@ -145,9 +150,10 @@ def find_state_table(tables) -> tuple[list[str], list[list[str]]] | None:
     for header, data in tables:
         if not header:
             continue
-        # 화면 4-state 표는 'UI 표현' 또는 '사용자 액션' 컬럼을 가진다. 정책
-        # 라이프사이클 표(상태|정의|진입조건|다음상태 — UI·액션 없음)가 화면 표로
-        # 오인식되지 않도록 UI/액션 컬럼을 필수로 요구한다.
+        # A screen 4-state table has a 'UI Display' or 'User Action' column. A
+        # policy lifecycle table (Status|Definition|Entry Condition|Next Status —
+        # no UI/action) must not be mistaken for a screen table, so UI/action
+        # columns are required.
         if STATE_COL.search(header[0]) and any(
             UI_COL.search(c) or ACT_COL.search(c) for c in header[1:]
         ):
@@ -156,7 +162,7 @@ def find_state_table(tables) -> tuple[list[str], list[list[str]]] | None:
 
 
 def policy_scenarios(table) -> list[dict]:
-    """매트릭스 → 비공백 셀별 시나리오 dict 목록."""
+    """Matrix → list of scenario dicts, one per non-blank cell."""
     header, data = table
     actions = header[1:]
     out: list[dict] = []
@@ -180,7 +186,7 @@ def policy_scenarios(table) -> list[dict]:
 
 
 def screen_scenarios(table) -> list[dict]:
-    """4-state 표 → 행별 시나리오 dict 목록 (컬럼 순서 무관, 헤더명으로 매핑)."""
+    """4-state table → list of scenario dicts per row (column order agnostic, mapped by header name)."""
     header, data = table
 
     def idx(pat):
@@ -211,7 +217,7 @@ def screen_scenarios(table) -> list[dict]:
 
 
 def match_state_group(text: str) -> str | None:
-    """텍스트가 어느 필수 상태 그룹(idle/loading/success/error)인지 — 사전 순 첫 매칭."""
+    """Which required state group (idle/loading/success/error) the text matches — first match in dict order."""
     for name, pat in STATE_GROUPS.items():
         if pat.search(text or ""):
             return name
@@ -219,11 +225,13 @@ def match_state_group(text: str) -> str | None:
 
 
 def extract_state_subsections(body: str) -> list[tuple[str, list]]:
-    """'### N-x. {state}' 형식 4-state 하위섹션 → [(heading, [표,...]), ...].
+    """'### N-x. {state}' style 4-state subsections → [(heading, [table, ...]), ...].
 
-    단일 표준 표(`상태|조건|UI|...`) 대신 화면별 상태를 하위섹션으로 나눠 적는
-    프로젝트 관습(cloud-calculator 등)을 인식한다. 상태 그룹에 매칭되고 표를
-    1개 이상 가진 하위섹션만 반환(산문 헤딩·무관 섹션 노이즈 배제)."""
+    Recognizes the project convention (cloud-calculator etc.) of writing each
+    screen state as a subsection instead of the single standard table
+    (`Status|Condition|UI|...`). Only subsections that match a state group and
+    contain at least one table are returned (prose headings and unrelated
+    section noise excluded)."""
     subs: list[tuple[str, list]] = []
     head: str | None = None
     buf: list[str] = []
@@ -242,7 +250,7 @@ def extract_state_subsections(body: str) -> list[tuple[str, list]]:
             flush()
             head = m.group(1)
         elif TOPHEAD.match(ln):
-            flush()  # 상위(## / #) 섹션 진입 → 현재 하위섹션 종료
+            flush()  # entering a parent (## / #) section → close current subsection
         elif head is not None:
             buf.append(ln)
     flush()
@@ -250,13 +258,15 @@ def extract_state_subsections(body: str) -> list[tuple[str, list]]:
 
 
 def state_group_coverage(body: str) -> dict[str, str]:
-    """4-state 하위섹션 형식의 상태 그룹별 커버리지 판정.
+    """Per-state-group coverage verdict for the 4-state subsection format.
 
-    {group: 'table'|'na'} 반환:
-      - 'table': 해당 상태 하위섹션에 표가 있다(시나리오 생성 가능).
-      - 'na'   : 표는 없으나 '해당 없음/없음/N/A' 류로 명시적 N/A 처리됨
-                 (예: S02 우측 패널의 error/loading — 정적 재산출이라 독립 error 없음).
-    표가 N/A 표기를 항상 우선(override)한다. 미등장 그룹은 dict 에 없음(=누락)."""
+    Returns {group: 'table'|'na'}:
+      - 'table': the state's subsection has a table (scenarios can be generated).
+      - 'na'   : no table, but explicitly marked N/A ('N/A', 'not applicable',
+                 'none' etc.) — e.g. error/loading of the S02 right panel:
+                 static recomputation, no standalone error.
+    A table always overrides an N/A marker. Groups that never appear are absent
+    from the dict (= missing)."""
     cov: dict[str, str] = {}
     head: str | None = None
     buf: list[str] = []
@@ -287,11 +297,12 @@ def state_group_coverage(body: str) -> dict[str, str]:
 
 
 def screen_scenarios_from_subsections(body: str) -> list[dict]:
-    """4-state 하위섹션 형식 → 시나리오 dict 목록(screen_scenarios 와 동일 스키마).
+    """4-state subsection format → scenario dict list (same schema as screen_scenarios).
 
-    각 상태 하위섹션의 표 행을 결정적으로 사상한다(셀 창작 없음):
-      row[0](항목/트리거/오류유형) → cond, row[1:](내용/복구/메시지) → ui.
-    상태는 헤딩에서 추출한 정본 그룹명(idle/loading/success/error)."""
+    Maps each state subsection's table rows deterministically (no cell invention):
+      row[0] (item/trigger/error type) → cond, row[1:] (content/recovery/message) → ui.
+    The state is the canonical group name (idle/loading/success/error) extracted
+    from the heading."""
     out: list[dict] = []
     for head, tables in extract_state_subsections(body):
         grp = match_state_group(head)
@@ -318,7 +329,7 @@ def _scenario_block(title: str, tags: list[str], steps: list[tuple[str, str]],
                     trail: str) -> str:
     tag_line = "  " + " ".join(f"@{t}" for t in tags) + "\n" if tags else ""
     body = "\n".join(f"    {kw:<6}{txt}" for kw, txt in steps)
-    return f"{tag_line}  Scenario: {title}\n{body}\n    # 추적: {trail}\n"
+    return f"{tag_line}  Scenario: {title}\n{body}\n    # trace: {trail}\n"
 
 
 def _policy_blocks(scenarios: list[dict]) -> list[str]:
@@ -326,13 +337,13 @@ def _policy_blocks(scenarios: list[dict]) -> list[str]:
     for sc in scenarios:
         tags = [_tag(sc["state"]), _tag(sc["action"])] + [f"POL-{_tag(r)}" for r in sc["refs"]]
         steps = [
-            ("Given", f'시스템이 "{sc["state"]}" 상태이고'),
-            ("When", f'"{sc["action"]}" 을(를) 시도하면'),
-            ("Then", f'결과는 "{sc["value"]}" 이다'),
+            ("Given", f'the system is in "{sc["state"]}" state'),
+            ("When", f'"{sc["action"]}" is attempted'),
+            ("Then", f'the result is "{sc["value"]}"'),
         ]
-        trail = ", ".join(f"[[POL §{r}]]" for r in sc["refs"]) or "(정책 §참조 없음)"
+        trail = ", ".join(f"[[POL §{r}]]" for r in sc["refs"]) or "(no policy §refs)"
         blocks.append(_scenario_block(
-            f'{sc["state"]} 상태에서 {sc["action"]} 시 {sc["value"]}', tags, steps, trail))
+            f'{sc["state"]} state, {sc["action"]} → {sc["value"]}', tags, steps, trail))
     return blocks
 
 
@@ -340,17 +351,17 @@ def _screen_blocks(scenarios: list[dict]) -> list[str]:
     blocks: list[str] = []
     for sc in scenarios:
         tags = [_tag(sc["state"])] + [f"POL-{_tag(r)}" for r in sc["refs"]]
-        steps = [("Given", f'화면이 "{sc["state"]}" 상태이고')]
+        steps = [("Given", f'the screen is in "{sc["state"]}" state')]
         if sc["cond"]:
-            steps.append(("And", f'조건이 "{sc["cond"]}" 이면'))
-        steps.append(("When", f'사용자가 "{sc["action"]}" 하면' if sc["action"]
-                      else "화면이 표시되면"))
-        steps.append(("Then", f'"{sc["ui"]}" 이(가) 표시된다' if sc["ui"]
-                      else "정의된 UI 가 표시된다"))
+            steps.append(("And", f'the condition is "{sc["cond"]}"'))
+        steps.append(("When", f'the user performs "{sc["action"]}"' if sc["action"]
+                      else "the screen is displayed"))
+        steps.append(("Then", f'"{sc["ui"]}" is displayed' if sc["ui"]
+                      else "the defined UI is displayed"))
         if sc["next"]:
-            steps.append(("And", f'다음 상태는 "{sc["next"]}" 이다'))
-        trail = ", ".join(f"[[POL §{r}]]" for r in sc["refs"]) or "(정책 §참조 없음)"
-        blocks.append(_scenario_block(f'{sc["state"]} 상태 인터랙션', tags, steps, trail))
+            steps.append(("And", f'the next state is "{sc["next"]}"'))
+        trail = ", ".join(f"[[POL §{r}]]" for r in sc["refs"]) or "(no policy §refs)"
+        blocks.append(_scenario_block(f'{sc["state"]} state interaction', tags, steps, trail))
     return blocks
 
 
@@ -360,47 +371,48 @@ def _feature_header(wo_id: str, fm: dict, kind: str, label: str) -> str:
     if pin:
         feat_tags.append(f"POL:{_tag(pin)}")
     return (
-        "# ⟦자동 생성 — bdd_assemble.py (C-BDD, 결정적·모델 미관여)⟧\n"
-        "# 직접 수정 금지(이중 작성=SSoT 붕괴). 수정은 소스 draft(/write·/flow·/write-cluster)에서.\n"
+        "# ⟦auto-generated — bdd_assemble.py (C-BDD, deterministic, no model)⟧\n"
+        "# Do not edit directly (double authoring = SSoT collapse). Edit the source draft (/write·/flow·/write-cluster).\n"
         f"# source_doc_id: {wo_id}\n"
         f"# generated_at: {datetime.now().isoformat(timespec='seconds')}\n"
         f"# source_referenced_master: [{fm.get('referenced_master', '')}]\n"
         f"# referenced_policy: {pin or '-'}\n"
-        "# language: ko (Gherkin 키워드 영문 · 본문 한글 — Cucumber/Behave 기본 호환)\n\n"
+        "# language: en (Gherkin keywords and body in English — Cucumber/Behave default compatible)\n\n"
         + " ".join(f"@{t}" for t in feat_tags) + "\n"
-        f"Feature: {wo_id} 수용 기준 ({label})\n"
-        f"  소스: drafts/{wo_id}.draft.md 의 {label} 표를 결정적 변환한 수용 기준.\n"
-        "  draft 갱신 시 /bdd 재실행으로 동기화한다.\n\n"
+        f"Feature: {wo_id} acceptance criteria ({label})\n"
+        f"  Source: deterministic transform of the {label} table in drafts/{wo_id}.draft.md.\n"
+        "  Re-run /bdd to resync when the draft changes.\n\n"
     )
 
 
 def render_feature(wo_id: str, fm: dict, kind: str, scenarios: list[dict]) -> str:
     blocks = _policy_blocks(scenarios) if kind == "policy" else _screen_blocks(scenarios)
-    label = "상태 × 액션" if kind == "policy" else "4-state 인터랙션"
+    label = "Status × Action" if kind == "policy" else "4-state interaction"
     header = _feature_header(wo_id, fm, kind, label)
     return header + "\n".join(blocks) + ("\n" if blocks else
-        "  # ⚠️ 변환할 행위 명세 표 없음 — draft 에 매트릭스/4-state 표 작성 필요\n")
+        "  # ⚠️ no behavior spec table to convert — add a matrix/4-state table to the draft\n")
 
 
 def render_cluster_feature(wo_id: str, fm: dict,
                            pol_scen: list[dict], scr_scen: list[dict]) -> str:
-    """cluster_draft 전용 — §1 정책 매트릭스 + §2 화면 4-state 를 한 Feature 에 합본."""
-    header = _feature_header(wo_id, fm, "cluster", "정책 매트릭스 + 화면 4-state")
+    """cluster_draft only — merge §1 policy matrix + §2 screen 4-state into one Feature."""
+    header = _feature_header(wo_id, fm, "cluster", "policy matrix + screen 4-state")
     parts: list[str] = []
     if pol_scen:
-        parts.append("  # ── §1 정책 결정 (상태 × 액션) ──")
+        parts.append("  # ── §1 Policy Decisions (Status × Action) ──")
         parts.extend(_policy_blocks(pol_scen))
     if scr_scen:
-        parts.append("  # ── §2 화면 설계 (4-state) ──")
+        parts.append("  # ── §2 Screen Design (4-state) ──")
         parts.extend(_screen_blocks(scr_scen))
     if not parts:
-        return header + "  # ⚠️ 변환할 §1 매트릭스·§2 4-state 표 없음\n"
+        return header + "  # ⚠️ no §1 matrix / §2 4-state table to convert\n"
     return header + "\n".join(parts) + "\n"
 
 
 def find_matrix_table_strict(tables) -> tuple[list[str], list[list[str]]] | None:
-    """엄격 매트릭스 탐지 — 헤더 첫 셀이 '상태 × 액션' 형태일 때만(MATRIX_HEAD).
-    cluster 의 §2 4-state('사용자 액션' 컬럼 보유)를 매트릭스로 오인하지 않게 한다."""
+    """Strict matrix detection — only when the first header cell has the
+    'Status × Action' form (MATRIX_HEAD). Prevents a cluster's §2 4-state (which
+    has a 'User Action' column) from being mistaken for a matrix."""
     for header, data in tables:
         if header and MATRIX_HEAD.search(header[0]):
             return header, data
@@ -408,8 +420,8 @@ def find_matrix_table_strict(tables) -> tuple[list[str], list[list[str]]] | None
 
 
 def assemble_one(text: str, wo_id: str) -> tuple[str, int, str]:
-    """draft 본문 → (.feature 문자열, 시나리오 수, kind). 순수 함수(테스트용).
-    cluster_draft 는 §1 매트릭스(정책)+§2 4-state(화면) 둘 다 추출해 합본한다."""
+    """Draft body → (.feature string, scenario count, kind). Pure function (for tests).
+    A cluster_draft extracts both the §1 matrix (policy) and §2 4-state (screen) and merges them."""
     fm, body = _parse_frontmatter(text)
     kind = (fm.get("type") or "").strip().lower()
     tables = extract_tables(body)
@@ -426,17 +438,17 @@ def assemble_one(text: str, wo_id: str) -> tuple[str, int, str]:
     else:
         kind = "screen"
         tbl = find_state_table(tables)
-        # 표준 단일 표 우선, 없으면 '### N-x. {state}' 4-state 하위섹션 형식 폴백.
+        # standard single table first; fallback to the '### N-x. {state}' 4-state subsection format.
         scen = screen_scenarios(tbl) if tbl else screen_scenarios_from_subsections(body)
     return render_feature(wo_id, fm, kind, scen), len(scen), kind
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description="C-BDD 수용 기준(.feature) 결정적 조립")
+    ap = argparse.ArgumentParser(description="C-BDD acceptance-criteria (.feature) deterministic assembly")
     ap.add_argument("--hub-root", required=True, type=Path)
     ap.add_argument("--product", required=True)
-    ap.add_argument("--wo", default=None, help="단일 WO_ID (생략=전체 draft)")
-    ap.add_argument("--all", action="store_true", help="추가로 {product}.all.feature 생성")
+    ap.add_argument("--wo", default=None, help="single WO_ID (omit = all drafts)")
+    ap.add_argument("--all", action="store_true", help="also generate {product}.all.feature")
     args = ap.parse_args()
     if not args.hub_root.is_dir():
         sys.stderr.write(f"hub-root not found: {args.hub_root}\n")
@@ -455,7 +467,7 @@ def main() -> int:
     )
     targets = [t for t in targets if t.exists()]
     if not targets:
-        sys.stderr.write("대상 draft 없음\n")
+        sys.stderr.write("no target drafts\n")
         return 1
 
     out_dir = proj / "reports" / "bdd"
@@ -467,7 +479,7 @@ def main() -> int:
         wo = d.stem.replace(".draft", "")
         text = d.read_text(encoding="utf-8", errors="replace")
         if is_wo_stub(_parse_frontmatter(text)[1]):
-            # WO 지시 스텁(행위 명세 아님) — feature 생성 안 함, 잔존 스텁 feature 제거.
+            # WO instruction stub (not a behavior spec) — no feature generated, remove leftover stub feature.
             (out_dir / f"{wo}.feature").unlink(missing_ok=True)
             skipped += 1
             continue
@@ -475,15 +487,15 @@ def main() -> int:
         (out_dir / f"{wo}.feature").write_text(feature, encoding="utf-8")
         all_parts.append(f"\n\n# ===== {wo} ({kind}) =====\n\n" + feature)
         total += n
-        print(f"[bdd_assemble] {wo}.feature ← {kind} · 시나리오 {n}건")
+        print(f"[bdd_assemble] {wo}.feature ← {kind} · {n} scenarios")
 
     if args.all and not args.wo:
         (out_dir / f"{args.product}.all.feature").write_text(
             "".join(all_parts), encoding="utf-8")
-        print(f"[bdd_assemble] {args.product}.all.feature ({len(targets)} draft)")
+        print(f"[bdd_assemble] {args.product}.all.feature ({len(targets)} drafts)")
 
-    print(f"[bdd_assemble] 완료 — {len(targets) - skipped}건 draft / 시나리오 {total}건"
-          + (f" (WO 스텁 {skipped}건 제외)" if skipped else "")
+    print(f"[bdd_assemble] done — {len(targets) - skipped} drafts / {total} scenarios"
+          + (f" ({skipped} WO stubs excluded)" if skipped else "")
           + f" → {out_dir.relative_to(hub)}")
     return 0
 

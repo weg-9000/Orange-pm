@@ -1,48 +1,52 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""journey_emit 유닛 테스트."""
+"""journey_emit unit tests."""
 import os
 import sys
 
 sys.path.insert(0, os.path.dirname(__file__))
 import journey_emit as M  # noqa: E402
 
-STORYBOARD = """고객 여정 스토리보드 — openapi
-액터: 전체 / 생성 시각: 2026-05-30
-총 3개 화면 (완료 1 ✅ / 작성중 1 📝 / 미착수 1 ⬜)
+# NOTE: the field labels "진입 조건:"/"핵심 행동:"/"전환:"/"목적:" below are kept in
+# Korean intentionally — they are a parsing contract with journey_emit.py's
+# _DETAIL_KEYS/_DETAIL_RE (out of scope for this translation pass). Only the
+# surrounding decorative text and detail values are translated.
+STORYBOARD = """Customer journey storyboard — openapi
+Actor: all / Generated at: 2026-05-30
+Total 3 screens (done 1 ✅ / in-progress 1 📝 / not started 1 ⬜)
 ─────────────────────────────────────────────
-[1] SCR-001 API 키 관리 화면  ✅
-  진입 조건: 로그인 후
-  핵심 행동: 키 발급
-  전환:      → SCR-002 (발급 완료)
-[2] SCR-002 사용량 대시보드  📝
-  핵심 행동: 사용량 조회
-[3] SCR-003 파트너 콘솔  ⬜
-  목적: 위임 운영
+[1] SCR-001 API key management screen  ✅
+  진입 조건: After login
+  핵심 행동: Issue key
+  전환:      → SCR-002 (issuance complete)
+[2] SCR-002 Usage dashboard  📝
+  핵심 행동: View usage
+[3] SCR-003 Partner console  ⬜
+  목적: Delegated operations
 ─────────────────────────────────────────────
-여정 요약
-  진입점: SCR-001
-  핵심 경로: SCR-001 → SCR-002 → SCR-003
+Journey summary
+  Entry point: SCR-001
+  Key path: SCR-001 → SCR-002 → SCR-003
 """
 
 
 def test_parse_storyboard_steps():
     steps = M.parse_storyboard(STORYBOARD)
     assert [s["id"] for s in steps] == ["SCR-001", "SCR-002", "SCR-003"]
-    assert steps[0]["label"] == "API 키 관리 화면"
+    assert steps[0]["label"] == "API key management screen"
     assert steps[0]["status"] == "done"
     assert steps[1]["status"] == "draft"
     assert steps[2]["status"] == "todo"
 
 
 def test_ignores_non_screen_lines():
-    # 요약·구분선·진입조건 라인은 단계로 잡히지 않는다
+    # summary/separator/entry-condition lines are not captured as steps
     steps = M.parse_storyboard(STORYBOARD)
     assert len(steps) == 3
 
 
 def test_order_sorted():
-    shuffled = "[3] SCR-C 셋\n[1] SCR-A 하나\n[2] SCR-B 둘\n"
+    shuffled = "[3] SCR-C Three\n[1] SCR-A One\n[2] SCR-B Two\n"
     steps = M.parse_storyboard(shuffled)
     assert [s["id"] for s in steps] == ["SCR-A", "SCR-B", "SCR-C"]
 
@@ -57,16 +61,16 @@ def test_transform_journey_shape():
 def test_parse_storyboard_details():
     steps = M.parse_storyboard(STORYBOARD)
     by = {s["id"]: s for s in steps}
-    assert by["SCR-001"]["entry"] == "로그인 후"
-    assert by["SCR-001"]["action"] == "키 발급"
-    assert by["SCR-001"]["transition"] == "SCR-002 (발급 완료)"
-    assert by["SCR-002"]["action"] == "사용량 조회"
-    assert "entry" not in by["SCR-002"]            # 없는 키는 미부가
-    assert by["SCR-003"]["purpose"] == "위임 운영"
+    assert by["SCR-001"]["entry"] == "After login"
+    assert by["SCR-001"]["action"] == "Issue key"
+    assert by["SCR-001"]["transition"] == "SCR-002 (issuance complete)"
+    assert by["SCR-002"]["action"] == "View usage"
+    assert "entry" not in by["SCR-002"]            # absent keys are not added
+    assert by["SCR-003"]["purpose"] == "Delegated operations"
 
 
 def test_journey_build_roundtrip(tmp_path=None):
-    """journey_build 산출물을 journey_emit 이 그대로 파싱한다(파이프라인 호환)."""
+    """journey_emit parses journey_build's output as-is (pipeline compatibility)."""
     import json as _json
     import tempfile
     from pathlib import Path as _P
@@ -85,9 +89,9 @@ def test_journey_build_roundtrip(tmp_path=None):
             ]}), encoding="utf-8")
         (pdir / "drafts" / "cluster_PR-01.draft.md").write_text(
             "---\nreview_status: human-reviewed\n---\n"
-            "## §1 정책\n- p\n\n## §2 화면\n- SCR-001 인스턴스 생성\n- 토폴로지 뷰\n",
+            "## §1 Policy\n- p\n\n## §2 Screens\n- SCR-001 Create instance\n- Topology view\n",
             encoding="utf-8")
-        # PR-02: draft 없음 → §2 미작성 todo
+        # PR-02: no draft → §2 not written, todo
         assert B.build(hub, "demo", quiet=True) == 0
         out = pdir / "reports" / "journey-latest.md"
         steps = M.parse_storyboard(out.read_text(encoding="utf-8"))
@@ -95,8 +99,8 @@ def test_journey_build_roundtrip(tmp_path=None):
         assert ids == ["SCR-001", "PR-01-S2", "PR-02-S1"]
         assert steps[0]["status"] == "done"
         assert steps[2]["status"] == "todo"
-        assert steps[0]["entry"] == "서비스 진입 (첫 화면)"
-        # 무변경 재실행 → 멱등(파일 동일, exit 0)
+        assert steps[0]["entry"] == "Service entry (first screen)"  # journey_build.py entry value now translated (coordinated edit, see journey_build.py)
+        # no-change rerun → idempotent (same file, exit 0)
         before = out.read_text(encoding="utf-8")
         assert B.build(hub, "demo", quiet=True) == 0
         assert out.read_text(encoding="utf-8") == before

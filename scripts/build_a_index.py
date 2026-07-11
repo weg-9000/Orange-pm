@@ -1,26 +1,27 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""{PREFIX}-A 용어 역인덱스 생성 (멀티-PREFIX SaaS Phase 1).
+"""Build the {PREFIX}-A terms reverse index (multi-PREFIX SaaS Phase 1).
 
-목적:
-    A 계층(용어·원칙 기준서)에서 "용어 → {파일, 라인, 짧은 정의}" 역인덱스를
-    생성해, 화면/정책 작성 시 용어 검증과 정확 참조(L2)에 사용한다.
-    build_b_index.py(B 헤딩 인덱스)의 A 계층 대응물이다.
+Purpose:
+    Build a "term -> {file, line, short definition}" reverse index from the
+    A layer (terminology/principles reference), used for term validation and
+    precise reference (L2) when authoring screens/policies.
+    This is the A-layer counterpart of build_b_index.py (B heading index).
 
-    출력: CONTEXT/.template-cache/{PREFIX}-a-terms-index.json
+    Output: CONTEXT/.template-cache/{PREFIX}-a-terms-index.json
 
-추출 휴리스틱(결정적):
-    1) 마크다운 표 행:  `| 용어 | 정의 ... |`  (헤더/구분선 제외)
-    2) 정의 라인:       `- **용어**: 정의` / `**용어** — 정의` / `**용어**: 정의`
-    정의는 최대 80자로 절단. 동일 용어 중복 시 첫 등장 우선.
+Extraction heuristics (deterministic):
+    1) Markdown table row: `| term | definition ... |` (header/separator rows excluded)
+    2) Definition line: `- **term**: definition` / `**term** — definition` / `**term**: definition`
+    Definitions are truncated to 80 chars max. On duplicate terms, first occurrence wins.
 
-사용법:
-    python build_a_index.py --hub-root <Planning-Agent-Hub 경로>
+Usage:
+    python build_a_index.py --hub-root <path to Planning-Agent-Hub>
 
 exit code:
-    0 = 성공 (A 문서 0개여도 빈 인덱스로 성공)
-    1 = PREFIX 추출 실패
-    2 = 인자 오류
+    0 = success (empty index is still a success when there are 0 A documents)
+    1 = PREFIX extraction failed
+    2 = argument error
 """
 from __future__ import annotations
 
@@ -38,12 +39,12 @@ from _cache_utils import (
     validate_hub_root,
 )
 
-# `| 용어 | 정의 |` 표 행 — 셀이 2개 이상이고 구분선(---)이 아닌 경우.
+# `| term | definition |` table row — matched when there are 2+ cells and it's not a separator (---).
 TABLE_ROW = re.compile(r"^\s*\|(.+)\|\s*$")
-# `- **용어**: 정의` / `**용어** — 정의` / `**용어**: 정의`
+# `- **term**: definition` / `**term** — definition` / `**term**: definition`
 BOLD_DEF = re.compile(r"^\s*[-*]?\s*\*\*\s*(?P<term>[^*]+?)\s*\*\*\s*[:：—\-]\s*(?P<def>.+?)\s*$")
 
-_HEADER_HINTS = ("용어", "term", "정의", "definition", "설명")
+_HEADER_HINTS = ("term", "definition", "description", "용어", "정의", "설명")
 
 
 def _truncate(text: str, limit: int = 80) -> str:
@@ -67,7 +68,7 @@ def extract_terms(md_text: str, file_rel: str) -> dict[str, dict]:
             if _is_separator_row(cells):
                 in_table_body = True
                 continue
-            # 헤더 행 감지 — 용어/정의 류 헤더면 본문을 용어표로 취급.
+            # Header row detection — treat the body as a glossary table if the header looks like a term/definition header.
             if not in_table_body:
                 joined = " ".join(cells).lower()
                 table_is_glossary = any(h in joined for h in _HEADER_HINTS)

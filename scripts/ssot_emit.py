@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""ssot_emit — drift/policy-impact/mtg 큐 헤더 → 정규화 ssot-status 계약 (§3).
+"""ssot_emit — drift/policy-impact/mtg queue headers -> normalized ssot-status contract (§3).
 
-BLOCK 등가: drift BLOCK + policy-impact IMPACT + mtg FAIL/BLOCK. WARN 은 표시만.
+BLOCK equivalents: drift BLOCK + policy-impact IMPACT + mtg FAIL/BLOCK. WARN is display-only.
 
-라이브 SSoT-status 어댑터 (/next → next_emit.py 경유). build_ssot_status.py 의
-후속 구현이며, 큐 스코프(5개 큐 + viz JSON)의 권위 기준은 본 스크립트다.
+The live SSoT-status adapter (/next -> via next_emit.py). Successor to
+build_ssot_status.py; this script is the authority for queue scope (5 queues + viz JSON).
 """
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ from pathlib import Path
 
 import _emit_common as C
 
-# (id, 제목, 큐 파일, BLOCK 등가 라벨, WARN 등가 라벨)
+# (id, title, queue file, BLOCK-equivalent labels, WARN-equivalent labels)
 QUEUES = [
     ("drift", "Drift", "drift-queue.md", ("BLOCK",), ("WARN", "UNRESOLVED")),
     ("policy-impact", "Policy Impact", "policy-impact-queue.md", ("IMPACT",), ("WARN", "COARSE")),
@@ -25,7 +25,7 @@ QUEUES = [
 
 
 def transform_ssot(read_queue, product: str = "") -> dict:
-    """read_queue(filename)->str|None 로 각 큐 본문을 받아 계약 생성."""
+    """Builds the contract, receiving each queue's body via read_queue(filename)->str|None."""
     out_q = []
     total_block = 0
     total_warn = 0
@@ -36,7 +36,7 @@ def transform_ssot(read_queue, product: str = "") -> dict:
                           "status": "MISSING", "queueFile": f"reports/{fname}"})
             continue
         counts = C.parse_header_counts(text)
-        # 라벨은 'WARN/UNRESOLVED' 처럼 결합될 수 있어 '/' 분해 후 교집합으로 집계.
+        # Labels can be combined like 'WARN/UNRESOLVED', so split on '/' and aggregate by intersection.
         bset, wset = set(block_labels), set(warn_labels)
         block = sum(v for k, v in counts.items() if bset & set(k.split("/")))
         warn = sum(v for k, v in counts.items() if wset & set(k.split("/")))
@@ -60,7 +60,7 @@ def main(argv: list[str]) -> int:
     if args.from_fixture:
         return C.emit(C.load_fixture(args.from_fixture))
     if not (args.hub_root and args.product):
-        sys.stderr.write("--hub-root, --product 필요\n")
+        sys.stderr.write("--hub-root, --product required\n")
         return 2
     rdir = C.product_dir(args.hub_root, args.product) / "reports"
 

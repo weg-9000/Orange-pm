@@ -1,5 +1,5 @@
 ---
-title: "[마이그레이션 플랜] {{PRODUCT_NAME}}"
+title: "[Migration Plan] {{PRODUCT_NAME}}"
 type: etc
 layer: DIRECT
 version: 1.0
@@ -9,124 +9,124 @@ publication:
   header:
     style: info
     body: |
-      **{{PRODUCT_NAME}} 마이그레이션 플랜**
+      **{{PRODUCT_NAME}} Migration Plan**
 
-      doc_id: {{DOC_ID}} 버전: {{VERSION}} 최종 수정: {{DATE}}
+      doc_id: {{DOC_ID}} Version: {{VERSION}} Last updated: {{DATE}}
   meta:
     layout: two_equal
     cells:
       - panel:
-          title: "관련 문서"
+          title: "Related Documents"
           body: |
-            - [[page:[정책정의서] {{PRODUCT_NAME}}]]
-            - [[page:[화면설계서] {{PRODUCT_NAME}}]]
+            - [[page:[Policy Definition] {{PRODUCT_NAME}}]]
+            - [[page:[Screen Design] {{PRODUCT_NAME}}]]
       - change_history: 5
 ---
 
-::: {.panel section="§1 마이그레이션 개요"}
-## §1 마이그레이션 개요
+::: {.panel section="§1 Migration Overview"}
+## §1 Migration Overview
 
 ---
 
-### §1-1 대상 / 범위
+### §1-1 Target / Scope
 
 <!-- col-widths: 20%, 80% -->
-| 항목 | 내용 |
+| Item | Content |
 |---|---|
-| **대상 데이터** | {{어떤 테이블 / 어느 리소스}} |
-| **원본 (Source)** | {{환경 / DBMS / 위치}} |
-| **목적지 (Target)** | {{환경 / DBMS / 위치}} |
-| **데이터 규모** | {{레코드 수 / 용량}} |
-| **변환 여부** | {{스키마 변경 / 인코딩 변환 / 동일}} |
+| **Target Data** | {{which tables / which resources}} |
+| **Source** | {{environment / DBMS / location}} |
+| **Target** | {{environment / DBMS / location}} |
+| **Data Volume** | {{record count / size}} |
+| **Transformation** | {{schema change / encoding conversion / identical}} |
 
-### §1-2 일정 / 단계
+### §1-2 Schedule / Phases
 
 <!-- col-widths: 20%, 25%, 30%, 25% -->
-| 단계 | 시점 | 작업 | 산출물 |
+| Phase | Timing | Task | Output |
 |---|---|---|---|
-| 준비 | {{YYYY-MM-DD}} | 점검, 백업, 스크립트 검증 | 점검 리포트 |
-| 리허설 | {{YYYY-MM-DD}} | 스테이징 환경 dry-run | 리허설 보고 |
-| 본 작업 | {{YYYY-MM-DD HH:MM}} | 운영 환경 마이그레이션 | 실행 로그 |
-| 검증 | 본 작업 + 1h | 데이터 / 기능 검증 | 검증 보고 |
-| 안정화 | 본 작업 + 7일 | 모니터링, 잔여 이슈 처리 | 종료 보고 |
+| Preparation | {{YYYY-MM-DD}} | Checks, backup, script validation | Check report |
+| Rehearsal | {{YYYY-MM-DD}} | Staging-environment dry run | Rehearsal report |
+| Main operation | {{YYYY-MM-DD HH:MM}} | Production-environment migration | Execution log |
+| Verification | main operation + 1h | Data / functional verification | Verification report |
+| Stabilization | main operation + 7 days | Monitoring, resolving remaining issues | Closure report |
 
-### §1-3 책임자 / 승인
+### §1-3 Owners / Approval
 
 <!-- col-widths: 20%, 30%, 50% -->
-| 역할 | 담당 | 책임 |
+| Role | Owner | Responsibility |
 |---|---|---|
-| **실행 책임** | {{담당자}} | 본 작업 수행 / 결정권 |
-| **승인** | {{승인자}} | 본 작업 GO / NO-GO |
-| **검증** | {{검증자}} | 데이터 일치성 / 기능 검증 |
-| **롤백 결정** | {{결정자}} | 롤백 발동 권한 |
+| **Execution Owner** | {{owner}} | Carries out the main operation / decision authority |
+| **Approval** | {{approver}} | GO / NO-GO for the main operation |
+| **Verification** | {{verifier}} | Data consistency / functional verification |
+| **Rollback Decision** | {{decider}} | Authority to trigger rollback |
 
-### §1-4 영향 범위
+### §1-4 Impact Scope
 
 <!-- col-widths: 25%, 75% -->
-| 항목 | 내용 |
+| Item | Content |
 |---|---|
-| **다운타임** | {{무중단 / 부분 중단 N분 / 전체 중단 N분}} |
-| **사용자 영향** | {{읽기 전용 / 일부 기능 차단 / 영향 없음}} |
-| **공지** | {{D-7 공지 / D-1 재공지 / 작업 직전 배너}} |
-| **연관 시스템** | {{외부 의존 시스템 목록}} |
+| **Downtime** | {{no downtime / partial outage N min / full outage N min}} |
+| **User Impact** | {{read-only / some features blocked / no impact}} |
+| **Notice** | {{D-7 notice / D-1 re-notice / banner right before the operation}} |
+| **Related Systems** | {{list of external dependent systems}} |
 :::
 
-::: {.panel section="§2 사전 준비 (Pre-flight)"}
-## §2 사전 준비 (Pre-flight)
+::: {.panel section="§2 Pre-flight Preparation"}
+## §2 Pre-flight Preparation
 
 ---
 
-### §2-1 점검 항목
+### §2-1 Checklist
 
 <!-- col-widths: 10%, 35%, 15%, 15%, 25% -->
-| ID | 항목 | 담당 | 상태 | 비고 |
+| ID | Item | Owner | Status | Notes |
 |---|---|---|---|---|
-| PF-01 | 원본 / 목적지 연결성 확인 | {{담당}} | 📋 | — |
-| PF-02 | 전체 백업 완료 / 복원 검증 | {{담당}} | 📋 | RPO 기준 |
-| PF-03 | 마이그레이션 스크립트 코드 리뷰 | {{담당}} | 📋 | — |
-| PF-04 | 스테이징 dry-run 1회 이상 | {{담당}} | 📋 | 실행 로그 첨부 |
-| PF-05 | 롤백 절차 리허설 | {{담당}} | 📋 | 시간 측정 |
-| PF-06 | 모니터링 알림 활성 | {{담당}} | 📋 | 임계 검토 |
-| PF-07 | 사용자 공지 발송 | {{담당}} | 📋 | D-7, D-1 |
-| PF-08 | 관계 부서 / 승인자 GO 확인 | {{담당}} | 📋 | — |
+| PF-01 | Confirm source/target connectivity | {{owner}} | 📋 | — |
+| PF-02 | Complete full backup / verify restore | {{owner}} | 📋 | based on RPO |
+| PF-03 | Code review of migration scripts | {{owner}} | 📋 | — |
+| PF-04 | At least 1 staging dry run | {{owner}} | 📋 | attach execution log |
+| PF-05 | Rollback-procedure rehearsal | {{owner}} | 📋 | measure timing |
+| PF-06 | Enable monitoring alerts | {{owner}} | 📋 | review thresholds |
+| PF-07 | Send user notice | {{owner}} | 📋 | D-7, D-1 |
+| PF-08 | Confirm GO from related departments / approver | {{owner}} | 📋 | — |
 
-### §2-2 백업 절차
+### §2-2 Backup Procedure
 
 ```bash
-# 원본 전체 백업 (예: PostgreSQL)
+# Full backup of the source (e.g. PostgreSQL)
 pg_dump -h {{SOURCE_HOST}} -U {{USER}} -Fc -f /backup/{{PRODUCT_NAME}}_pre_migration_$(date +%Y%m%d_%H%M).dump {{DB}}
 
-# 백업 무결성 확인
+# Verify backup integrity
 pg_restore -l /backup/{{PRODUCT_NAME}}_pre_migration_*.dump | head
 ```
 
-### §2-3 롤백 시나리오 사전 검증
+### §2-3 Pre-Verification of the Rollback Scenario
 
-- 스테이징에서 본 작업 → 강제 롤백 → 원본 복원 사이클을 1회 이상 수행.
-- 롤백 소요 시간 측정 후 §5-2 표에 반영.
-- 사용자 데이터 손실 0건임을 sample 비교로 입증.
+- On staging, run the main operation → forced rollback → source-restore cycle at least once.
+- Measure rollback duration and reflect it in the §5-2 table.
+- Prove 0 user-data loss through a sample comparison.
 :::
 
-::: {.panel section="§3 마이그레이션 단계 (Step-by-step)"}
-## §3 마이그레이션 단계 (Step-by-step)
+::: {.panel section="§3 Migration Steps (Step-by-step)"}
+## §3 Migration Steps (Step-by-step)
 
 ---
 
-### §3-1 실행 순서
+### §3-1 Execution Order
 
 <!-- col-widths: 8%, 15%, 30%, 15%, 17%, 15% -->
-| Step | 시각 (KST) | 작업 | 담당 | 검증 방법 | 예상 소요 |
+| Step | Time (KST) | Task | Owner | Verification Method | Estimated Duration |
 |---|---|---|---|---|---|
-| S-01 | T+0:00 | 신규 쓰기 차단 (read-only 모드) | {{담당}} | API 응답 503 확인 | 5분 |
-| S-02 | T+0:05 | 원본 최종 스냅샷 | {{담당}} | 스냅샷 파일 hash | 10분 |
-| S-03 | T+0:15 | 데이터 export | {{담당}} | 행 수 일치 | 30분 |
-| S-04 | T+0:45 | 스키마 적용 (목적지) | {{담당}} | 스키마 diff 0 | 5분 |
-| S-05 | T+0:50 | 데이터 import | {{담당}} | 행 수 / sample 비교 | 40분 |
-| S-06 | T+1:30 | 인덱스 / 통계 재구성 | {{담당}} | `ANALYZE` 완료 | 15분 |
-| S-07 | T+1:45 | 애플리케이션 endpoint 전환 | {{담당}} | smoke test 통과 | 5분 |
-| S-08 | T+1:50 | 쓰기 차단 해제 | {{담당}} | 정상 트래픽 수신 | 즉시 |
+| S-01 | T+0:00 | Block new writes (read-only mode) | {{owner}} | Confirm API returns 503 | 5 min |
+| S-02 | T+0:05 | Final snapshot of the source | {{owner}} | Snapshot file hash | 10 min |
+| S-03 | T+0:15 | Export data | {{owner}} | Row count matches | 30 min |
+| S-04 | T+0:45 | Apply schema (target) | {{owner}} | Schema diff 0 | 5 min |
+| S-05 | T+0:50 | Import data | {{owner}} | Row count / sample comparison | 40 min |
+| S-06 | T+1:30 | Rebuild indexes / statistics | {{owner}} | `ANALYZE` completes | 15 min |
+| S-07 | T+1:45 | Switch application endpoints | {{owner}} | Smoke test passes | 5 min |
+| S-08 | T+1:50 | Unblock writes | {{owner}} | Normal traffic received | immediate |
 
-### §3-2 핵심 명령 / 스크립트
+### §3-2 Key Commands / Scripts
 
 ```bash
 # S-01 read-only
@@ -140,106 +140,106 @@ pg_restore -h {{TARGET_HOST}} -d {{DB}} -j 4 /tmp/data.dump
 ```
 
 ```sql
--- S-04 스키마 적용 (예: 새 컬럼 / 인덱스)
+-- S-04 apply schema (e.g. new column / index)
 ALTER TABLE {{TABLE_1}} ADD COLUMN {{new_col}} varchar(64) DEFAULT NULL;
 CREATE INDEX CONCURRENTLY idx_{{TABLE_1}}_{{new_col}} ON {{TABLE_1}}({{new_col}});
 ```
 :::
 
-::: {.panel section="§4 검증 절차 (Post-migration)"}
-## §4 검증 절차 (Post-migration)
+::: {.panel section="§4 Verification Procedure (Post-migration)"}
+## §4 Verification Procedure (Post-migration)
 
 ---
 
-### §4-1 데이터 일치성 검증
+### §4-1 Data Consistency Verification
 
 <!-- col-widths: 25%, 35%, 40% -->
-| 검증 유형 | 방법 | 합격 기준 |
+| Verification Type | Method | Pass Criteria |
 |---|---|---|
-| 행 수 | `SELECT count(*)` 원본/목적지 비교 | 100% 일치 |
-| 체크섬 | 테이블별 hash 비교 (`md5_agg`) | 100% 일치 |
-| Sample 비교 | 무작위 100건 raw 비교 | 100% 일치 |
-| 외래키 무결성 | FK 위배 행 count | 0건 |
+| Row count | Compare `SELECT count(*)` between source/target | 100% match |
+| Checksum | Per-table hash comparison (`md5_agg`) | 100% match |
+| Sample comparison | Raw comparison of 100 random records | 100% match |
+| FK integrity | Count of FK-violating rows | 0 |
 
 ```sql
--- 행 수 비교 예시
+-- Example row-count comparison
 SELECT '{{TABLE_1}}' AS t, count(*) FROM {{TABLE_1}}
 UNION ALL SELECT '{{TABLE_2}}', count(*) FROM {{TABLE_2}};
 ```
 
-### §4-2 기능 회귀 테스트
+### §4-2 Functional Regression Test
 
-- E2E 스모크 테스트 suite 실행 (소요 ≤ 15분).
-- 정책정의서 §1~§4 의 핵심 시나리오 1회씩 수동 검증.
-- API 스펙 §3, §4 의 모든 엔드포인트 200/201/204 응답 확인.
+- Run the E2E smoke-test suite (≤ 15 min).
+- Manually verify each core scenario in Policy Definition §1-§4 once.
+- Confirm every endpoint in API Spec §3 and §4 returns 200/201/204.
 
-### §4-3 성능 비교
+### §4-3 Performance Comparison
 
 <!-- col-widths: 30%, 25%, 25%, 20% -->
-| 지표 | 마이그레이션 전 | 마이그레이션 후 | 합격 기준 |
+| Metric | Before Migration | After Migration | Pass Criteria |
 |---|---|---|---|
-| 평균 응답 시간 (p50) | {{ms}} | {{ms}} | ≤ +10% |
-| p99 응답 시간 | {{ms}} | {{ms}} | ≤ +20% |
-| 에러율 | {{%}} | {{%}} | ≤ baseline |
+| Average response time (p50) | {{ms}} | {{ms}} | ≤ +10% |
+| p99 response time | {{ms}} | {{ms}} | ≤ +20% |
+| Error rate | {{%}} | {{%}} | ≤ baseline |
 :::
 
-::: {.panel section="§5 롤백 절차" style="warning"}
-## §5 롤백 절차
+::: {.panel section="§5 Rollback Procedure" style="warning"}
+## §5 Rollback Procedure
 
 ---
 
-### §5-1 롤백 트리거 조건
+### §5-1 Rollback Trigger Conditions
 
-다음 중 **하나라도** 발생 시 즉시 롤백 검토:
+If **any one** of the following occurs, review rollback immediately:
 
-- 데이터 일치성 검증 실패 (행 수 / 체크섬 / sample 불일치).
-- 핵심 기능 회귀 테스트 실패.
-- 에러율이 baseline 대비 2배 이상 30분 이상 지속.
-- p99 응답 시간이 baseline 대비 50% 이상 악화.
-- 보안 / 무결성 이슈 발견.
+- Data-consistency verification fails (row-count / checksum / sample mismatch).
+- Core functional regression test fails.
+- Error rate stays at 2x or more of baseline for 30+ minutes.
+- p99 response time worsens by 50% or more versus baseline.
+- A security / integrity issue is found.
 
-### §5-2 롤백 단계 (역순)
+### §5-2 Rollback Steps (reverse order)
 
 <!-- col-widths: 8%, 35%, 15%, 25%, 17% -->
-| Step | 작업 | 담당 | 검증 방법 | 예상 소요 |
+| Step | Task | Owner | Verification Method | Estimated Duration |
 |---|---|---|---|---|
-| R-01 | 애플리케이션 endpoint 원복 | {{담당}} | smoke test 원본 통과 | 5분 |
-| R-02 | 쓰기 차단 (read-only) | {{담당}} | API 응답 503 | 5분 |
-| R-03 | 목적지 임시 보존 (증거 보관) | {{담당}} | 스냅샷 파일 hash | 10분 |
-| R-04 | 원본을 정본으로 복귀 | {{담당}} | read-only 해제 | 5분 |
-| R-05 | 사용자 공지 (롤백 알림) | {{담당}} | 공지 발송 확인 | 즉시 |
+| R-01 | Revert application endpoints | {{owner}} | Smoke test passes against the source | 5 min |
+| R-02 | Block writes (read-only) | {{owner}} | API returns 503 | 5 min |
+| R-03 | Temporarily preserve the target (retain evidence) | {{owner}} | Snapshot file hash | 10 min |
+| R-04 | Restore the source as canonical | {{owner}} | Read-only lifted | 5 min |
+| R-05 | User notice (rollback notification) | {{owner}} | Confirm notice was sent | immediate |
 
-### §5-3 롤백 후 후속 처리
+### §5-3 Post-Rollback Follow-up
 
-- 롤백 원인 분석 회의 (T+24h 내) — 결과는 회의록(D4)에 DEC 항목으로 기록.
-- 목적지 환경 잔존 데이터 폐기 또는 보존 정책 결정.
-- 재시도 일정 및 보완 사항 도출, 본 문서 §1-2 일정 갱신.
+- Hold a rollback root-cause meeting (within T+24h) — record the outcome as a DEC item in the meeting notes (D4).
+- Decide whether to discard or retain the remaining data in the target environment.
+- Derive a retry schedule and follow-up items, and update the §1-2 schedule in this document.
 :::
 
-::: {.panel section="§6 마이그레이션 후 모니터링" style="info"}
-## §6 마이그레이션 후 모니터링
+::: {.panel section="§6 Post-Migration Monitoring" style="info"}
+## §6 Post-Migration Monitoring
 
 ---
 
-### §6-1 모니터링 지표
+### §6-1 Monitoring Metrics
 
 <!-- col-widths: 25%, 35%, 20%, 20% -->
-| 지표 | 정의 | 임계 (warn / crit) | 채널 |
+| Metric | Definition | Threshold (warn / crit) | Channel |
 |---|---|---|---|
-| 에러율 | 5xx 응답 비율 | 1% / 5% | Slack #alert |
-| p99 응답 시간 | 99분위 응답 | {{ms}} / {{ms}} | Slack #alert |
-| DB 연결 수 | 활성 연결 | 70% / 90% | PagerDuty |
-| 복제 지연 | replica lag (있는 경우) | 5s / 30s | PagerDuty |
+| Error rate | Proportion of 5xx responses | 1% / 5% | Slack #alert |
+| p99 response time | 99th-percentile response | {{ms}} / {{ms}} | Slack #alert |
+| DB connection count | Active connections | 70% / 90% | PagerDuty |
+| Replication lag | replica lag (if applicable) | 5s / 30s | PagerDuty |
 
-### §6-2 관찰 기간
+### §6-2 Observation Period
 
-- **집중 관찰**: 본 작업 + 24시간 — 담당자 on-call.
-- **안정화 관찰**: 본 작업 + 7일 — 일 1회 지표 리뷰.
-- **종료 선언**: 본 작업 + 14일 — 회의록(D4)에 마이그레이션 종료 DEC 기록.
+- **Intensive observation**: main operation + 24 hours — owner on-call.
+- **Stabilization observation**: main operation + 7 days — review metrics once daily.
+- **Closure declaration**: main operation + 14 days — record a migration-closure DEC in the meeting notes (D4).
 
-### §6-3 대응 절차
+### §6-3 Response Procedure
 
-- warn 임계 도달 시 담당자 1차 분석, 10분 내 보고.
-- crit 임계 도달 시 즉시 §5 롤백 절차 GO/NO-GO 결정 회의 소집.
-- 모든 알림은 `MIG-{{YYYYMMDD}}-NN` 식별자로 추적 가능하게 라벨링.
+- When the warn threshold is reached, the owner performs initial analysis and reports within 10 minutes.
+- When the crit threshold is reached, immediately convene a GO/NO-GO meeting for the §5 rollback procedure.
+- Label all alerts with the `MIG-{{YYYYMMDD}}-NN` identifier for traceability.
 :::

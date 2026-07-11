@@ -1,39 +1,41 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-r"""SSoT 통합 상태 대시보드 빌더 (Sprint S2-2).
+r"""SSoT unified status dashboard builder (Sprint S2-2).
 
-⚠️ SUPERSEDED / STANDALONE — 어떤 스킬·훅에도 wiring 되어 있지 않다.
-    라이브 SSoT-status 어댑터는 ssot_emit.py (/next → next_emit.py 경유) 이며,
-    큐 스코프(5개 큐 + viz JSON)의 권위 기준은 ssot_emit.py 다.
-    본 스크립트는 reports/ssot-status.md 를 쓰지만 소비처가 없고, 커버하는
-    큐도 3개(drift/policy-impact/mtg)뿐이라 ssot_emit.py 와 스코프가 다르다.
-    수동/단독 진단 도구로만 보존한다. 런타임 로직은 변경하지 않는다.
+Warning: SUPERSEDED / STANDALONE — not wired to any skill or hook.
+    The live SSoT-status adapter is ssot_emit.py (via /next -> next_emit.py),
+    and ssot_emit.py is the authority for queue scope (5 queues + viz JSON).
+    This script writes reports/ssot-status.md, but nothing consumes it, and it
+    only covers 3 queues (drift/policy-impact/mtg), so its scope differs from
+    ssot_emit.py. Kept only as a manual/standalone diagnostic tool. Runtime
+    logic is not changed.
 
-목적:
-    drift_scan / policy_impact_scan / mtg_ledger_scan 3 스캐너가 생성한
-    각각의 큐 파일(reports/drift-queue.md, policy-impact-queue.md,
-    mtg-queue.md) 헤더 라인을 파싱하여, 단일 통합 상태 페이지
-    PROJECTS/{product}/reports/ssot-status.md 를 생성한다.
+Purpose:
+    Parse the header line of each queue file (reports/drift-queue.md,
+    policy-impact-queue.md, mtg-queue.md) produced by the three scanners
+    drift_scan / policy_impact_scan / mtg_ledger_scan, and generate a single
+    unified status page at PROJECTS/{product}/reports/ssot-status.md.
 
-    순수 집계기. 큐 원본·스캐너·게이트 정의를 수정하지 않는다.
-    BLOCK 카운트만 Phase 전진 판정의 합산 대상이며 WARN 합산은 표시만 한다.
+    A pure aggregator. Does not modify the queue sources, scanners, or gate
+    definitions. Only the BLOCK count feeds into the phase-advance decision;
+    the WARN total is display-only.
 
-큐 헤더 포맷 (각 스캐너 SSoT):
-    drift          : **BLOCK: N · WARN/UNRESOLVED: M · 공통 미참조 draft: K**
-    policy-impact  : 변경 §: X · **IMPACT: N · WARN/COARSE: M**
+Queue header format (each scanner's own SSoT):
+    drift          : **BLOCK: N · WARN/UNRESOLVED: M · unreferenced-by-common draft: K**
+    policy-impact  : changed section: X · **IMPACT: N · WARN/COARSE: M**
     mtg-ledger     : **BLOCK: N · FAIL: N · WARN: N**
 
-    IMPACT(policy-impact) 와 FAIL(mtg) 은 BLOCK 등가(게이트 차단)로 집계한다.
+    IMPACT (policy-impact) and FAIL (mtg) are counted as BLOCK-equivalent (gate-blocking).
 
-사용법:
+Usage:
     python build_ssot_status.py --hub-root <Hub> --product <name>
     python build_ssot_status.py --hub-root <Hub> --product <name> --check
-        # --check: 파일 미작성, exit code 만 (CI 용)
+        # --check: doesn't write the file, exit code only (for CI)
 
 exit code:
-    0 = 모든 큐의 BLOCK 등가 카운트 = 0 (Phase 전진 허가)
-    1 = BLOCK 등가 ≥ 1 (차단)
-    2 = 인자 오류
+    0 = every queue's BLOCK-equivalent count = 0 (phase advance allowed)
+    1 = BLOCK-equivalent >= 1 (blocked)
+    2 = argument error
 """
 from __future__ import annotations
 
@@ -43,7 +45,7 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-# Windows 콘솔 cp949 회피.
+# Avoid Windows console cp949 issues.
 for _s in (sys.stdout, sys.stderr):
     try:
         _s.reconfigure(encoding="utf-8", errors="replace")  # type: ignore[attr-defined]
@@ -51,22 +53,23 @@ for _s in (sys.stdout, sys.stderr):
         pass
 
 
-# 헤더 파서: 키워드 → 숫자. `·` 와 `•` 모두 허용. 라벨 변형 흡수.
+# Header parser: keyword -> number. Accepts both `·` and `•`. Absorbs label variants.
 # drift:         BLOCK / WARN/UNRESOLVED
 # policy-impact: IMPACT / WARN/COARSE
 # mtg:           BLOCK / FAIL / WARN
-# 라벨은 헤더 라인 어디에 있어도(앞 `**` 유무 무관) 매치한다.
-# 단어 경계는 비-알파벳/슬래시로 제한해 본문 단어 오탐을 방지한다.
+# Matches the label anywhere in the header line (regardless of a leading `**`).
+# Word boundary is restricted to non-alphabetic/slash to avoid false positives on body text.
 HEADER_NUM = re.compile(
     r"(?<![A-Za-z/])([A-Z]+(?:/[A-Z]+)?)\s*:\s*(\d+)",
 )
 
 
 def _parse_header(text: str) -> dict | None:
-    """큐 파일 본문에서 헤더 라인을 찾고 라벨→정수 맵 반환. 실패 시 None.
+    """Find the header line in a queue file body and return a label->int map. None on failure.
 
-    헤더는 일반적으로 `> **BLOCK: ... · WARN: ...**` 형태로 인용문 블록
-    안에 있다. 본문 첫 30 줄 내에서만 탐색 (정상 큐 파일은 5 줄 이내).
+    The header is typically inside a blockquote in the form
+    `> **BLOCK: ... · WARN: ...**`. Only searched within the first 30 lines
+    of the body (a well-formed queue file has it within the first 5 lines).
     """
     block_line = None
     for raw in text.splitlines()[:30]:
@@ -100,18 +103,19 @@ def _summarize_queue(
     block_labels: tuple[str, ...],
     warn_labels: tuple[str, ...],
 ) -> dict:
-    """단일 큐 파일을 읽어 BLOCK 등가·WARN 등가 카운트와 상태 문자열 반환.
+    """Read a single queue file and return its BLOCK/WARN-equivalent counts and a status string.
 
-    block_labels 중 하나라도 헤더에 있으면 그 합을 BLOCK 등가로 친다.
-    파일 미존재 → status='스캔 미실행', 헤더 파싱 실패 → '파싱 실패'.
+    If any of block_labels is present in the header, its sum counts as
+    BLOCK-equivalent. File missing -> status='not scanned yet', header parse
+    failure -> 'parse failed'.
     """
     if not path.exists():
         return {
             "block": None,
             "warn": None,
             "updated": "-",
-            "status": "스캔 미실행",
-            "ok": True,  # 미실행은 차단 아님(단지 정보)
+            "status": "not scanned yet",
+            "ok": True,  # not-yet-scanned isn't a block, just informational
         }
     try:
         text = path.read_text(encoding="utf-8", errors="replace")
@@ -120,7 +124,7 @@ def _summarize_queue(
             "block": None,
             "warn": None,
             "updated": "-",
-            "status": f"읽기 실패: {e}",
+            "status": f"read failed: {e}",
             "ok": False,
         }
     parsed = _parse_header(text)
@@ -129,7 +133,7 @@ def _summarize_queue(
             "block": None,
             "warn": None,
             "updated": _file_mtime_date(path),
-            "status": "파싱 실패",
+            "status": "parse failed",
             "ok": False,
         }
     block_total = sum(parsed.get(lbl, 0) for lbl in block_labels)
@@ -144,28 +148,28 @@ def _summarize_queue(
     }
 
 
-# 큐 정의: (제목, 파일명, BLOCK 등가 라벨, WARN 등가 라벨, 큐 설명 문구)
+# Queue definitions: (title, filename, BLOCK-equivalent labels, WARN-equivalent labels, queue description)
 QUEUES = [
     (
         "drift (master pin)",
         "drift-queue.md",
         ("BLOCK",),
         ("WARN/UNRESOLVED",),
-        "BLOCK N건 시 클릭해 §단위 확인",
+        "click through to check per-section when BLOCK is N",
     ),
     (
         "policy-impact (§ → screen)",
         "policy-impact-queue.md",
         ("IMPACT",),
         ("WARN/COARSE",),
-        "IMPACT N건 시 §정밀 확인",
+        "check §-level detail when IMPACT is N",
     ),
     (
-        "mtg-ledger (회의 결정 핀)",
+        "mtg-ledger (meeting decision pins)",
         "mtg-queue.md",
         ("BLOCK", "FAIL"),
         ("WARN",),
-        "위임 결정 N건 미반영 시 확인",
+        "check when N delegated decisions are unreflected",
     ),
 ]
 
@@ -175,10 +179,10 @@ def _cell(n) -> str:
 
 
 def _status_cell(s: dict) -> str:
-    if s["status"] == "스캔 미실행":
-        return "스캔 미실행"
-    if s["status"] == "파싱 실패":
-        return "파싱 실패"
+    if s["status"] == "not scanned yet":
+        return "not scanned yet"
+    if s["status"] == "parse failed":
+        return "parse failed"
     if s.get("ok"):
         return "✅ PASS"
     return "🚨 BLOCK"
@@ -203,9 +207,9 @@ def build(hub_root: Path, product: str, check_only: bool) -> int:
 
     if check_only:
         print(
-            f"[build_ssot_status] {product}: BLOCK 합계={total_block} "
-            f"WARN 합계={total_warn} "
-            + ("→ PASS" if overall_pass else "→ 차단")
+            f"[build_ssot_status] {product}: BLOCK total={total_block} "
+            f"WARN total={total_warn} "
+            + ("-> PASS" if overall_pass else "-> BLOCKED")
         )
         return 0 if overall_pass else 1
 
@@ -216,11 +220,11 @@ def build(hub_root: Path, product: str, check_only: bool) -> int:
     lines: list[str] = []
     lines.append(f"# SSoT Status — {product}")
     lines.append("")
-    lines.append(f"생성: {now_iso}")
+    lines.append(f"Generated: {now_iso}")
     lines.append("")
-    lines.append("## 전체 요약")
+    lines.append("## Overall Summary")
     lines.append("")
-    lines.append("| 큐 | BLOCK | WARN | 마지막 갱신 | 상태 |")
+    lines.append("| Queue | BLOCK | WARN | Last Updated | Status |")
     lines.append("|---|---:|---:|---|---|")
     for s in summaries:
         lines.append(
@@ -228,49 +232,49 @@ def build(hub_root: Path, product: str, check_only: bool) -> int:
             f"| {s['updated']} | {_status_cell(s)} |"
         )
     lines.append(
-        f"| **합계** | **{total_block}** | **{total_warn}** | — | — |"
+        f"| **Total** | **{total_block}** | **{total_warn}** | — | — |"
     )
     lines.append("")
-    lines.append("## 통과 조건")
-    lines.append("모든 큐의 BLOCK = 0 일 때 Phase 전진 허가.")
+    lines.append("## Pass Condition")
+    lines.append("Phase advance is allowed when every queue's BLOCK = 0.")
     lines.append("")
-    lines.append("## 상세 큐")
+    lines.append("## Queue Details")
     for (title, fname, _b, _w, hint), s in zip(QUEUES, summaries):
         n = s["block"] if s["block"] is not None else "-"
         lines.append(f"- [[{fname}]] — {hint.replace('N', str(n))}")
     lines.append("")
     lines.append("## Workflow Connections")
     lines.append(
-        "- 트리거: drift_scan / policy_impact_scan / mtg_ledger_scan PostToolUse"
+        "- Trigger: drift_scan / policy_impact_scan / mtg_ledger_scan PostToolUse"
     )
     lines.append(
-        "- 게이트: [[drift-gate]], [[policy-impact-gate]], [[mtg-gate]]"
+        "- Gates: [[drift-gate]], [[policy-impact-gate]], [[mtg-gate]]"
     )
 
     out_path = reports / "ssot-status.md"
     out_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
     print(
-        f"[build_ssot_status] {product}: BLOCK 합계={total_block} "
-        f"WARN 합계={total_warn} → {out_path.relative_to(hub_root)} "
-        + ("(PASS)" if overall_pass else "(차단)")
+        f"[build_ssot_status] {product}: BLOCK total={total_block} "
+        f"WARN total={total_warn} -> {out_path.relative_to(hub_root)} "
+        + ("(PASS)" if overall_pass else "(BLOCKED)")
     )
     return 0 if overall_pass else 1
 
 
 def main() -> int:
     ap = argparse.ArgumentParser(
-        description="SSoT 통합 상태 대시보드 빌더 (drift+policy-impact+mtg 큐 헤더 집계)"
+        description="SSoT unified status dashboard builder (aggregates drift+policy-impact+mtg queue headers)"
     )
     ap.add_argument("--hub-root", required=True, type=Path)
     ap.add_argument(
         "--product",
         required=True,
-        help="PROJECTS/<product> 대상 제품 이름",
+        help="target product name under PROJECTS/<product>",
     )
     ap.add_argument(
         "--check",
         action="store_true",
-        help="파일 미작성, exit code 만 반환 (CI 용)",
+        help="don't write the file, return only the exit code (for CI)",
     )
     args = ap.parse_args()
     if not args.hub_root.is_dir():

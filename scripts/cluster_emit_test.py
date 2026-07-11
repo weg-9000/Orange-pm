@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""cluster_emit.py 테스트 — cluster_map.json → cluster-map 계약."""
+"""cluster_emit.py tests — cluster_map.json → cluster-map contract."""
 from __future__ import annotations
 
 import sys
@@ -58,7 +58,7 @@ class TestModules(unittest.TestCase):
             "DOC-LOG": [{"capability": "B", "cluster_id": "BB-01"}],
         }}
         out = transform_cluster_map(cmap, "p")
-        self.assertEqual([m["moduleId"] for m in out["modules"]], ["DOC-EMAIL", "DOC-LOG"])  # 정렬·일반
+        self.assertEqual([m["moduleId"] for m in out["modules"]], ["DOC-EMAIL", "DOC-LOG"])  # sort/generic
 
 
 class TestGraceful(unittest.TestCase):
@@ -81,7 +81,7 @@ def _run() -> int:
         suite.addTests(loader.loadTestsFromTestCase(cls))
     result = unittest.TextTestRunner(verbosity=2).run(suite)
     failed = len(result.failures) + len(result.errors)
-    print(f"\n총 {result.testsRun}개 — PASS {result.testsRun - failed} / FAIL {failed}")
+    print(f"\nTotal {result.testsRun} — PASS {result.testsRun - failed} / FAIL {failed}")
     return 0 if failed == 0 else 1
 
 

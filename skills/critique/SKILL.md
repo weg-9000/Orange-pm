@@ -1,19 +1,25 @@
 ---
 name: critique
 description: |
-  정책서·화면설계서에 대해 완전 비판적 기획 리뷰를 수행한다.
-  위키 페이지 URL 또는 로컬 파일을 입력받아 9개 평가 축으로 분석하고,
-  실제 기획 리뷰 회의록 형식으로 BLOCK/FIX/HOLD/WARN/BACKLOG 피드백을 출력한다.
-  기존 /review(초안 자기완결성 검증)와 달리, 기획 의사결정의 품질·운영가능성·고객관점까지 평가한다.
-  AXIS-04 는 제품 G2-C ↔ 공통 G2-B/G2-A 정합(C0·C-PIN, 공통 opt-out 안티패턴)도 검증한다.
-  9개 축은 전부 유지된다(슬림화 보류 — 상류 검증의 최종 judgment 안전망).
+  Performs a fully critical planning review of policy documents and screen
+  design specs.
+  Takes a wiki page URL or local file as input, analyzes it across 9
+  evaluation axes, and outputs BLOCK/FIX/HOLD/WARN/BACKLOG feedback in the
+  format of an actual planning review meeting log.
+  Unlike the existing /review (draft self-completeness check), this
+  evaluates the quality of planning decisions, operability, and the
+  customer perspective as well.
+  AXIS-04 also validates product G2-C ↔ common G2-B/G2-A consistency
+  (C0·C-PIN, the common opt-out anti-pattern).
+  All 9 axes are retained (slimming down deferred — this is the final
+  judgment safety net for upstream validation).
 triggers:
   - "critique"
-  - "비판적 리뷰"
-  - "기획 리뷰"
-  - "기획서 평가"
-  - "정책서 평가"
-  - "화면설계 평가"
+  - "critical review"
+  - "planning review"
+  - "planning document evaluation"
+  - "policy document evaluation"
+  - "screen design evaluation"
   - "review critique"
 phase: any
 effort: high

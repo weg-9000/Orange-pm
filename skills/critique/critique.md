@@ -2,561 +2,683 @@
 tags: [skill, phase-any]
 ---
 # critique
-정책서·화면설계서를 완전 비판적으로 평가하고 기획 리뷰 회의록 형식으로 출력한다.
+Critically evaluates policy documents and screen design specs in full, and
+outputs the result in the format of a planning review meeting log.
 
 ## Workflow Connections
-- 독립 실행 가능 (어느 Phase에서도 호출 가능)
-- 다음 단계: [[write]], [[flow]] (BLOCK/FIX 항목 수정 후 재평가)
-- 관련 스킬: [[review]] (초안 자기완결성 검증), [[explore]] (사전 맥락 수집)
+- Can run independently (callable from any Phase)
+- Next step: [[write]], [[flow]] (re-evaluate after fixing BLOCK/FIX items)
+- Related skills: [[review]] (draft self-completeness check), [[explore]] (upfront context gathering)
 
 ---
 
-## 이 스킬과 /review의 차이
+## Differences Between This Skill and /review
 
-| 항목 | /review | /critique |
+| Item | /review | /critique |
 |---|---|---|
-| 대상 | `drafts/*.draft.md` WO 초안 | 정책서·화면설계서 (위키 URL / 로컬 파일) |
-| 평가 관점 | 문서 구조·어휘·SSoT 준수 여부 | 기획 의사결정의 품질·운영가능성·고객관점 |
-| 출력 형식 | FAIL/WARN/PASS 검증 결과표 | 기획 리뷰 회의록 (안건별 논의 + 액션 아이템) |
-| 분류 체계 | FAIL / WARN / INFO | BLOCK / FIX / HOLD / WARN / BACKLOG |
-| 자동 수정 | 없음 | 없음 (수정 방향 제시만) |
+| Target | `drafts/*.draft.md` WO drafts | Policy documents · screen design specs (wiki URL / local file) |
+| Evaluation perspective | Document structure, wording, SSoT compliance | Quality of planning decisions, operability, customer perspective |
+| Output format | FAIL/WARN/PASS validation result table | Planning review meeting log (per-agenda-item discussion + action items) |
+| Classification scheme | FAIL / WARN / INFO | BLOCK / FIX / HOLD / WARN / BACKLOG |
+| Auto-fix | None | None (suggests fix direction only) |
 
 ---
 
-## 입력 파라미터
+## Input Parameters
 
 ```
-/critique {대상}
+/critique {target}
 ```
 
-- `{대상}` 형태 예시:
-  - 위키 페이지 URL (예: `https://wiki.example.com/spaces/.../pages/123456`)
-  - 로컬 파일 경로: `PROJECTS/dns/drafts/policy-WO-003.draft.md`
-  - 여러 문서: URL 또는 경로를 공백으로 구분 (최대 3개)
-  - `--context {배경설명}`: 평가 맥락 보충 (선택)
+- Example forms of `{target}`:
+  - A wiki page URL (e.g. `https://wiki.example.com/spaces/.../pages/123456`)
+  - A local file path: `PROJECTS/dns/drafts/policy-WO-003.draft.md`
+  - Multiple documents: separate URLs or paths with spaces (max 3)
+  - `--context {background}`: supplemental evaluation context (optional)
 
 ---
 
-## 전제조건 검사
+## Precondition Checks
 
-1. 입력된 대상이 위키 페이지 URL이면 wiki 커넥터(사용자가 연결한 MCP 도구 — 예: Confluence·Notion)를
-   CONNECTORS.md 탐지 프로토콜로 확인하고, get 작업으로 문서를 마크다운으로 가져온다.
-   - wiki 커넥터 부재 시: MCP 커넥터 연결 안내 후 중단 (로컬 파일 입력 대안 제시).
-   - 페이지 조회 실패 시: 오류 메시지 출력 후 중단.
+1. If the target is a wiki page URL, detect the wiki connector (an MCP
+   tool the user has connected — e.g. Confluence, Notion) using the
+   CONNECTORS.md detection protocol, and fetch the document as Markdown
+   using the get operation.
+   - If the wiki connector is absent: instruct the user to connect an MCP
+     connector and stop (suggest a local file as an alternative input).
+   - If the page lookup fails: print an error message and stop.
 
-2. 입력된 대상이 로컬 파일이면 `Read` 도구로 로드한다.
-   - 파일 미존재 시: PM에게 경로 재확인 요청.
+2. If the target is a local file, load it with the `Read` tool.
+   - If the file does not exist: ask the PM to re-check the path.
 
-3. 대상 문서를 로드한 뒤, 아래 추가 컨텍스트를 선택적으로 로드한다 (존재 시에만):
-   - `CONTEXT/layer-config.md` → PREFIX 확인
-   - `CONTEXT/reference-docs/{ACTIVE_PREFIX}/B/` → 공통 정책 (비교 기준)
-   - `CONTEXT/reference-docs/{ACTIVE_PREFIX}/A/G2-A 용어 규칙.md` → 공식 용어 목록
-   - `PROJECTS/{product}/decisions.md` → 확정 결정 사항
+3. After loading the target document, optionally load the following
+   additional context (only if present):
+   - `CONTEXT/layer-config.md` → to confirm the PREFIX
+   - `CONTEXT/reference-docs/{ACTIVE_PREFIX}/B/` → common policy (comparison baseline)
+   - `CONTEXT/reference-docs/{ACTIVE_PREFIX}/A/G2-A Terminology Rules.md` → official terminology list
+   - `PROJECTS/{product}/decisions.md` → confirmed decisions
 
-4. 대상 문서 유형을 자동 판별한다:
-   - 정책서 (policy): 정책·규칙·분기처리 중심
-   - 화면설계서 (screen): 인터랙션·마이크로카피·상태 중심
-   - 복합 (mixed): 둘 다 포함
-
----
-
-## 평가 실행
-
-### 단계 1 — 문서 1차 스캔 (구조·선행작업)
-
-대상 문서를 읽으며 다음을 확인한다:
-- 문서 제목, 목적, 작성자, 버전
-- 섹션 구성 및 누락 섹션
-- 용어 정의 선언부 존재 여부
-- 플로우차트/User Journey 포함 여부
-- TBD·미확인·"확인 필요" 잔존 항목 수
-
-### 단계 2 — 9개 평가 축 전수 검토
-
-각 축을 독립적으로 평가하고, 발견 항목을 분류한다.
-
-> **슬림화 HOLD (개편 v0.5 §7-3 / 안건 5)**: 일부 기계 검증(수식↔입력 1:1,
-> 정본 용어, 단위 경계, C-PIN drift)이 `/review`·`/integrate`·`drift_scan`
-> 으로 상류 이관되었더라도, **본 critique 의 9개 축은 전부 유지**한다.
-> 상류 검증은 휴리스틱(LLM 판단·정규식)이라 오류율이 있어, critique 가
-> 최종 judgment 안전망이다. 축 축소는 review 신규검사 신뢰성을 N회 실측해
-> 입증한 뒤에만 PM 결정으로 재검토한다(현재 보류).
+4. Automatically determine the target document type:
+   - Policy document (policy): centered on policy, rules, and branching logic
+   - Screen design spec (screen): centered on interaction, microcopy, and state
+   - Mixed (mixed): includes both
 
 ---
 
-#### AXIS-01. 선행작업 완결성 (Prerequisites)
+## Running the Evaluation
 
-**평가 질문:**
-- 용어 정의 선언부가 문서 최상단에 있는가?
-- 기획서 작성 전 플로우차트/User Journey가 먼저 작성되었는가?
-- 케이스 분류 기준이 문서 시작 전에 확립되었는가?
-- **(C-ATTEST) 기획자 검토 귀속이 헤더에 명시되어 있는가? AI 산출물을
-  그대로 사용하지 않고 사람이 검토·서명(review_status/reviewed_by/at,
-  섹션별 검토)했는가? (MTG-05/06 원칙)**
-- **(C-MTG) 회의 위임 결정이 추적되는가? mtg-ledger(PM 정본)의
-  SCREEN-DELEGATED 가 대응 화면 meeting_decisions 에 반영되고, 화면이
-  주장한 MTG-NN 이 원장에 등재돼 있는가? (mtg-queue BLOCK/FAIL 0)**
+### Step 1 — Initial document scan (structure, prerequisites)
 
-**BLOCK 기준:**
-- 핵심 상태·개념이 문서 내 복수의 표현으로 혼용되는데 용어 정의가 없음
-- 플로우차트 없이 분기 처리를 기술 → 케이스 누락 여지 높음
+While reading the target document, check the following:
+- Document title, purpose, author, version
+- Section structure and any missing sections
+- Presence of a terminology definition section
+- Whether a flowchart/User Journey is included
+- Number of remaining TBD / unverified / "needs confirmation" items
 
-**FIX 기준:**
-- 용어 정의는 있으나 실제 문서에서 선언과 다른 표현 사용
-- 케이스 분류표가 있으나 커버리지 점검 체계 없음
+### Step 2 — Full review across all 9 evaluation axes
 
-**검토 포인트:**
-```
-□ 문서 최상단 용어 정의 선언부 존재
-□ 선언된 용어가 이후 문서 전체에서 일관되게 사용
-□ 자원·대상 유형 분기 기준이 명시되어 있음
-□ 플로우차트 또는 상태 전이도 선행 작성 여부
-□ "현재 작성 중 / 미확인" 상태로 기획서가 작성되지 않았는지
-□ (C-ATTEST) review_status: human-reviewed + reviewed_by/at·섹션별 검토 명시
-□ (C-MTG) 회의 위임(SCREEN-DELEGATED) 화면 반영·핀, mtg-queue BLOCK/FAIL 0
-□ 구버전 정책 잔재(폐기 문자열) 부재 — deprecated.yml 기준
-```
+Evaluate each axis independently and classify the findings.
+
+> **Slimming-down HOLD (revamp v0.5 §7-3 / agenda 5)**: even though some
+> mechanical checks (formula↔input 1:1, canonical terminology, unit
+> boundaries, C-PIN drift) have been moved upstream to `/review`,
+> `/integrate`, and `drift_scan`, **all 9 axes of this critique are
+> retained**. Upstream validation relies on heuristics (LLM judgment,
+> regex) and therefore has an error rate, so critique serves as the final
+> judgment safety net. Reducing the number of axes will only be
+> reconsidered by PM decision after the reliability of review's new checks
+> has been empirically measured over N runs (currently on hold).
 
 ---
 
-#### AXIS-02. 용어·표현 일관성 (Terminology)
+#### AXIS-01. Prerequisite Completeness (Prerequisites)
 
-**평가 질문:**
-- 동일 개념을 지칭하는 표현이 문서 전체에서 통일되어 있는가?
-- 고객에게 오해를 유발할 수 있는 표현이 있는가?
-- 내부 기술 용어가 고객 노출 문구에 그대로 사용되지 않는가?
+**Evaluation questions:**
+- Is the terminology definition section at the very top of the document?
+- Was a flowchart/User Journey created before the planning document was
+  written?
+- Were the case classification criteria established before the document
+  was started?
+- **(C-ATTEST) Is planner review attribution stated in the header? Was the
+  AI output reviewed and signed off by a human rather than used as-is
+  (review_status/reviewed_by/at, per-section review)? (MTG-05/06
+  principle)**
+- **(C-MTG) Is the meeting delegation decision traced? Is SCREEN-DELEGATED
+  from the mtg-ledger (PM master copy) reflected in the corresponding
+  screen's meeting_decisions, and is the MTG-NN claimed by the screen
+  registered in the ledger? (mtg-queue BLOCK/FAIL = 0)**
 
-**BLOCK 기준:**
-- 서비스 내 액션 표현이 고객의 일반 인식(구매·소멸·영구삭제 등)과 혼동될 수 있는데 수정 없이 사용
-- 동일 액션 표현("삭제", "해제" 등)이 실제로 다른 처리를 의미하는데 구분 없이 혼용
+**BLOCK criteria:**
+- Core states/concepts are described with multiple mixed terms in the
+  document, with no terminology definition
+- Branching logic is described without a flowchart → high risk of missing
+  cases
 
-**FIX 기준:**
-- "연결하기"/"변경하기" 같은 UI 문구가 화면별로 불일치
-- 정책서의 상태명과 화면기획서의 UI 레이블 불일치
-- "구조적으로 불가하다" 등 내부 기술 표현을 UI/정책 문구에 노출
-- 주어 누락으로 조건 안내인지 제한 안내인지 모호한 문구
+**FIX criteria:**
+- A terminology definition exists, but the document actually uses
+  different wording than declared
+- A case classification table exists, but there is no coverage check
+  system
 
-**WARN 기준:**
-- 서술 방식 혼재 (명사형/동사형 혼용)
-- 동일 서비스·개념의 약어·한글·영어 표기가 화면별로 혼용
-
-**검토 포인트:**
+**Checklist:**
 ```
-□ 동일 개념에 대해 문서 내 표현이 1가지로 통일
-□ 고객 오해 유발 표현 없음 (구매·삭제·등록 등)
-□ 버튼명/안내문구/정책 용어 3자간 일치
-□ 내부 기술 용어가 고객 노출 문구에 포함되지 않음
-□ 완료 메시지·버튼명·안내 문구가 같은 맥락에서 동일 표현 사용
+□ A terminology definition section exists at the top of the document
+□ Declared terms are used consistently throughout the rest of the document
+□ Resource/target type branching criteria are explicitly stated
+□ A flowchart or state-transition diagram was created beforehand
+□ The document was not written while still in "in progress / unverified" state
+□ (C-ATTEST) review_status: human-reviewed + reviewed_by/at and per-section review stated
+□ (C-MTG) Meeting delegation (SCREEN-DELEGATED) reflected/pinned on the screen, mtg-queue BLOCK/FAIL = 0
+□ No leftover deprecated policy (deprecated strings) — per deprecated.yml
 ```
 
 ---
 
-#### AXIS-03. 정책 완결성 (Policy Coverage)
+#### AXIS-02. Terminology and Wording Consistency (Terminology)
 
-**평가 질문:**
-- 모든 케이스(분기)가 빠짐없이 커버되는가?
-- 엣지 케이스 처리 정책이 명시되어 있는가?
-- 자원 유형별·상태별 처리가 완전히 분기되어 있는가?
+**Evaluation questions:**
+- Is the wording used for the same concept consistent throughout the
+  document?
+- Is there any wording that could mislead the customer?
+- Are internal technical terms not used as-is in customer-facing copy?
 
-**BLOCK 기준:**
-- 케이스 분기 기준이 있는데 일부 케이스의 처리 정책이 명시되지 않음
-- 고객이 모든 항목을 삭제한 경우, 0개 상태 처리 정책 누락
-- 호스트/자원 개수 제한 정책 완전 누락
+**BLOCK criteria:**
+- An action's wording within the service could be confused with the
+  customer's general understanding (purchase, expiry, permanent deletion,
+  etc.) and is used without correction
+- The same action wording ("delete", "disconnect", etc.) actually refers
+  to different processing but is used interchangeably without distinction
 
-**FIX 기준:**
-- 자동 만료·자동 처리 정책이 있는데 자원 유형별 처리 결과가 미분기
-- 삭제·해제 시 케이스별 안내 문구 미작성
-- 상태 전환 트리거가 있는데 예외 케이스(실패 시 복귀) 미정의
-- 연관 서비스·자원에 대한 영향 범위 미기술
+**FIX criteria:**
+- UI copy such as "Connect"/"Change" is inconsistent across screens
+- The state name in the policy document does not match the UI label in
+  the screen design spec
+- Internal technical phrasing such as "structurally not possible" is
+  exposed in UI/policy copy
+- Missing subject makes it ambiguous whether copy is a condition notice or
+  a restriction notice
 
-**HOLD 기준:**
-- 기술 가능 여부가 확인되지 않은 정책이 확정값으로 기술됨
-- 사업부 확인이 필요한 항목이 아직 미확인 상태로 잔존
+**WARN criteria:**
+- Mixed writing style (noun-form/verb-form mixed)
+- Abbreviation/localized/English notation for the same service or concept
+  mixed across screens
 
-**검토 포인트:**
+**Checklist:**
 ```
-□ 케이스 분류표가 있고 모든 케이스에 처리 정책 존재
-□ 정상 플로우뿐 아니라 실패/취소/타임아웃 케이스 처리 명시
-□ 자원 유형별 처리 분기 완전 (각 유형마다 처리 정책 존재)
-□ 자원 개수 제한 정책 존재
-□ 엣지 케이스 (0개 상태, 중복 요청, 동시 처리 등) 처리 명시
-□ 연관 서비스 영향 범위 기술
-```
-
----
-
-#### AXIS-04. 문서 정합성 (Document Consistency) — 공통(G2-A/B) 정합 포함
-
-**평가 질문:**
-- 정책서와 화면기획서 간 동일 정책이 다르게 기술되지 않았는가?
-- 정책은 정책서에, 화면 설명은 화면기획서에 올바르게 위치하는가?
-- 타 서비스·타 화면과의 패턴 일관성이 유지되는가?
-- **(C0) 제품 G2-C 가 G2-B/G2-A 공통에 이미 있는 정책·용어를 재작성·이탈하지
-  않고 Delta+`[[링크]]` 로만 기술하는가?**
-- **(C-PIN) draft frontmatter `referenced_master` 핀이 존재하며 drift-queue 가
-  stale(BLOCK) 이 아닌가? opt-out(빈 핀)은 decisions.md 근거가 있는가?**
-
-**BLOCK 기준:**
-- 정책서에는 없는 정책이 화면기획서에만 기술
-- 정책서의 상태 정의와 화면기획서의 상태 표시 불일치
-- **G2-B 에 이미 정의된 정책(요금 산식 처리 원칙·할인 적용 순서·자원 한도·
-  알림 등)을 제품 정책서가 공통 링크 없이 자체 재작성(SSoT 우회) —
-  cloud-calc DEC-001 식 공통 opt-out 안티패턴**
-- `reports/drift-queue.md` 에 해당 문서 BLOCK(공통 major drift) 존재
-
-**FIX 기준:**
-- 동일 정책을 두 문서에서 다른 표현으로 기술
-- 타 서비스(로드밸런서, WAF 등)와 동일 패턴인데 다른 UI를 사용
-- 안내 문구가 한 화면은 있고 동일 맥락의 다른 화면은 없음
-- `referenced_master` 핀 누락, 또는 핀 ID 가 `master-id-map.yml` 미등록
-  (drift-queue UNRESOLVED)
-- 입력 변수가 `spec-catalog.md` 가 아닌 정책서/화면서에 중복 정의
-
-**WARN 기준:**
-- 공통 정책 링크 참조 방식 없이 동일 내용을 복사·반복 기술
-- 이름 유효성 규칙 등 공통 정책을 개별 문서에 독립 기술
-- `referenced_master` 가 빈 목록(opt-out)인데 decisions.md 근거 미기재
-- 완전판(`*.complete.md`) `rendered_from_master` 가 소스 핀과 불일치(재-render 필요)
-
-**검토 포인트:**
-```
-□ 정책서와 화면기획서의 상태명·버튼명·안내문구 일치
-□ 정책 내용은 정책서에, UI 설명은 화면기획서에 위치
-□ 기존 타 서비스의 동일 패턴과 일관성 유지
-□ 공통 정책은 링크 참조 처리, 중복 기술 없음
-□ 백오피스 정책도 콘솔 정책과 정합성 유지
-□ (C0) G2-B/A 존재 정책을 제품이 재작성·이탈하지 않음 (Delta+링크만)
-□ (C-PIN) referenced_master 핀 존재 + drift-queue BLOCK 0 + opt-out 근거
-□ 입력 변수는 spec-catalog SSoT, 산식은 G2-B §B 파생(중복 정의 없음)
+□ The document uses a single unified expression for the same concept
+□ No customer-misleading wording (purchase, delete, register, etc.)
+□ Button labels/guidance copy/policy terms agree across all three
+□ Internal technical terms are not included in customer-facing copy
+□ Completion message, button label, and guidance copy use the same wording
+  in the same context
 ```
 
 ---
 
-#### AXIS-05. 사용자 관점 설계 (User-Centric Design)
+#### AXIS-03. Policy Completeness (Policy Coverage)
 
-**평가 질문:**
-- 고객이 처음부터 끝까지 정상 사용하는 전체 플로우(User Journey)가 설계되어 있는가?
-- 생성/완료 상태가 실제 사용 가능 상태와 일치하는가?
-- 다음 단계로 유도하는 장치가 있는가?
+**Evaluation questions:**
+- Are all cases (branches) covered without omission?
+- Is the edge-case handling policy stated?
+- Is handling fully branched by resource type and by state?
 
-**BLOCK 기준:**
-- 상태 표시(예: '완료', '운영 중')가 실제로는 추가 설정이 필요한 미완성 상태
-  → 고객이 완료로 오인하여 방치 후 CS 폭증 가능
-- 고객 사용 플로우 없이 기능 목록만 나열
+**BLOCK criteria:**
+- Case branching criteria exist, but the handling policy for some cases is
+  not stated
+- When the customer has deleted all items, the zero-count state handling
+  policy is missing
+- The host/resource count limit policy is completely missing
 
-**FIX 기준:**
-- 생성 후 다음 단계 유도 장치(안내 메시지, 링크) 없음
-- 벤치마킹이 단순 카피 수준이며 개선점 도출 없음
-- 고객이 중간에 막히는 지점(후속 설정 필요, 인증 미완 등)에 대한 안내 없음
-- 보안 우려가 있는 정보 노출(타인 소유 자원 목록, 개인정보 등)
+**FIX criteria:**
+- An auto-expiry/auto-processing policy exists, but the handling outcome
+  is not branched by resource type
+- Per-case guidance copy for delete/disconnect is not written
+- A state-transition trigger exists, but exception cases (rollback on
+  failure) are not defined
+- The impact scope on related services/resources is not described
 
-**WARN 기준:**
-- 리스트 페이지에 상태 정보가 있으나 해석을 돕는 안내 없음
-- 삭제 모달에 영향 자원 목록 없이 긴 경고 문구만 존재
-- 에러 메시지가 원인과 해결 방법을 안내하지 않음
+**HOLD criteria:**
+- A policy whose technical feasibility has not been confirmed is stated as
+  a finalized value
+- An item requiring business-unit confirmation remains unconfirmed
 
-**검토 포인트:**
+**Checklist:**
 ```
-□ 고객이 첫 접속부터 목표 달성까지의 전체 플로우 기술
-□ 생성 완료 = 실제 사용 가능 상태가 동일 (불일치 시 명시적 안내)
-□ 다음 단계 유도 메시지/링크 존재
-□ 블랙 패턴(고객 불리한 자동 갱신, 취소 어렵게 설계 등) 없음
-□ 보안 민감 정보 노출 없음 (전체 목록, 타인 정보 등)
-□ 삭제 모달에 영향 자원 및 처리 결과 명시
-```
-
----
-
-#### AXIS-06. 기술 실현가능성 (Technical Feasibility)
-
-**평가 질문:**
-- 개발팀 미확인 사항이 확정값으로 기술되어 있지 않는가?
-- 정책에 명시된 수치(주기, 임계값 등)의 기술적 근거가 있는가?
-- 연관 API·서비스 영향이 분석되어 있는가?
-
-**BLOCK 기준:**
-- 기술적으로 가능한지 확인되지 않은 정책이 확정 사항으로 기술
-- 30일 주기, 5분 간격 등 수치의 근거가 불명확하고 개발팀 검토 없음
-
-**FIX 기준:**
-- 연관 서비스·자원 영향 분석 없음
-- 자원 교체 시 간 상태(기존 해제 → 신규 연결 전) 처리 정책 없음
-- 개발팀 협의가 필요한 내부 식별값·코드 미정의
-
-**HOLD 기준:**
-- 기술 검토 결과를 기다려야 확정 가능한 항목이 있음
-- 개발팀 확인 필요 항목이 아직 미확인 상태
-
-**검토 포인트:**
-```
-□ "개발팀 확인 필요" 항목이 실제로 확인 후 정책 반영
-□ 자동화 주기·임계값에 기술적 근거 있음
-□ 간 상태(중간 처리 중 상태) 정책 명시
-□ 연관 서비스 API 변경 영향 분석
-□ 개발팀 협의가 필요한 내부 식별값·코드 항목 명시
+□ A case classification table exists and every case has a handling policy
+□ Failure/cancellation/timeout cases are stated, not just the happy path
+□ Handling is fully branched by resource type (each type has a handling
+  policy)
+□ A resource count limit policy exists
+□ Edge cases (zero-count state, duplicate requests, concurrent processing,
+  etc.) are stated
+□ The impact scope on related services is described
 ```
 
 ---
 
-#### AXIS-07. 운영·과금·알림 정책 (Operations & Billing)
+#### AXIS-04. Document Consistency (Document Consistency) — including alignment with common (G2-A/B)
 
-**평가 질문:**
-- 과금 기준 단위·연산 방법·분기 처리가 명시되어 있는가?
-- 알림(EMS/SMS/이메일) 정책이 발송 시점·대상·내용까지 정의되어 있는가?
-- "확인 필요" 항목이 포맷/금액을 혼동하지 않는가?
+**Evaluation questions:**
+- Is the same policy described differently between the policy document and
+  the screen design spec?
+- Is policy content correctly placed in the policy document, and screen
+  description correctly placed in the screen design spec?
+- Is pattern consistency maintained with other services/screens?
+- **(C0) Does the product's G2-C avoid rewriting or deviating from
+  policy/terminology already present in the common G2-B/G2-A, describing
+  only Delta+`[[link]]`?**
+- **(C-PIN) Does the draft frontmatter's `referenced_master` pin exist, and
+  is the drift-queue not stale (BLOCK)? Does an opt-out (empty pin) have a
+  decisions.md justification?**
 
-**BLOCK 기준:**
-- 과금이 발생하는 서비스인데 과금 처리 정책 전반 미기재
-- EMS 템플릿 미착수 + 후속 설정 안내 없음 → 고객이 서비스를 방치
+**BLOCK criteria:**
+- A policy not present in the policy document is described only in the
+  screen design spec
+- The state definition in the policy document does not match the state
+  display in the screen design spec
+- **The product policy document rewrites, without a common link, a policy
+  already defined in G2-B (fee formula handling principles, discount
+  application order, resource limits, notifications, etc.) on its own
+  (SSoT bypass) — the common opt-out anti-pattern as in cloud-calc DEC-001**
+- A BLOCK (common major drift) exists for this document in
+  `reports/drift-queue.md`
 
-**FIX 기준:**
-- "확인 필요"로 표기된 항목이 포맷(연산방법)까지 미작성 
-  → 가격만 미확정이면 포맷은 즉시 작성 가능
-- 자동 만료 처리가 있는데 고객 사전 고지 정책 없음
-- 과금 시작·종료 기준, 일할 계산 방식 미정의
-- 중도 가입/해지 시 계산 방식 미정의
-- 위약금 정책 존재 여부 미명시
+**FIX criteria:**
+- The same policy is described with different wording in the two documents
+- The same pattern as another service (load balancer, WAF, etc.) but a
+  different UI is used
+- Guidance copy exists on one screen but not on another screen with the
+  same context
+- The `referenced_master` pin is missing, or the pin ID is not registered
+  in `master-id-map.yml` (drift-queue UNRESOLVED)
+- An input variable is duplicated in the policy document/screen spec
+  instead of only in `spec-catalog.md`
 
-**WARN 기준:**
-- 이메일 발송 시점이 모호 (실시간 vs 배치, 발송 조건 불명확)
-- SMS 발송 여부 미결 상태로 방치
+**WARN criteria:**
+- Identical content is copy-pasted repeatedly instead of using a common
+  policy link reference
+- A common policy such as name validation rules is described
+  independently in an individual document
+- `referenced_master` is an empty list (opt-out) but no decisions.md
+  justification is recorded
+- The complete version's (`*.complete.md`) `rendered_from_master` does not
+  match the source pin (re-render needed)
 
-**검토 포인트:**
+**Checklist:**
 ```
-□ 과금 기준 단위(시간/일/월/연) 명시
-□ 과금 연산 방법 기술 (중도 가입·해지 포함)
-□ 알림 발송 이벤트·시점·채널·대상·내용 전부 정의
-□ 생성 후 추가 설정이 필요한 경우 알림으로 안내하는 정책
-□ 자동 만료 전 D-N일 사전 고지 의무화 여부
-□ 백오피스 운영자가 처리해야 할 수동 작업 시나리오 기술
-```
-
----
-
-#### AXIS-08. 보안·개인정보 (Security & Privacy)
-
-**평가 질문:**
-- 고객 정보가 필요 이상으로 노출되지 않는가?
-- 인증 방식이 명시되고 보안 위험이 검토되었는가?
-- 민감정보(계정·비밀번호·소유 목록 등) 처리 정책이 있는가?
-
-**BLOCK 기준:**
-- 타 계정이 소유한 자원 전체 목록이 인증 없이 노출
-- 계정 ID가 마스킹 없이 화면에 표시
-
-**FIX 기준:**
-- 조회 결과에 타인 정보가 포함될 수 있는데 마스킹 처리 정책 없음
-- 민감정보(계정/비밀번호) 메일 전송 가능 여부 확인 없이 설계
-
-**WARN 기준:**
-- 보안팀 사전 확인이 필요한 사항이 미확인 상태로 진행
-
-**검토 포인트:**
-```
-□ 타인 정보 노출 가능성 검토 및 마스킹 처리
-□ 보안팀 사전 확인이 필요한 항목 확인 완료
-□ 민감정보(PW, 계정키 등) 전송 방식 정의
-□ 인증 방식(소유 확인, 위임 확인 등) 명시
-□ 공개 노출 범위 최소화 원칙 준수
-```
-
----
-
-#### AXIS-09. 상태·액션 정의 완전성 (State & Action Matrix)
-
-**평가 질문:**
-- 모든 상태에 대해 허용 액션이 완전히 정의되어 있는가?
-- 실패·오류 상태에서의 복귀 케이스가 세분화되어 있는가?
-- 상태 표시와 실제 동작이 일치하는가?
-
-**BLOCK 기준:**
-- 상태별 허용 액션 테이블에서 일부 상태가 누락
-- 실패 후 복귀 케이스가 단일 행으로 단순화 (정상/오류 여부, 연관 자원 연결 여부로 세분화 필요)
-
-**FIX 기준:**
-- 상태 전환 트리거가 있는데 역전환(롤백) 시나리오 미정의
-- 콘솔 표시 상태명과 내부 상태명(코드)이 불일치
-- 이벤트 로그 항목 중 고객 노출/미노출 구분 없음
-- 이벤트 로그 출처가 "API"로 기재되어야 할 곳이 "콘솔"로 표기
-
-**WARN 기준:**
-- 상태 전환 시 이벤트 로그 기록 여부 불명확
-- 상태별 이메일 내용이 동일한 템플릿으로 기술 (실제로는 달라야 함)
-
-**검토 포인트:**
-```
-□ 전체 상태 목록과 각 상태별 허용 액션 매트릭스 완성
-□ 실패 복귀 케이스 세분화 (정상/오류 여부 × 연관 자원 연결 여부)
-□ 상태 표시명(콘솔) = 내부 상태명 일치 또는 매핑 명시
-□ 이벤트 로그 고객 노출/미노출 구분
-□ 이벤트 로그 출처(콘솔/API/자동) 정확히 표기
-□ 상태 전환 이메일 내용이 상태별로 구분 작성
+□ State names, button labels, and guidance copy match between the policy
+  document and the screen design spec
+□ Policy content is placed in the policy document, UI description in the
+  screen design spec
+□ Consistency is maintained with the same pattern in existing other
+  services
+□ Common policy uses a link reference, no duplicate description
+□ Back-office policy is also consistent with console policy
+□ (C0) The product does not rewrite or deviate from policy already in
+  G2-B/A (Delta+link only)
+□ (C-PIN) referenced_master pin exists + drift-queue BLOCK = 0 + opt-out
+  justification
+□ Input variables are the spec-catalog SSoT; formulas derive from G2-B §B
+  (no duplicate definitions)
 ```
 
 ---
 
-### 단계 3 — 피드백 종합 및 분류
+#### AXIS-05. User-Centric Design (User-Centric Design)
 
-각 축에서 발견된 항목을 아래 기준으로 분류한다.
+**Evaluation questions:**
+- Is the full flow (User Journey) of the customer's normal end-to-end
+  usage designed?
+- Does the created/completed state match the actual usable state?
+- Is there a mechanism that guides the user to the next step?
 
-| 등급 | 정의 | 즉각 조치 |
+**BLOCK criteria:**
+- A status display (e.g. "Complete", "Running") actually reflects an
+  incomplete state that requires further setup → the customer may mistake
+  it for complete and neglect it, causing a surge in CS inquiries
+- Only a feature list is enumerated, with no customer usage flow
+
+**FIX criteria:**
+- No mechanism (guidance message, link) to guide the next step after
+  creation
+- Benchmarking is a mere copy with no improvement points derived
+- No guidance for points where the customer gets stuck (further setup
+  needed, incomplete authentication, etc.)
+- Exposure of information with security concerns (another user's owned
+  resource list, personal information, etc.)
+
+**WARN criteria:**
+- The list page has status information but no guidance to help interpret
+  it
+- The delete modal has only a long warning message with no list of
+  affected resources
+- The error message does not explain the cause and how to resolve it
+
+**Checklist:**
+```
+□ The full flow from the customer's first access to goal achievement is
+  described
+□ Creation-complete = actually-usable state are the same (explicit
+  guidance if they differ)
+□ A next-step guidance message/link exists
+□ No dark patterns (customer-unfavorable auto-renewal, cancellation made
+  difficult, etc.)
+□ No exposure of security-sensitive information (full lists, other users'
+  information, etc.)
+□ Affected resources and the outcome are stated in the delete modal
+```
+
+---
+
+#### AXIS-06. Technical Feasibility (Technical Feasibility)
+
+**Evaluation questions:**
+- Are items unconfirmed by the dev team not stated as finalized values?
+- Do the figures stated in policy (interval, threshold, etc.) have a
+  technical basis?
+- Is the impact on related APIs/services analyzed?
+
+**BLOCK criteria:**
+- A policy whose technical feasibility has not been confirmed is stated as
+  a finalized item
+- Figures such as a 30-day cycle or 5-minute interval have an unclear
+  basis and have not been reviewed by the dev team
+
+**FIX criteria:**
+- No impact analysis on related services/resources
+- No handling policy for the intermediate state during resource
+  replacement (existing disconnect → before new connect)
+- Internal identifiers/codes requiring dev team consultation are not
+  defined
+
+**HOLD criteria:**
+- There is an item that can only be finalized after waiting for a
+  technical review result
+- An item requiring dev team confirmation remains unconfirmed
+
+**Checklist:**
+```
+□ Items marked "needs dev team confirmation" are actually confirmed and
+  reflected in policy
+□ Automation cycles/thresholds have a technical basis
+□ The intermediate (mid-processing) state policy is stated
+□ The impact of related service API changes is analyzed
+□ Internal identifiers/codes requiring dev team consultation are stated
+```
+
+---
+
+#### AXIS-07. Operations, Billing & Notification Policy (Operations & Billing)
+
+**Evaluation questions:**
+- Are the billing unit, calculation method, and branching all stated?
+- Is the notification (EMS/SMS/email) policy defined down to the send
+  timing, recipient, and content?
+- Do "needs confirmation" items avoid conflating format with the amount?
+
+**BLOCK criteria:**
+- The service incurs billing, but the billing handling policy is not
+  documented at all
+- The EMS template has not been started + no follow-up setup guidance →
+  the customer neglects the service
+
+**FIX criteria:**
+- An item marked "needs confirmation" doesn't even have its format
+  (calculation method) written → if only the price is unconfirmed, the
+  format can be written immediately
+- Auto-expiry handling exists, but there is no customer pre-notification
+  policy
+- The billing start/end criteria and pro-rata calculation method are not
+  defined
+- The calculation method for mid-cycle sign-up/cancellation is not defined
+- Whether a penalty policy exists is not stated
+
+**WARN criteria:**
+- The email send timing is ambiguous (real-time vs. batch, send condition
+  unclear)
+- Whether SMS is sent is left undecided
+
+**Checklist:**
+```
+□ The billing unit (hour/day/month/year) is stated
+□ The billing calculation method is described (including mid-cycle
+  sign-up/cancellation)
+□ The notification send event, timing, channel, recipient, and content
+  are all defined
+□ A policy exists to notify the customer if further setup is needed after
+  creation
+□ Whether D-N day advance notice before auto-expiry is mandatory is stated
+□ Manual-operation scenarios the back-office operator must handle are
+  described
+```
+
+---
+
+#### AXIS-08. Security & Privacy (Security & Privacy)
+
+**Evaluation questions:**
+- Is customer information not exposed more than necessary?
+- Is the authentication method stated and have security risks been
+  reviewed?
+- Is there a handling policy for sensitive information (account,
+  password, ownership list, etc.)?
+
+**BLOCK criteria:**
+- The full list of resources owned by another account is exposed without
+  authentication
+- The account ID is displayed on-screen without masking
+
+**FIX criteria:**
+- Lookup results could include another person's information, but there is
+  no masking policy
+- Designed without confirming whether sensitive information
+  (account/password) can be sent by email
+
+**WARN criteria:**
+- An item requiring prior security team confirmation is proceeding
+  unconfirmed
+
+**Checklist:**
+```
+□ The possibility of exposing another person's information is reviewed
+  and masked
+□ Items requiring prior security team confirmation are confirmed
+□ The transmission method for sensitive information (password, account
+  key, etc.) is defined
+□ The authentication method (ownership verification, delegation
+  verification, etc.) is stated
+□ The principle of minimizing public exposure scope is followed
+```
+
+---
+
+#### AXIS-09. State & Action Definition Completeness (State & Action Matrix)
+
+**Evaluation questions:**
+- Are the allowed actions fully defined for every state?
+- Are the recovery cases from failure/error states broken down in enough
+  detail?
+- Does the state display match the actual behavior?
+
+**BLOCK criteria:**
+- Some states are missing from the per-state allowed-action table
+- The post-failure recovery case is oversimplified into a single row
+  (needs to be broken down by success/error and by related-resource
+  connection status)
+
+**FIX criteria:**
+- A state-transition trigger exists, but the reverse-transition (rollback)
+  scenario is not defined
+- The console-displayed state name does not match the internal state name
+  (code)
+- No distinction between customer-visible/hidden event log entries
+- An event log source that should be recorded as "API" is instead labeled
+  "Console"
+
+**WARN criteria:**
+- Whether an event log entry is recorded on state transition is unclear
+- The per-state email content is described with the same template (they
+  should actually differ)
+
+**Checklist:**
+```
+□ The full state list and the per-state allowed-action matrix are
+  complete
+□ Failure-recovery cases are broken down (success/error × related-resource
+  connection status)
+□ The displayed state name (console) matches the internal state name, or
+  the mapping is stated
+□ Event log customer-visible/hidden distinction exists
+□ Event log source (console/API/automatic) is stated accurately
+□ State-transition email content is written distinctly per state
+```
+
+---
+
+### Step 3 — Synthesize and classify feedback
+
+Classify the items found on each axis using the criteria below.
+
+| Grade | Definition | Immediate action |
 |---|---|---|
-| **BLOCK** | 출시 시 고객 혼란·오동작·CS 폭증 수준. 재설계 필요. | 다음 리뷰 전 필수 수정 |
-| **FIX** | 정책 누락·케이스 미처리·문서 오류. 다음 리뷰 전 수정. | 다음 리뷰 전 수정 |
-| **HOLD** | 기술/사업부 확인 후 FIX 또는 BACKLOG로 전환. | 확인 기한 설정 필수 |
-| **WARN** | 품질 저하 요소. 수정 권장하나 PM 판단에 따라 진행 가능. | 오픈 이슈 등록 |
-| **BACKLOG** | 향후 고도화. v1에서 제외하고 v2 계획에 등록. | 백로그 등록 |
+| **BLOCK** | Severe enough to cause customer confusion, malfunction, or a surge in CS inquiries at launch. Redesign required. | Must be fixed before the next review |
+| **FIX** | Policy omission, unhandled case, or document error. Fix before the next review. | Fix before the next review |
+| **HOLD** | Convert to FIX or BACKLOG after technical/business-unit confirmation. | A confirmation deadline must be set |
+| **WARN** | A quality-degrading element. Fix is recommended but may proceed at PM's discretion. | Register as an open issue |
+| **BACKLOG** | Future enhancement. Excluded from v1 and registered in the v2 plan. | Register in backlog |
 
 ---
 
-### 단계 4 — 결과 출력
+### Step 4 — Output the result
 
-아래 형식으로 기획 리뷰 회의록 형태로 출력한다.
+Output the result in the format of a planning review meeting log, as
+shown below.
 
 ---
 
 ```markdown
-# 기획 리뷰 — {대상 문서 제목}
+# Planning Review — {target document title}
 
-| 항목 | 내용 |
+| Item | Content |
 |---|---|
-| 검토 대상 | {문서 URL 또는 경로} |
-| 검토 일시 | {날짜} |
-| 문서 유형 | {정책서 / 화면설계서 / 복합} |
+| Reviewed target | {document URL or path} |
+| Review date | {date} |
+| Document type | {policy / screen design / mixed} |
 
 ---
 
-## 종합 판정
+## Overall Verdict
 
-> **{BLOCK N건 / FIX N건 / HOLD N건 / WARN N건 / BACKLOG N건}**
+> **{BLOCK: N / FIX: N / HOLD: N / WARN: N / BACKLOG: N}**
 >
-> {한 줄 총평 — "정책 완결성에 치명적 공백이 있으며 출시 전 재설계 필요" 수준의 직접적 평가}
+> {one-line overall assessment — a direct evaluation at the level of "there
+> is a critical gap in policy completeness and a redesign is needed before
+> launch"}
 
 ---
 
-## 안건별 논의
+## Discussion by Agenda Item
 
-### 안건 1. [AXIS-{번호}] {평가 축명}: {발견 이슈 제목}
-**등급**: {BLOCK / FIX / HOLD / WARN / BACKLOG}
+### Agenda 1. [AXIS-{number}] {evaluation axis name}: {issue title}
+**Grade**: {BLOCK / FIX / HOLD / WARN / BACKLOG}
 
-- **논의 요약**:
-  {발견된 문제를 구체적으로 기술. 어떤 표현/내용이 어떻게 문제인지, 실제 발생 가능한 리스크를 명시한다.
-  추상적 지적("용어가 불일치합니다")이 아니라 구체적 근거("§3에서는 '{표현 A}'를 사용하고 §5에서는 '{표현 B}'를 사용")로 기술한다.}
+- **Discussion summary**:
+  {Describe the found problem concretely. State which wording/content is
+  problematic and how, and the risk that could actually occur.
+  Write with concrete evidence ("§3 uses '{expression A}' and §5 uses
+  '{expression B}'"), not an abstract remark ("the terminology is
+  inconsistent").}
 
-- **결정 사항**:
-  {구체적 수정 방향을 지시한다. "검토 필요"가 아니라 "~로 수정한다"는 형태로 기술한다.}
+- **Decision**:
+  {State the concrete fix direction. Write it as "fix by doing X", not
+  "needs review".}
 
-- **보류·미결 사항**:
-  {기술/사업부 확인이 필요한 경우만 기재. 없으면 "없음"}
+- **Open/pending items**:
+  {State only if technical/business-unit confirmation is needed. Otherwise
+  "none"}
 
-[안건 반복 — 발견 항목 전체]
+[Repeat agenda item — for every finding]
 
 ---
 
-## 액션 아이템
+## Action Items
 
-| No. | 내용 | 등급 | 담당자 |
+| No. | Content | Grade | Owner |
 |---|---|---|---|
-| 1 | {구체적 수정 내용} | BLOCK | {담당자} |
-| 2 | {구체적 수정 내용} | FIX | {담당자} |
+| 1 | {concrete fix content} | BLOCK | {owner} |
+| 2 | {concrete fix content} | FIX | {owner} |
 | ... | | | |
 
 ---
 
-## 보류 확인 사항
+## Pending Confirmations
 
-| No. | 확인 내용 | 확인 대상 | 기한 제안 |
+| No. | What needs confirmation | Confirm with | Suggested deadline |
 |---|---|---|---|
-| 1 | {확인이 필요한 내용} | 개발팀 / 사업부 / 보안팀 | {기한} |
+| 1 | {content requiring confirmation} | Dev team / Business unit / Security team | {deadline} |
 
 ---
 
-## 백로그 등록 항목
+## Backlog Items
 
-| No. | 내용 | 반영 권장 시점 |
+| No. | Content | Recommended timing |
 |---|---|---|
-| 1 | {향후 고도화 내용} | v2 / MVP 이후 | 
+| 1 | {future enhancement content} | v2 / post-MVP | 
 
 ---
 
-## 다음 단계
+## Next Steps
 
-- BLOCK 항목 수정 후: `/critique {대상}` 재실행
-- FIX 항목 수정 후: 다음 기획 리뷰 예약
-- HOLD 항목: 확인 완료 후 기획서 반영 및 `/critique` 재실행
+- After fixing BLOCK items: re-run `/critique {target}`
+- After fixing FIX items: schedule the next planning review
+- HOLD items: reflect in the planning document after confirmation, then
+  re-run `/critique`
 ```
 
 ---
 
-### 단계 4-5 — DEC 후보 자동 등재 ([[CONTEXT/dec-schema]] 참조)
+### Step 4-5 — Auto-register DEC candidates (see [[CONTEXT/dec-schema]])
 
-리뷰 회의록의 BLOCK·FIX·HOLD 결정을 `decisions.md` DEC 표에 후보 행으로 자동 등재한다.
+Automatically register the review meeting log's BLOCK/FIX/HOLD decisions
+as candidate rows in the `decisions.md` DEC table.
 
-**등재 대상:**
+**Registration targets:**
 
-| 등급 | DEC 등재 | 사유 |
+| Grade | DEC registration | Reason |
 |---|---|---|
-| BLOCK | ✅ 등재 | 기획 정본 변경 필요 → DEC 필수 |
-| FIX | ✅ 등재 | 수정 방향이 기획 결정 → DEC 필수 |
-| HOLD | ✅ 등재 (승인=🟡 보류) | PM 확인 대기 — 보류 상태로 등재 |
-| WARN | ❌ 미등재 | 경고만 — open-issues로 충분 |
-| BACKLOG | ❌ 미등재 | 백로그 등록만 |
+| BLOCK | ✅ Registered | A master planning-document change is needed → DEC required |
+| FIX | ✅ Registered | The fix direction is a planning decision → DEC required |
+| HOLD | ✅ Registered (approval = 🟡 on-hold) | Awaiting PM confirmation — registered in on-hold state |
+| WARN | ❌ Not registered | Warning only — open-issues is sufficient |
+| BACKLOG | ❌ Not registered | Backlog registration only |
 
-**등재 형식:**
+**Registration format:**
 
 ```markdown
-| DEC-{NNN} | {MM-DD} | {도메인 추정} | {결정 사항 60자 압축} | {번복 대상 또는 -} | ⬜ | /critique {라운드/축} |
+| DEC-{NNN} | {MM-DD} | {estimated domain} | {decision, compressed to 60 chars} | {reversal target or -} | ⬜ | /critique {round/axis} |
 ```
 
-- HOLD 등급은 `승인` 칼럼을 `🟡 보류` 로 등재 (⬜ 아님)
-- 등재 후 PM에게 미승인 DEC 목록을 보고하고 `/dec-approve` 안내
-- 본 단계는 회의록 마크다운 출력과 **별도로** decisions.md 표를 직접 갱신한다
+- For HOLD grade, register the `approval` column as `🟡 on-hold` (not ⬜)
+- After registration, report the list of unapproved DECs to the PM and
+  direct them to `/dec-approve`
+- This step updates the decisions.md table directly, **separately** from
+  the meeting-log markdown output
 
 ---
 
-### 단계 5 — 평가 원칙 (엄격 적용)
+### Step 5 — Evaluation Principles (strictly enforced)
 
-비판 시 아래 원칙을 반드시 준수한다.
+When critiquing, the following principles must be followed.
 
-**1. 구체성의 원칙**
-- "용어가 불일치한다" → "§3에서 '{표현 A}', §5에서 '{표현 B}'로 혼용. 두 표현 중 하나로 통일하고 용어 정의 선언부에 등재한다."
-- "플로우가 부족하다" → "{자원} 생성 후 {후속 설정} 없이는 실제 동작하지 않지만, 생성 완료 화면에 다음 단계 안내가 없다. 고객이 완료로 오인하여 방치할 가능성이 높다."
+**1. Principle of specificity**
+- "The terminology is inconsistent" → "§3 mixes '{expression A}' and §5
+  uses '{expression B}'. Unify to one of the two expressions and register
+  it in the terminology definition section."
+- "The flow is insufficient" → "After creating {resource}, it does not
+  actually work without {follow-up setup}, but the completion screen has
+  no guidance to the next step. The customer is likely to mistake it for
+  complete and neglect it."
 
-**2. 리스크 명시의 원칙**
-- 왜 문제인지, 어떤 결과로 이어지는지를 반드시 기술한다.
-- "CS 폭증 가능", "역마진 발생", "보안 위험" 등 구체적 리스크를 명시한다.
+**2. Principle of explicit risk**
+- Always state why it is a problem and what outcome it could lead to.
+- State concrete risks such as "possible surge in CS inquiries", "negative
+  margin", "security risk".
 
-**3. 수정 방향 제시의 원칙**
-- "검토 필요"로 마무리하지 않는다.
-- "~로 수정한다", "~를 추가한다", "~를 삭제한다"로 명확히 지시한다.
-- 수정 예시 문구를 직접 제안한다.
+**3. Principle of proposing a fix direction**
+- Do not end with "needs review".
+- Clearly instruct with "fix to X", "add X", "remove X".
+- Directly propose an example of the fixed wording.
 
-**4. 우선순위 명확화의 원칙**
-- 모든 항목에 등급(BLOCK/FIX/HOLD/WARN/BACKLOG)을 반드시 부여한다.
-- BLOCK 항목이 있으면 총평 첫 줄에 명시한다.
+**4. Principle of clarifying priority**
+- Every item must be assigned a grade (BLOCK/FIX/HOLD/WARN/BACKLOG).
+- If any BLOCK item exists, state it in the first line of the overall
+  assessment.
 
-**5. 벤치마킹 비교의 원칙**
-- 타사(AWS, NHN, NCP 등) 또는 타 서비스(로드밸런서, WAF 등)와 비교하여 더 나은 방향을 제시한다.
-- 단순 카피가 아닌 개선점 도출 관점으로 활용한다.
+**5. Principle of benchmarking comparison**
+- Compare against other companies (AWS, NHN, NCP, etc.) or other services
+  (load balancer, WAF, etc.) to suggest a better direction.
+- Use it from the perspective of deriving improvements, not simple
+  copying.
 
 ---
 
-## 결과 파일 목록
+## Output Files
 
-| 파일 | 내용 |
+| File | Content |
 |---|---|
-| 해당 없음 | 결과는 대화창에 출력. 별도 파일 생성 없음 |
-| (선택) `reports/critique-{문서ID}-{날짜}.md` | PM이 저장 요청 시 생성 |
+| N/A | The result is printed to the conversation. No separate file is created |
+| (optional) `reports/critique-{document ID}-{date}.md` | Created when the PM requests it be saved |
 
 ---
 
-## 다음 단계
+## Next Steps
 
-평가 결과를 바탕으로:
+Based on the evaluation result:
 
 ```
-BLOCK 항목 수정 완료 후: /critique {대상}
-FIX 항목 수정 완료 후:   /critique {대상} (또는 다음 기획 리뷰 예약)
-정책서 수정:              /write {WO_ID}
-화면설계 수정:            /flow {product} {screen_id}
+After fixing BLOCK items: /critique {target}
+After fixing FIX items:   /critique {target} (or schedule the next planning review)
+Policy document fixes:    /write {WO_ID}
+Screen design fixes:      /flow {product} {screen_id}
 ```
