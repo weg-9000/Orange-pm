@@ -28,15 +28,16 @@ Node types: `policy` | `screen` (unchanged).
 
 ## decisions.md table contract
 
-Parsed by `scripts/session_emit.py`.
+Written by `/discover` & `/dec-approve`; parsed by `scripts/session_emit.py`
+(and read by `fanout_dag.py`, `integrate_merge.py`, `next_emit.py`).
 
 Canonical header row:
 
 ```
-| ID | Decision | Decider | Date | Status |
+| ID | Date | Domain | Key Decision | Reversal | Approval | Basis (skill/session) |
 ```
 
-Status cell tokens (emoji + word, either alone is recognized):
+Approval-cell tokens (emoji + word, either alone is recognized):
 
 | Token | Meaning |
 |---|---|

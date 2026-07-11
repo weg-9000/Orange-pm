@@ -18,10 +18,10 @@ jobs:
       - name: Install deps
         run: pip install pytest pyyaml
 
-      - name: 버전 필드 3곳 일치 검증
+      - name: Verify version fields match across all 3 locations
         run: python scripts/bump_version.py --check
 
-      - name: SKILL.md/agents frontmatter YAML 검증
+      - name: Validate SKILL.md / agents frontmatter YAML
         run: |
           python - <<'EOF'
           import glob, io, sys, yaml

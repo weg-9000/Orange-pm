@@ -1,0 +1,19 @@
+# orange-pm — OPTIONAL vector-search subsystem dependencies
+#
+# Only needed if you self-host the Neo4j vector store (see docker-compose.yml)
+# and want /search to use kNN vector ranking instead of BM25-only.
+# The plugin runs fully without these — /search gracefully degrades to
+# graph.json BM25 and shows [vector search skipped].
+#
+# Install (client / ingestion side):
+#   pip install -r deploy/neo4j/requirements-vector.txt
+#
+# Pipeline: embed_pipeline.py → graph_to_neo4j.py → context_search.py / vector_emit.py
+
+neo4j>=5.18                       # Bolt driver (matches deploy image neo4j:5.18)
+
+# Chunking + embeddings. Extras:
+#   tiktoken  — token-aware chunking
+#   st        — sentence-transformers, local embeddings (no API key)
+#   voyageai  — Voyage AI cloud embeddings (requires VOYAGE_API_KEY)
+chonkie[tiktoken,st]>=0.2         # add ',voyageai' if using Voyage cloud instead of local

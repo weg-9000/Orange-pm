@@ -13,6 +13,17 @@ Version bumps are performed with `python scripts/bump_version.py patch|minor|maj
 
 ## [Unreleased]
 
+### Added
+- `requirements.txt` (core: PyYAML) and `deploy/neo4j/requirements-vector.txt`
+  (optional vector-search extras: neo4j, chonkie) — dependencies were previously undeclared
+- README **Advanced: Vector search** section documenting the optional Neo4j vector store,
+  `embed_pipeline`/`graph_to_neo4j` setup, and BM25 graceful degradation
+
+### Fixed
+- `VOCABULARY.md` — corrected the stale `decisions.md` header contract to the v3.0.0
+  canonical form (`| ID | Date | Domain | Key Decision | Reversal | Approval | Basis |`)
+- CI workflow step names translated to English for consistency with the v3.0.0 internationalization
+
 ## [3.0.0] — 2026-07-11
 
 ### Changed

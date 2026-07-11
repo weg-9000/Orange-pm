@@ -133,6 +133,37 @@ Run `/lc {product}` before advancing — it validates every gate condition.
 
 ---
 
+## Advanced: Vector search — optional
+
+`/search` finds related nodes/chunks to gather context before `/explore`, surface
+candidate conflicts for `/integrate`, or locate a policy quickly. By default it runs a
+**local BM25 approximation over `graph.json`** — no infrastructure required.
+
+For semantic (kNN) ranking, you can attach a self-hosted **Neo4j 5.x vector store**:
+
+```bash
+# 1. Start the vector store (once, on a VM/host)
+cd deploy/neo4j
+cp .env.example .env          # set NEO4J_PASSWORD etc. (.env is gitignored)
+docker compose up -d
+
+# 2. Install client-side extras (ingestion/search host)
+pip install -r deploy/neo4j/requirements-vector.txt
+
+# 3. Load + embed, then search with vector ranking
+python scripts/graph_to_neo4j.py     # base-load graph.json into Neo4j
+python scripts/embed_pipeline.py      # build chunk embeddings + vector index
+```
+
+Embeddings default to a **local** sentence-transformers model (no API key); set
+`ORANGE_EMBED_MODEL=voyage-3` + `VOYAGE_API_KEY` to use Voyage cloud instead.
+
+**Graceful degradation:** if Neo4j is unreachable or the embedding index is missing,
+`/search` falls back to BM25-only and marks results `[vector search skipped]` — nothing
+breaks. `/lc` reports embedding staleness so you know when to re-run `embed_pipeline.py`.
+
+---
+
 ## Updating & Versioning
 
 - The SessionStart hook checks for new commits (24 h TTL) and prints a one-line notice when an update is available.
@@ -144,6 +175,7 @@ Run `/lc {product}` before advancing — it validates every gate condition.
 ## Requirements
 
 - Claude Code v1.0+
-- Python 3.10+ on PATH (hooks & validation scripts)
+- Python 3.10+ on PATH (hooks & validation scripts) — `pip install -r requirements.txt`
 - An empty directory for the Hub (scaffolded by `/init-hub`)
 - *(optional)* MCP servers/connectors for external integrations — see [CONNECTORS.md](CONNECTORS.md)
+- *(optional)* Neo4j + vector extras for semantic `/search` — see [Advanced: Vector search](#advanced-vector-search--optional)

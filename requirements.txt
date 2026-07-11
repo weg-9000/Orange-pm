@@ -1,0 +1,10 @@
+# orange-pm — core runtime dependencies (hooks & validation scripts)
+#
+# The plugin's core workflow (Discovery → Confirm) needs only these.
+# The optional vector-search subsystem has its own extras:
+#   pip install -r deploy/neo4j/requirements-vector.txt
+
+PyYAML>=6.0        # frontmatter parsing, render/storage transforms
+
+# --- development / CI only ---
+pytest>=8.0        # test suite under scripts/*_test.py
