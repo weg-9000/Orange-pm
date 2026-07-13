@@ -9,7 +9,7 @@
     {
       "name": "orange-pm",
       "description": "A Claude Code plugin for PM planning teams. Automates the 6-stage Discovery → Graph → Fanout → Draft → Integrate → Confirm workflow with 36 skills and 6 agents. Integration with external systems (wiki, issue tracker, design tool, messenger) auto-detects and uses whatever MCP server/connector the user has connected. Must be run with the Planning-Agent-Hub directory set as the working directory.",
-      "version": "3.0.0",
+      "version": "3.0.1",
       "author": {
         "name": "Orange PM Team"
       },
@@ -30,5 +30,5 @@
       ]
     }
   ],
-  "version": "3.0.0"
+  "version": "3.0.1"
 }
