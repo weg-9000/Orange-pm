@@ -41,9 +41,11 @@ Follow-up skill categories:
 - `extract-template` — extract URL_A's format (Track C only)
 - `research-auto` — automated competitor research (Track A/B Phase -1)
 - `draft-req` — generate requirements.md (Track A Phase -1)
-- `graph-gen` + `fanout` — cluster grouping (Track A only)
+- `graph-gen` + `fanout --cluster-mode` — cluster grouping (Track A only)
 - `render` — publish (terminus of every Track)
-- `write` / `flow` — author cluster draft bodies (Track A)
+- `write-cluster` — author cluster draft bodies (§1 policy + §2 screen together, Track A).
+  `write` / `flow` are legacy/node-mode skills only — they do not understand clusters and must
+  never be routed to for Track A.
 
 ## 1. Track decision matrix (SSoT)
 
@@ -100,11 +102,13 @@ routing_decision:
 ```
 1. (if needed) research-auto  → inputs/discovery/competitor/
 2. draft-req               → requirements.md (D1) + research.md (D5)
-3. graph-gen + fanout       → 12–14 cluster WOs
-4. write / flow             → cluster draft bodies
+3. graph-gen + fanout --cluster-mode → 12–14 cluster WOs (cluster_index.json)
+4. write-cluster            → cluster draft bodies (§1 policy + §2 screen, one draft per cluster)
 5. integrate                → 3-round BLOCK management
 6. render --push            → Phase 4 transpose → D2/D3 + α
 ```
+> Never route Track A step 4 to `write` or `flow` — those are legacy/node-mode skills that
+> operate on `screen-list.md`/standalone screen WOs, which Track A does not generate.
 
 ### Track B — Single Deliverable
 ```
@@ -261,3 +265,4 @@ intent-router:
 | Version | Date | Change |
 |---|---|---|
 | 1.0 | 2026-05-30 | Phase 4 R1 — Track A/B/C routing matrix + clarifying questions + follow-up skill flow |
+| 1.1 | 2026-07-14 | Fix: Track A step 4 routed to `write`/`flow` (legacy/node-mode, cluster-unaware) — corrected to `write-cluster` |

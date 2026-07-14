@@ -45,6 +45,20 @@ details.
 
 ## Precondition check
 
+0. **Track audit (cluster-mode awareness — same signal as `/fanout` prerequisite 0)**
+   If any of the following exist, this project is the **cluster(dossier) model = Track A**.
+   - `PROJECTS/{product}/graph/project-mode.json` (track=A / model=dossier)
+   - `PROJECTS/{product}/graph/cluster_map.json` or `graph.clustered.json`
+   - `PROJECTS/{product}/drafts/cluster_*.draft.md` (dossier already written)
+
+   If detected, **the Step 1 WO-mapping flow below does not apply** — there is no standalone
+   screen WO to promote into. Instead, identify the target `cluster_id` that owns this screen
+   (via `graph/cluster_map.json` or `/plan-audit {product}`), then have the PM manually fold the
+   sketch content into that cluster's `§2 Screen Design` panel through
+   `/write-cluster {product} {cluster_id}`. Do not mark the sketch `promoted: true` until that
+   cluster draft has actually been updated.
+   If uncertain which track applies, run `/plan-audit {product}` first to confirm.
+
 1. Verify `sketches/{screen_id}.sketch.md` exists.
    If not, output the list of valid sketch files and stop.
 

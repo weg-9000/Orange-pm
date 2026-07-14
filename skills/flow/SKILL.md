@@ -109,6 +109,19 @@ Sketch mode ends here. It does not proceed to prerequisite checks or the formal 
 ---
 ## Prerequisite checks
 
+0. **Track audit (cluster-mode awareness — same signal as `/fanout` prerequisite 0)**
+   If any of the following exist, this project is the **cluster(dossier) model = Track A**.
+   - `PROJECTS/{product}/graph/project-mode.json` (track=A / model=dossier)
+   - `PROJECTS/{product}/graph/cluster_map.json` or `graph.clustered.json`
+   - `PROJECTS/{product}/drafts/cluster_*.draft.md` (dossier already written)
+
+   If detected, **do not proceed with `/flow`.** In Track A, screen design is written as §2 of
+   the cluster draft (fixed skeleton, `/write-cluster`) — there is no separate screen WO to fill.
+   Direct the PM to `/write-cluster {product} {cluster_id}` instead (per
+   `plan-audit` Step 3: "screen drafts not started → Track A: handled by dossier §2, no
+   separate screen WO").
+   If uncertain which track applies, run `/plan-audit {product}` first to confirm.
+
 1. Check whether `PROJECTS/{product}/graph/screen-list.md` exists.
    If missing, direct the user to re-run `/graph-gen {product}` and stop.
 
