@@ -38,9 +38,13 @@ and explain how to resolve it.
 2. Check the number of P0 items in `open-issues.md`.
    If there is 1 or more P0 item, print the list and stop.
 
-3. Cross-check all WOs registered in `work-orders/index.md` against the
-   actual files in `drafts/`.
-   If any draft is missing, print the list of WO IDs and stop.
+3. Cross-check all WOs/dossiers registered against the actual files in `drafts/`.
+   - **Track A (cluster mode)** — if `work-orders/cluster_index.json` exists, use its
+     `clusters[]` array (`wo_id` / `cluster_id` / `draft_path`) as the listing SSoT.
+     `work-orders/index.md` is not generated in cluster mode, so do not check for it.
+   - **legacy/node mode** — if `cluster_index.json` is absent, use
+     `work-orders/index.md` as before.
+   If any draft is missing, print the list of WO/dossier IDs and stop.
 
 4. Check whether the freeze status in `decisions.md` is false.
    If it is already frozen, print a double-freeze warning and re-confirm
@@ -72,12 +76,17 @@ Append the following block to the bottom of `decisions.md`:
 
 - **frozen_at**: {UTC timestamp}
 - **frozen_by**: auto-recorded by /confirm
-- **total_wo**: {WO count}
-- **policy_wo**: {policy WO count}
-- **screen_wo**: {screen WO count}
+- **total_wo**: {WO/dossier count}
+- **policy_wo**: {policy WO count}  <!-- legacy/node mode only -->
+- **screen_wo**: {screen WO count}  <!-- legacy/node mode only -->
+- **cluster_wo**: {dossier/cluster count}  <!-- Track A only -->
 - **graph_hash**: {first 12 characters of graph.json SHA256}
 - **status**: FROZEN
 ```
+
+Fill in only the fields matching the track determined in precondition 3 (legacy:
+`policy_wo`/`screen_wo`; Track A: `cluster_wo`) — omit the fields that don't apply rather than
+reporting a misleading 0.
 
 Once `status: FROZEN` is set, direct edits to `decisions.md` are forbidden.
 
@@ -145,7 +154,8 @@ If absent, record `[no repo connector — MR/PR creation skipped]` and proceed
 to the next step.
 MR/PR title: `[{PREFIX}-C] {product} Policy Document v1.0-frozen`
 Include the following items in the MR/PR description:
-- Full WO list (policy / screen separated)
+- Full WO/dossier list — legacy/node mode: policy / screen separated;
+  Track A: dossier(cluster) list by capability
 - graph.json hash
 - decisions.md freeze timestamp
 - wiki page link (if upload succeeded)
@@ -164,7 +174,7 @@ If absent, record `[no chat connector — notification skipped]` and proceed
 to the next step.
 Notification content:
 - Project name and frozen_at timestamp
-- Policy WO count / screen WO count
+- Legacy/node mode: policy WO count / screen WO count. Track A: dossier(cluster) count
 - MR/PR URL (if created successfully)
 - wiki upload result (success / failure)
 
@@ -182,13 +192,17 @@ Record the following KPIs in `reports/metrics.md`:
 |---|---|
 | frozen_at | {UTC timestamp} |
 | total_wo | {N} |
-| policy_wo | {N} |
-| screen_wo | {N} |
+| policy_wo | {N} (legacy/node mode only) |
+| screen_wo | {N} (legacy/node mode only) |
+| cluster_wo | {N} (Track A only) |
 | open_issues_p1 | {N} |
 | open_issues_p2 | {N} |
 | confluence_upload | SUCCESS / FAIL |
 | gitlab_mr_url | {URL or FAIL} |
 ```
+
+Omit the `policy_wo`/`screen_wo` rows entirely for a Track A project (report `cluster_wo`
+instead), and vice versa for legacy/node mode — do not report an inapplicable field as 0.
 
 > **split-deliverable publication mode** (`graph/project-mode.json`
 > `publication_mode: split-deliverable`, fix-plan-dossier-publish-split):

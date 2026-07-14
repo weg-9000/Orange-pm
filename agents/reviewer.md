@@ -64,9 +64,12 @@ branching) as a safety net.
 Check the `status` value read from frontmatter in the first scan and branch
 as follows:
   - status: empty
-    → SKIP validation. Output the following and stop:
+    → SKIP validation. Output the following and stop (branch the recommended
+      command on this file's own frontmatter `type`):
       "WO {WO-ID}: status=empty (empty shell from the fanout stage).
-       Run /write {WO-ID} or /flow {product} {SCR-ID}, then re-review."
+       Run /write-cluster {product} {cluster_id} (type: cluster_draft) —
+       or /write {WO-ID} (type: policy) — or /flow {product} {SCR-ID} (type: screen),
+       then re-review."
   - status: ai-draft
     → proceed with normal validation (Step 1 onward, V-01 through V-18).
   - status: human-reviewed
@@ -287,12 +290,19 @@ related to personal data, payments, or authentication.
 Missing → WARN.
 
 
-Step 3 — Additional Validation for Screen Drafts
+Step 3 — Additional Validation for Screen Content
+
+Runs when this draft carries screen content: `type: screen` (legacy/node mode, one screen per
+file) **or** `type: cluster_draft` (Track A — the §2 Screen Design panel, one file may cover
+several screens via `primary_screen`/`related_screens`).
 
 [V-10] screen-list.md Consistency
-Check that the draft's screen name, purpose, and linked requirement ID
-match the corresponding SCR-NNN entry in screen-list.md.
-Mismatch → FAIL.
+- **type: screen**: check that the draft's screen name, purpose, and linked requirement ID
+  match the corresponding SCR-NNN entry in screen-list.md. Mismatch → FAIL.
+- **type: cluster_draft**: for each SCR-NNN in this cluster's `primary_screen`/
+  `related_screens`, check that §2's screen name/purpose for it matches the corresponding
+  screen-list.md entry. Do not expect a single 1:1 `screen_id` — a cluster draft legitimately
+  covers multiple SCR-NNNs. Mismatch on any covered screen → FAIL.
 
 [V-11] 4-State Completeness (legitimate N/A allowed)
 Check that each of the following 4 states is either **defined** or
@@ -347,7 +357,10 @@ them into unknown_terms.log)
 {ISO8601} | {term} | drafts/{WO-ID}.draft.md | {one-line context}
 
 ### Rewrite Instruction (when a FAIL exists)
-Return to skill: /write {WO-ID} or /flow {product} {screen_id}
+Return to skill (branch on this draft's frontmatter `type`):
+  `cluster_draft` → /write-cluster {product} {cluster_id}
+  `policy` → /write {WO-ID}
+  `screen` → /flow {product} {screen_id}
 Fix points: {summary of FAIL items}
 ---
 

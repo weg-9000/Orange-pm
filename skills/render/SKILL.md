@@ -803,7 +803,8 @@ Render complete
   Confluence:   {upload URL or "no --push"}
 
 Next steps:
-  Continue writing drafts:  /write {WO_ID} or /flow {product} {screen_id}
+  Continue writing drafts:  Track A: /write-cluster {product} {cluster_id} ·
+                            legacy: /write {WO_ID} or /flow {product} {screen_id}
   Resolve sync gap:         /render {product} --push  (push OUTDATED documents)
   Full validation:          /integrate {product}
   Re-render:                /render {product}

@@ -28,12 +28,17 @@ to this skill's core task.
 
 ## Prerequisite checks
 
-1. **Load the WO list (Improvement G — CONTEXT_OPTIMIZATION.md)**:
-   If `work-orders/index.json` exists, read the full WO list from its `wo[]` array.
-   Fall back to parsing the `index.md` table only if it is missing. Do not cite the body text.
-   Check whether draft files exist for all of those WOs under `drafts/`.
+1. **Load the WO/dossier list (Improvement G — CONTEXT_OPTIMIZATION.md)**:
+   - **Track A (cluster mode)** — if `work-orders/cluster_index.json` exists, read the full
+     dossier list from its `clusters[]` array (`wo_id` / `cluster_id` / `draft_path`).
+     `work-orders/index.json`/`index.md` are not generated in cluster mode — do not look for them.
+   - **legacy/node mode** — if `cluster_index.json` is absent and `work-orders/index.json`
+     exists, read the WO list from its `wo[]` array. Fall back to parsing the `index.md` table
+     only if `index.json` is missing. Do not cite the body text.
+   Check whether draft files exist for all of those WOs/dossiers under `drafts/`.
    If any drafts are missing, print the list and stop.
-   Direct the user to run `/write {WO_ID}` or `/flow {product}`.
+   Direct the user to run, per track: Track A → `/write-cluster {product} {cluster_id}` ·
+   legacy → `/write {WO_ID}` or `/flow {product}`.
 
 2. **Validate draft frontmatter (Improvement H)**:
    Confirm the standard frontmatter exists for all drafts with the following command:
@@ -159,7 +164,8 @@ Record the following details for each BLOCK item:
 **Violation details**: {specific content}
 **Reference source**: {the violated standard document and item}
 **Resolution method**: {what to fix and in which direction}
-**Owning skill**: `/write {WO_ID}` or `/flow {product} {screen_id}`
+**Owning skill**: legacy — `/write {WO_ID}` or `/flow {product} {screen_id}` · Track A —
+`/write-cluster {product} {cluster_id}`
 ```
 
 **reports/impact-map.md:**

@@ -43,8 +43,10 @@ If even one draft is missing frontmatter, immediately BLOCK and halt work:
 Collect all drafts whose frontmatter `status` value is `empty` during the
 first scan.
 If one or more exist, immediately BLOCK and halt work:
-  WO: {WO-ID} | Item: I-00 | Violation: status=empty (fanout empty shell — write/flow not run) |
-  Action: run /write {WO-ID} or /flow {product} {SCR-ID}, then call /integrate again
+  WO: {WO-ID} | Item: I-00 | Violation: status=empty (fanout empty shell — write/flow/write-cluster not run) |
+  Action: check this WO's frontmatter `type` — `cluster_draft` → run
+        /write-cluster {product} {cluster_id} · `policy` → /write {WO-ID} ·
+        `screen` → /flow {product} {SCR-ID}, then call /integrate again
 
 Drafts with no status field at all are handled the same way (migration recommended):
   WO: {WO-ID} | Item: I-00 | Violation: missing status field |
@@ -54,7 +56,10 @@ Drafts with no status field at all are handled the same way (migration recommend
 - graph/graph.edges.json + graph/graph.policy.json (Improvement C — use split files directly)
   (fall back to the single graph/graph.json only when split files are absent)
 - graph/integration-contract.md
-- work-orders/index.json (Improvement G — JSON instead of a markdown table)
+- work-orders/cluster_index.json (Track A — cluster mode; use its `clusters[]` as the
+  WO/dossier listing SSoT when present)
+- work-orders/index.json (legacy/node mode — JSON instead of a markdown table; only when
+  cluster_index.json is absent, Improvement G)
 - decisions.md
 - screen-list.md
 - reports/drift-queue.md (produced by drift_scan.py — C-PIN, summary only. Do not reload the common source or rerun drift_scan)
@@ -224,10 +229,18 @@ TBD in a core-rule area → BLOCK.
 TBD in a supplementary-explanation area → WARN.
 
 [I-06] screen-list.md Coverage
-Verify that a draft exists for every SCR-NNN in screen-list.md.
-Missing items → BLOCK.
-Mismatch between the draft's screen name/purpose and screen-list.md → WARN.
-(narrow down first using all screen frontmatter, then compare bodies chunk by chunk)
+- **legacy/node mode**: verify that a standalone screen draft
+  (`drafts/{WO_ID}.draft.md`, `type: screen`) exists for every SCR-NNN in screen-list.md.
+  Missing items → BLOCK.
+- **Track A (cluster mode)**: screens are not standalone files — do **not** look for
+  `drafts/{SCR-NNN}.draft.md` (it never exists in cluster mode; checking for it produces a
+  false BLOCK on every screen of every Track A project). Instead, verify every SCR-NNN in
+  screen-list.md is claimed by some cluster draft's `primary_screen`/`related_screens`
+  frontmatter (`work-orders/cluster_index.json` `clusters[]` → `draft_path`), and that the
+  claimed cluster draft's §2 actually has non-placeholder content for it. Uncovered/unclaimed
+  SCR-NNN → BLOCK.
+Mismatch between the covering draft's screen name/purpose and screen-list.md → WARN.
+(narrow down first using all screen/cluster frontmatter, then compare bodies chunk by chunk)
 
 [I-07] 4-State Completeness (legitimate N/A allowed)
 Verify that each screen draft has idle/loading/success/error either
@@ -269,7 +282,8 @@ Step 5 — BLOCK Resolution Paths and Escalation
 
 Three BLOCK resolution paths:
 (A) Draft-level error
-    → rerun the relevant WO skill (/write or /flow)
+    → rerun the relevant WO skill: `type: cluster_draft` → /write-cluster ·
+      `type: policy` → /write · `type: screen` → /flow
     → after rerunning, call /integrate again
 (B) Error requiring a decision (conflicts with a canonical DEC table row (`✅ approved`))
     → register in open-issues.md as P0

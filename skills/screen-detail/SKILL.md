@@ -68,6 +68,20 @@ management"; otherwise auto-detect as `user-console`.
 
 ## Precondition Checks
 
+0. **Track audit (cluster-mode awareness — same signal as `/fanout` prerequisite 0)**
+   If any of the following exist, this project is the **cluster(dossier) model = Track A**.
+   - `PROJECTS/{product}/graph/project-mode.json` (track=A / model=dossier)
+   - `PROJECTS/{product}/graph/cluster_map.json` or `graph.clustered.json`
+   - `PROJECTS/{product}/drafts/cluster_*.draft.md` (dossier already written)
+
+   If detected, **do not proceed with `/screen-detail`.** There is no standalone screen WO to
+   attach a "Section 7. Screen Detail" to — screen design already lives in §2 of the cluster
+   draft, written by `/write-cluster`. This skill's extra-detail table format is not yet ported
+   to the cluster panel schema; add the needed detail directly inside that cluster draft's
+   `§2-2 Screen Layout/Components` / `§2-3 Interactions/Policy Links` instead, or register the
+   gap in `open-issues.md` as P2 if the table granularity is genuinely required.
+   If uncertain which track applies, run `/plan-audit {product}` first to confirm.
+
 1. Confirm the screen WO draft file corresponding to `{screen_id}` exists
    in `PROJECTS/{product}/drafts/`.
    If not, direct the user to run `/flow {product} {screen_id}` first.

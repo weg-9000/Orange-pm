@@ -127,8 +127,8 @@ Add to `session-log.md`:
 
 ## Next Steps
 
-- To resolve a coverage FAIL: run `/flow {product} {screen_id}` or
-  `/write {WO_ID}`, then re-run `/bdd {product}`
+- To resolve a coverage FAIL: Track A → `/write-cluster {product} {cluster_id}` ·
+  legacy → `/flow {product} {screen_id}` or `/write {WO_ID}`, then re-run `/bdd {product}`
 - For overall gate status: `/lc {product}` (includes bdd-coverage-gate)
 - After PASS: hand off `reports/bdd/*.feature` to the dev team (runnable
   with Cucumber/Behave)
